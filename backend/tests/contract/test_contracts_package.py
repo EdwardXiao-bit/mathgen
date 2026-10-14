@@ -10,10 +10,12 @@ import unittest
 
 from app.contracts.api import (
     ROUTES,
+    AnswerLayoutIn,
     LayoutIn,
     PaperConfigIn,
     PaperDetail,
     PaperItemOut,
+    PaperListOut,
     PaperSummary,
     PublishResult,
 )
@@ -127,6 +129,27 @@ class TestSheetContract(unittest.TestCase):
         with self.assertRaises(dataclasses.FrozenInstanceError):
             ctx.title = "改标题"  # type: ignore[misc]
 
+    def test_sheet_context_carries_answer_layout(self):
+        """M3 起渲染器要知道「答案版形式」，所以它必须是 SheetContext 的一部分。"""
+        ctx = SheetContext(
+            title="答案版形式",
+            mode=SheetMode.ANSWER,
+            items=(SheetItem(seq=1, display="7 + 8 = ____", answer="15"),),
+            layout=LayoutParams(),
+        )
+        self.assertIn("answer_layout", [f.name for f in dataclasses.fields(SheetContext)])
+        self.assertIs(ctx.answer_layout.separate_page, True)
+
+    def test_answer_layout_default_is_not_shared(self):
+        """默认值必须用 default_factory——pydantic 模型可变，共享实例会被串改。"""
+        a = SheetContext(title="a", mode=SheetMode.ANSWER,
+                         items=(SheetItem(seq=1, display="1+1"),), layout=LayoutParams())
+        b = SheetContext(title="b", mode=SheetMode.ANSWER,
+                         items=(SheetItem(seq=2, display="2+2"),), layout=LayoutParams())
+        self.assertIsNot(a.answer_layout, b.answer_layout)
+        a.answer_layout.include_steps = False
+        self.assertIs(b.answer_layout.include_steps, True)
+
 
 class TestApiContract(unittest.TestCase):
     def test_route_paths_are_frozen(self):
@@ -134,9 +157,11 @@ class TestApiContract(unittest.TestCase):
             "create_paper": "/api/papers",
             "list_papers": "/api/papers",
             "get_paper": "/api/papers/{paper_id}",
+            "get_paper_by_code": "/api/papers/by-code/{code}",
             "delete_item": "/api/papers/{paper_id}/items/{seq}",
             "regenerate_item": "/api/papers/{paper_id}/items/{seq}/regenerate",
             "update_layout": "/api/papers/{paper_id}/layout",
+            "update_answer_layout": "/api/papers/{paper_id}/answer-layout",
             "publish_paper": "/api/papers/{paper_id}/publish",
             "copy_paper": "/api/papers/{paper_id}/copy",
             "sheet": "/api/papers/{paper_id}/sheet",
@@ -164,11 +189,27 @@ class TestApiContract(unittest.TestCase):
         self.assertEqual(
             list(PaperDetail.model_fields),
             ["id", "code", "title", "status", "seed", "config", "layout",
-             "created_at", "published_at", "items"],
+             "answer_layout", "created_at", "published_at", "items"],
         )
         self.assertEqual(
             list(PaperSummary.model_fields),
             ["id", "code", "title", "status", "item_count", "created_at", "published_at"],
+        )
+        self.assertEqual(
+            list(PaperListOut.model_fields),
+            ["total", "limit", "offset", "papers"],
+        )
+
+    def test_answer_layout_defaults_match_d20(self):
+        """六维中的第六维（M3 起接入）：默认与 D20 一致——答案单独成页。"""
+        al = AnswerLayoutIn()
+        self.assertIs(al.separate_page, True)
+        self.assertIs(al.include_steps, True)
+        self.assertIs(al.include_difficulty, True)
+        self.assertIs(al.include_tags, True)
+        self.assertEqual(
+            list(AnswerLayoutIn.model_fields),
+            ["separate_page", "include_steps", "include_difficulty", "include_tags"],
         )
 
     def test_publish_result_field_names(self):

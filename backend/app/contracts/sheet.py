@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from app.contracts.api import AnswerLayoutIn
 from app.contracts.layout import LayoutParams
 
 __all__ = ["SheetMode", "SheetItem", "SheetContext"]
@@ -53,11 +54,17 @@ class SheetContext:
     layout: LayoutParams
     code: str | None = None                        # 卷号，发布后才有（YYMM-NNNN）
     header_note: str = ""                          # 卷头补充说明（可选，如「限时 10 分钟」）
+    #: 答案版形式（D53③ 由 M3 定义）。仅在 `mode=ANSWER` 时起作用；
+    #: 默认与 D20 一致。用 default_factory 而非共享实例——pydantic 模型是可变的。
+    answer_layout: AnswerLayoutIn = field(default_factory=AnswerLayoutIn)
 
 
 #: 渲染契约（**冻结**）：
 #:   1. 返回**完整 HTML 文档**（含 <style>），不依赖任何外部资源（无 CDN，NFR-9）
 #:   2. 六个排版参数必须通过 app.contracts.layout.css_variables 注入
 #:   3. `mode=QUESTION` 时**不得**在输出中泄露 answer / steps（安全边界，契约 §9）
-#:   4. `mode=ANSWER` 时答案默认单独成页（D20）
+#:   4. `mode=ANSWER` 时答案默认单独成页（D20）；是否单独成页、是否含逐步过程 /
+#:      难度 / 考点标签，由 `ctx.answer_layout` 决定（D53③，M3 起生效）
 #:   5. 同一份 SheetContext 渲染两次结果必须完全一致（纯函数）
+#:   6. `export_docx(ctx, out_path)` 的卷面结构与 HTML/PDF **必须一致**；
+#:      Word 不能完整表达的部分（如逐页分页），由界面明示差异，不得静默降级

@@ -16,7 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 __all__ = [
-    "ROUTES", "PaperConfigIn", "LayoutIn", "PaperItemOut",
+    "ROUTES", "PaperConfigIn", "LayoutIn", "AnswerLayoutIn", "PaperItemOut",
     "PaperDetail", "PaperSummary", "PaperListOut", "PublishResult",
     "ErrorBody", "ErrorResponse",
 ]
@@ -26,9 +26,11 @@ ROUTES = {
     "create_paper": "/api/papers",
     "list_papers": "/api/papers",
     "get_paper": "/api/papers/{paper_id}",
+    "get_paper_by_code": "/api/papers/by-code/{code}",
     "delete_item": "/api/papers/{paper_id}/items/{seq}",
     "regenerate_item": "/api/papers/{paper_id}/items/{seq}/regenerate",
     "update_layout": "/api/papers/{paper_id}/layout",
+    "update_answer_layout": "/api/papers/{paper_id}/answer-layout",
     "publish_paper": "/api/papers/{paper_id}/publish",
     "copy_paper": "/api/papers/{paper_id}/copy",
     "sheet": "/api/papers/{paper_id}/sheet",
@@ -68,6 +70,18 @@ class LayoutIn(BaseModel):
     header_bar: bool = True
 
 
+class AnswerLayoutIn(BaseModel):
+    """答案版形式（**D53③ 由 M3 定义**，存 `paper.answer_layout`）。
+
+    六维出题配置中的第六维。M2 期间固定为 D20 默认、不落库；M3 起正式接入。
+    """
+
+    separate_page: bool = True        # 答案单独成页（D20 默认 true）
+    include_steps: bool = True        # 脱式题是否带逐步过程
+    include_difficulty: bool = True   # 是否标难度
+    include_tags: bool = True         # 是否标考点标签
+
+
 class PaperItemOut(BaseModel):
     """卷面题目快照。老师端**包含** answer / steps（学生端必须剔除，契约 §9）。"""
 
@@ -89,6 +103,7 @@ class PaperDetail(BaseModel):
     seed: int
     config: PaperConfigIn
     layout: LayoutIn
+    answer_layout: AnswerLayoutIn
     created_at: str
     published_at: str | None = None
     items: list[PaperItemOut]
@@ -105,7 +120,15 @@ class PaperSummary(BaseModel):
 
 
 class PaperListOut(BaseModel):
-    total: int
+    """卷库列表（M3 起支持分页与搜索）。
+
+    查询参数：`limit`（1..100，默认 20）、`offset`（≥0）、`q`（按标题模糊匹配）、
+    `status`（`draft` / `published`，留空为全部）。
+    """
+
+    total: int          # 符合条件的总数（不受 limit/offset 影响）
+    limit: int
+    offset: int
     papers: list[PaperSummary]
 
 
