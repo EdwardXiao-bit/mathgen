@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mathgen 老师端 · 方向 B 卡片圆润</title>
+<style>
+  /* ============================================================
+     方向 B —— 卡片圆润（亲和感）
+     性格：明快青蓝主色 + 浅色背景块、大圆角、柔和多层阴影、宽松间距
+     目标用户感受：非技术用户、不慌
+     ============================================================ */
+  :root {
+    --bg: #eef3fb;
+    --card: #ffffff;
+    --tint: #e8f1fe;          /* 浅色背景块 */
+    --tint-2: #eafaf3;
+    --line: #dfe7f3;
+    --ink: #1c2b3a;
+    --ink-soft: #5b7089;
+    --primary: #2f6df0;       /* 明快主色 */
+    --primary-ink: #1b4fc4;
+    --ok: #12a06a;
+    --shadow-sm: 0 1px 2px rgba(28, 43, 58, .06), 0 2px 8px rgba(47, 109, 240, .06);
+    --shadow-md: 0 2px 4px rgba(28, 43, 58, .06), 0 8px 20px rgba(47, 109, 240, .10);
+    --r-lg: 14px;
+    --r-md: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.55 "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  header { display: flex; align-items: center; gap: 18px; padding: 12px 20px; flex: none; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px; }
+  .brand .mark { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;
+    background: var(--primary); color: #fff; font-size: 14px; box-shadow: var(--shadow-sm); }
+  nav { display: flex; gap: 6px; }
+  nav a { padding: 7px 16px; border-radius: 999px; color: var(--ink-soft); text-decoration: none; font-weight: 600; }
+  nav a.on { background: var(--card); color: var(--primary-ink); box-shadow: var(--shadow-sm); }
+  .health { margin-left: auto; display: flex; align-items: center; gap: 8px;
+    background: var(--card); padding: 7px 14px; border-radius: 999px; box-shadow: var(--shadow-sm);
+    color: var(--ink-soft); font-size: 13px; }
+  .health .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(18,160,106,.16); }
+
+  main { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr) 344px;
+    gap: 16px; padding: 0 20px 20px; }
+
+  .card { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--shadow-md);
+    display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .card-head { padding: 16px 18px 12px; display: flex; align-items: center; gap: 10px; }
+  .card-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .chip { margin-left: auto; background: var(--tint); color: var(--primary-ink);
+    padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .chip-ok { background: var(--tint-2); color: var(--ok); }
+
+  /* 顶部信息条：整页的动作区，做成一张浅色卡片 */
+  .hero { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px;
+    background: var(--card); border-radius: var(--r-lg); box-shadow: var(--shadow-md);
+    padding: 14px 20px; }
+  .hero h1 { margin: 0; font-size: 18px; font-weight: 700; }
+  .hero .meta { display: flex; gap: 16px; color: var(--ink-soft); font-size: 13px; }
+  .hero .actions { margin-left: auto; display: flex; gap: 10px; }
+  button { font: inherit; cursor: pointer; }
+  .btn { padding: 9px 18px; border: 0; border-radius: 999px; background: var(--tint);
+    color: var(--primary-ink); font-weight: 600; box-shadow: var(--shadow-sm); }
+  .btn:hover { background: #dbe8fd; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-ink); }
+
+  /* 左：题目卡片 */
+  .list { list-style: none; margin: 0; padding: 4px 12px 14px; overflow-y: auto; flex: 1 1 auto; }
+  .row { display: grid; grid-template-columns: 26px 84px 48px auto auto; align-items: center; gap: 8px;
+    padding: 9px 12px; border-radius: var(--r-md); background: #fafcff; margin-bottom: 6px; }
+  .row:nth-child(even) { background: #f5f9ff; }
+  .seq { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--tint); color: var(--primary-ink); font-size: 11px; font-weight: 700; }
+  .expr { font-weight: 600; }
+  .ans { color: var(--ok); font-weight: 700; font-size: 13px; }
+  .pill { padding: 5px 12px; border-radius: 999px; border: 0; background: #fff;
+    color: var(--primary-ink); font-size: 12px; font-weight: 600; box-shadow: var(--shadow-sm); }
+  .pill:hover { background: var(--tint); }
+  .pill-danger { color: #c0332b; }
+  .pill-danger:hover { background: #fdeceb; }
+
+  /* 中：纸面卡片 */
+  .stage { flex: 1 1 auto; overflow: auto; padding: 0 18px 18px; }
+  .paper { width: 100%; max-width: 620px; margin: 0 auto; background: #fff; border-radius: var(--r-md);
+    box-shadow: var(--shadow-md); padding: 22px 26px; color: #000;
+    font-family: "SimSun", "Songti SC", "Times New Roman", serif; font-size: 10px; line-height: 1.6; }
+  .paper .hb { display: flex; gap: 16px; border-bottom: 2px solid #1c2b3a; padding-bottom: 5px; font-size: 10px; }
+  .paper .hb .code { margin-left: auto; }
+  .paper .p-title { margin: 8px 0; text-align: center; font-size: 15px; font-weight: 700; letter-spacing: .1em; }
+  .paper .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 12px; }
+  .q { break-inside: avoid; }
+  .q-n { color: #444; }
+  .q-blank { display: inline-block; width: 38px; border-bottom: 1px solid #999; }
+
+  /* 右：面板卡片 */
+  .panel { flex: 1 1 auto; overflow-y: auto; padding: 0 16px 16px; }
+  .panel-note { margin: 0 0 14px; padding: 10px 12px; background: var(--tint); border-radius: var(--r-md);
+    color: var(--primary-ink); font-size: 12px; }
+  .ctl { margin-bottom: 14px; }
+  .ctl-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+  .ctl-label { font-weight: 600; }
+  .badge { background: var(--tint); color: var(--primary-ink); padding: 3px 10px;
+    border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .track { position: relative; height: 6px; border-radius: 999px; background: #e6eefb; }
+  .thumb { position: absolute; top: -6px; width: 18px; height: 18px; margin-left: -9px;
+    background: #fff; border: 3px solid var(--primary); border-radius: 50%; box-shadow: var(--shadow-sm); }
+  .ctl-scale { display: flex; justify-content: space-between; color: var(--ink-soft); font-size: 11px; margin-top: 3px; }
+  .ctl-bool { display: flex; align-items: center; justify-content: space-between; }
+  .switch { width: 46px; height: 26px; border-radius: 999px; background: #cfdcef; position: relative; transition: background .15s; }
+  .switch i { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-sm); }
+  .switch-on { background: var(--primary); }
+  .switch-on i { left: auto; right: 3px; }
+  .saved { margin-top: 16px; padding: 12px 14px; border-radius: var(--r-md); background: var(--tint-2);
+    color: #0d7a51; font-weight: 600; font-size: 12px; display: flex; gap: 8px; align-items: center; }
+  .saved::before { content: "✓"; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand"><span class="mark">m</span> mathgen</span>
+  <nav>
+    <a href="#" class="on">出题配置</a>
+    <a href="#">卷库</a>
+  </nav>
+  <span class="health"><span class="dot"></span>后端已连接</span>
+</header>
+
+<main>
+  <div class="hero">
+    <h1>100 以内加减法 随堂练</h1>
+    <span class="meta">
+      <span>状态：草稿（可改题）</span>
+      <span>种子：20261014</span>
+      <span>题目：40 道</span>
+      <span>卷号：2610-0001</span>
+    </span>
+    <span class="actions">
+      <button class="btn" type="button">新建一套</button>
+      <button class="btn" type="button">去发卷</button>
+      <button class="btn btn-primary" type="button">打印题目版</button>
+      <button class="btn" type="button">打印答案版</button>
+    </span>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>改题</h2><span class="chip">40 道</span></div>
+    <ul class="list">
+          <li class="row">
+            <span class="seq">1</span>
+            <span class="expr">53 + 15</span>
+            <span class="ans">= 68</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">2</span>
+            <span class="expr">100 - 42</span>
+            <span class="ans">= 58</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">3</span>
+            <span class="expr">62 - 5</span>
+            <span class="ans">= 57</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">4</span>
+            <span class="expr">38 + 47</span>
+            <span class="ans">= 85</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">5</span>
+            <span class="expr">3 - 3</span>
+            <span class="ans">= 0</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">6</span>
+            <span class="expr">43 + 34</span>
+            <span class="ans">= 77</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">7</span>
+            <span class="expr">97 - 95</span>
+            <span class="ans">= 2</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">8</span>
+            <span class="expr">91 + 1</span>
+            <span class="ans">= 92</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">9</span>
+            <span class="expr">83 - 24</span>
+            <span class="ans">= 59</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">10</span>
+            <span class="expr">5 + 4</span>
+            <span class="ans">= 9</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">11</span>
+            <span class="expr">81 - 11</span>
+            <span class="ans">= 70</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">12</span>
+            <span class="expr">6 + 40</span>
+            <span class="ans">= 46</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">13</span>
+            <span class="expr">68 - 44</span>
+            <span class="ans">= 24</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">14</span>
+            <span class="expr">9 + 33</span>
+            <span class="ans">= 42</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">15</span>
+            <span class="expr">96 - 91</span>
+            <span class="ans">= 5</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">16</span>
+            <span class="expr">1 + 81</span>
+            <span class="ans">= 82</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">17</span>
+            <span class="expr">64 - 64</span>
+            <span class="ans">= 0</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">18</span>
+            <span class="expr">59 + 20</span>
+            <span class="ans">= 79</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">19</span>
+            <span class="expr">52 - 41</span>
+            <span class="ans">= 11</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">20</span>
+            <span class="expr">67 + 22</span>
+            <span class="ans">= 89</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">21</span>
+            <span class="expr">60 - 16</span>
+            <span class="ans">= 44</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">22</span>
+            <span class="expr">57 + 41</span>
+            <span class="ans">= 98</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">23</span>
+            <span class="expr">66 - 26</span>
+            <span class="ans">= 40</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">24</span>
+            <span class="expr">93 + 6</span>
+            <span class="ans">= 99</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">25</span>
+            <span class="expr">53 + 15</span>
+            <span class="ans">= 68</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">26</span>
+            <span class="expr">100 - 42</span>
+            <span class="ans">= 58</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">27</span>
+            <span class="expr">62 - 5</span>
+            <span class="ans">= 57</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">28</span>
+            <span class="expr">38 + 47</span>
+            <span class="ans">= 85</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">29</span>
+            <span class="expr">3 - 3</span>
+            <span class="ans">= 0</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">30</span>
+            <span class="expr">43 + 34</span>
+            <span class="ans">= 77</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">31</span>
+            <span class="expr">97 - 95</span>
+            <span class="ans">= 2</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">32</span>
+            <span class="expr">91 + 1</span>
+            <span class="ans">= 92</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">33</span>
+            <span class="expr">83 - 24</span>
+            <span class="ans">= 59</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">34</span>
+            <span class="expr">5 + 4</span>
+            <span class="ans">= 9</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">35</span>
+            <span class="expr">81 - 11</span>
+            <span class="ans">= 70</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">36</span>
+            <span class="expr">6 + 40</span>
+            <span class="ans">= 46</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">37</span>
+            <span class="expr">68 - 44</span>
+            <span class="ans">= 24</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">38</span>
+            <span class="expr">9 + 33</span>
+            <span class="ans">= 42</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">39</span>
+            <span class="expr">96 - 91</span>
+            <span class="ans">= 5</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">40</span>
+            <span class="expr">1 + 81</span>
+            <span class="ans">= 82</span>
+            <button class="pill" type="button">换一题</button>
+            <button class="pill pill-danger" type="button">删除</button>
+          </li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>卷面预览</h2><span class="chip">题目版 · 后端渲染</span></div>
+    <div class="stage">
+      <article class="paper">
+        <div class="hb"><span>班级：</span><span>姓名：</span><span>得分：</span><span class="code">卷号 2610-0001</span></div>
+        <h1 class="p-title">100 以内加减法 随堂练</h1>
+        <div class="grid">
+            <div class="q"><span class="q-n">1.</span><span class="q-e">53 + 15</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">2.</span><span class="q-e">100 - 42</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">3.</span><span class="q-e">62 - 5</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">4.</span><span class="q-e">38 + 47</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">5.</span><span class="q-e">3 - 3</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">6.</span><span class="q-e">43 + 34</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">7.</span><span class="q-e">97 - 95</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">8.</span><span class="q-e">91 + 1</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">9.</span><span class="q-e">83 - 24</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">10.</span><span class="q-e">5 + 4</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">11.</span><span class="q-e">81 - 11</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">12.</span><span class="q-e">6 + 40</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">13.</span><span class="q-e">68 - 44</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">14.</span><span class="q-e">9 + 33</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">15.</span><span class="q-e">96 - 91</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">16.</span><span class="q-e">1 + 81</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">17.</span><span class="q-e">64 - 64</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">18.</span><span class="q-e">59 + 20</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">19.</span><span class="q-e">52 - 41</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">20.</span><span class="q-e">67 + 22</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">21.</span><span class="q-e">60 - 16</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">22.</span><span class="q-e">57 + 41</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">23.</span><span class="q-e">66 - 26</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">24.</span><span class="q-e">93 + 6</span> <span class="q-blank"></span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>排版面板</h2><span class="chip chip-ok">已保存</span></div>
+    <div class="panel">
+      <p class="panel-note">拖动或用开关调参，卷面立刻变化。保存成功后会自动重新加载卷面，确保你看到的和后端渲染一致。</p>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">每行题数</span><span class="badge">4 题/行</span></div>
+          <div class="track"><div class="thumb" style="left:30%"></div></div>
+          <div class="ctl-scale"><span>2</span><span>6</span></div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">行间距</span><span class="badge">1.0 倍</span></div>
+          <div class="track"><div class="thumb" style="left:12%"></div></div>
+          <div class="ctl-scale"><span>0.8</span><span>2.0</span></div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">字号</span><span class="badge">14 pt</span></div>
+          <div class="track"><div class="thumb" style="left:40%"></div></div>
+          <div class="ctl-scale"><span>10</span><span>20</span></div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">页边距</span><span class="badge">2.0 cm</span></div>
+          <div class="track"><div class="thumb" style="left:50%"></div></div>
+          <div class="ctl-scale"><span>1.0</span><span>3.0</span></div>
+        </div>
+        <div class="ctl ctl-bool">
+          <div class="ctl-head"><span class="ctl-label">答题横线</span><span class="badge">保留</span></div>
+          <span class="switch switch-on"><i></i></span>
+        </div>
+        <div class="ctl ctl-bool">
+          <div class="ctl-head"><span class="ctl-label">卷头栏</span><span class="badge">显示</span></div>
+          <span class="switch switch-on"><i></i></span>
+        </div>
+      <p class="saved">已保存，预览已刷新（当前显示 = 后端渲染结果）</p>
+    </div>
+  </section>
+</main>
+
+</body>
+</html>

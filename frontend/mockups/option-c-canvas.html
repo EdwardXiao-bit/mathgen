@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mathgen 老师端 · 方向 C 纸张隐喻</title>
+<style>
+  /* ============================================================
+     方向 C —— 纸张隐喻（画布感）
+     性格：中性灰「桌面」+ 纸白；卷面居中占主、强投影（纸在桌上）；
+           工具栏与面板都是**浮动层**（8px 圆角）；左列表默认折叠成窄条，
+           点一下展开成浮动抽屉（纯 CSS checkbox，无 JS）
+     目标用户感受："我在排一张卷子"
+     ============================================================ */
+  :root {
+    --desk: #8d9299;          /* 中性灰画布 */
+    --desk-2: #7c8188;
+    --paper: #ffffff;
+    --float: #ffffff;
+    --ink: #22252a;
+    --ink-soft: #5f656e;
+    --ink-faint: #8b9199;
+    --primary: #2b2f36;       /* 近黑的主色，强调用极少量 */
+    --accent: #b4622a;        /* 唯一的暖色点缀：卷号 / 当前值 */
+    --r-float: 8px;           /* 8px 只给浮动层 */
+    --shadow-float: 0 1px 2px rgba(0,0,0,.18), 0 10px 26px rgba(0,0,0,.22);
+    --shadow-paper: 0 2px 4px rgba(0,0,0,.20), 0 22px 50px rgba(0,0,0,.38);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--desk); color: var(--ink);
+    font: 13px/1.5 "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* ---- 顶栏：贴着画布的一条深色带 ---- */
+  header { display: flex; align-items: center; gap: 22px; padding: 0 18px; height: 46px; flex: none;
+    background: linear-gradient(#3a3f46, #31353b); color: #eef1f4; }
+  .brand { font-weight: 600; letter-spacing: .02em; }
+  .brand small { color: #a6adb6; font-weight: 400; margin-left: 5px; }
+  nav { display: flex; gap: 4px; font-size: 13px; }
+  nav a { color: #c8cdd4; text-decoration: none; padding: 5px 11px; border-radius: var(--r-float); }
+  nav a.on { background: rgba(255,255,255,.12); color: #fff; font-weight: 600; }
+  .health { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 12px; color: #b9c0c8; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ec38a; }
+
+  /* ---- 画布：中灰桌面，纸居中 ---- */
+  .desk { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,.13), transparent 60%),
+      linear-gradient(180deg, var(--desk), var(--desk-2)); }
+  /* 桌面纹理：细网格，暗示"工作台" */
+  .desk::before { content: ""; position: absolute; inset: 0; opacity: .16; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px);
+    background-size: 28px 28px; }
+
+  .canvas { position: absolute; inset: 0; overflow: auto; display: flex;
+    align-items: center; justify-content: center; padding: 74px 330px 40px 78px; }
+
+  /* 纸：在浮动层之间居中占主，强投影 + 轻微抬起（像刚放上桌） */
+  .paper { width: 560px; min-width: 560px; background: var(--paper); padding: 28px 32px;
+    box-shadow: var(--shadow-paper); color: #000;
+    font-family: "SimSun", "Songti SC", "Times New Roman", serif; font-size: 10px; line-height: 1.65;
+    transform: rotate(-.35deg); }
+  .paper .hb { display: flex; gap: 18px; border-bottom: 2px solid #111; padding-bottom: 6px; }
+  .paper .hb .code { margin-left: auto; color: var(--accent); font-weight: 700; }
+  .paper .p-title { margin: 10px 0; text-align: center; font-size: 16px; font-weight: 700; letter-spacing: .12em; }
+  .paper .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 14px; }
+  .q { break-inside: avoid; }
+  .q-n { color: #444; }
+  .q-blank { display: inline-block; width: 38px; border-bottom: 1px solid #9a9a9a; }
+
+  /* ---- 浮动工具栏（悬在画布上）----
+     左右边界贴着「窄条」与「面板」之间，避免在 1440 下被右侧面板压住；
+     居中由内部 justify-content 完成（对 left:50% 居中会按整个桌面算，会被面板盖住）。 */
+  .toolbar { position: absolute; top: 12px; left: 78px; right: 330px; z-index: 3;
+    width: fit-content; max-width: calc(100% - 48px); margin: 0 auto;
+    display: flex; align-items: center; gap: 9px;
+    background: var(--float); white-space: nowrap;
+    border-radius: var(--r-float); box-shadow: var(--shadow-float); padding: 8px 10px 8px 14px; }
+  .toolbar h1 { margin: 0; font-size: 14px; font-weight: 700; }
+  .toolbar .meta { display: flex; gap: 11px; color: var(--ink-soft); font-size: 11px; }
+  .toolbar .meta b { color: var(--accent); font-weight: 700; }
+  .sep { width: 1px; height: 22px; background: #e3e5e8; }
+  button { font: inherit; cursor: pointer; }
+  .btn { padding: 6px 12px; border: 1px solid #d9dcdf; background: #fff; border-radius: 6px;
+    font-size: 12px; white-space: nowrap; }
+  .btn:hover { border-color: var(--primary); }
+  .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .icon-btn { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid #d9dcdf;
+    background: #fff; border-radius: 6px; color: var(--ink-soft); font-size: 13px; }
+
+  /* 1280 宽（老师的小笔记本）时工具栏会挤：先收起次要信息，动作按钮保持完整 */
+  @media (max-width: 1399px) {
+    .toolbar .meta { display: none; }
+    .canvas { padding: 74px 330px 40px 78px; }
+  }
+  /* 更窄时（例如并列两个窗口）面板再让出一点 */
+  @media (max-width: 1150px) {
+    .canvas { padding: 74px 320px 32px 70px; }
+    .toolbar { left: 70px; right: 320px; }
+  }
+  /* ---- 左：折叠的题目窄条（贴着画布左缘）---- */
+  .rail { position: absolute; left: 14px; top: 14px; bottom: 14px; width: 50px; z-index: 3;
+    background: var(--float); border-radius: var(--r-float); box-shadow: var(--shadow-float);
+    display: flex; flex-direction: column; align-items: center; padding: 10px 0; gap: 8px; }
+  .rail .vlabel { writing-mode: vertical-rl; letter-spacing: .18em; color: var(--ink-soft); font-size: 12px; }
+  .rail .count { margin-top: auto; background: #f1f2f4; border-radius: 999px; padding: 3px 8px;
+    font-size: 11px; color: var(--ink-soft); }
+  .rail .hint { color: var(--ink-faint); font-size: 10px; text-align: center; line-height: 1.3; }
+
+  /* ---- 右：浮动的排版面板（可折叠）---- */
+  .dock { position: absolute; right: 14px; top: 14px; bottom: 14px; width: 300px; z-index: 3;
+    display: flex; flex-direction: column; gap: 10px; }
+  .float-card { background: var(--float); border-radius: var(--r-float); box-shadow: var(--shadow-float);
+    display: flex; flex-direction: column; min-height: 0; }
+  .float-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid #eceef0; }
+  .float-head h2 { margin: 0; font-size: 13px; font-weight: 700; }
+  .float-head .collapse { margin-left: auto; color: var(--ink-faint); font-size: 11px; }
+  .panel { padding: 12px 14px 14px; overflow-y: auto; }
+  .panel-note { margin: 0 0 12px; color: var(--ink-soft); font-size: 11px; }
+  .ctl { margin-bottom: 12px; }
+  .ctl-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .ctl-label { font-size: 12px; }
+  .ctl-value { color: var(--accent); font-size: 12px; font-weight: 700; }
+  .ctl-value em { font-style: normal; color: var(--ink-faint); font-weight: 400; font-size: 10px; }
+  .track { position: relative; height: 4px; border-radius: 999px; background: #e6e8ea; }
+  .thumb { position: absolute; top: -5px; width: 14px; height: 14px; margin-left: -7px;
+    background: #fff; border: 2px solid var(--primary); border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .ctl-scale { display: flex; justify-content: space-between; color: var(--ink-faint); font-size: 10px; margin-top: 2px; }
+  .ctl-bool { display: flex; align-items: center; justify-content: space-between; }
+  .switch { width: 36px; height: 20px; border-radius: 999px; background: #cdd1d5; position: relative; }
+  .switch i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+  .switch-on { background: var(--primary); }
+  .switch-on i { left: auto; right: 2px; }
+  .saved { margin-top: 14px; padding: 9px 11px; border-radius: 6px; background: #eef6f1;
+    color: #1d6b46; font-size: 11px; font-weight: 600; }
+
+  /* 题目抽屉：默认折叠，点窄条展开（纯 CSS，无 JS）。
+     切换用的 checkbox 用 clip 技术视觉隐藏，但**仍可键盘聚焦/空格切换**（不用 left:-9999px，
+     那样会让元素越出视口，也会破坏无障碍）。 */
+  .drawer-toggle { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0;
+    opacity: 0; pointer-events: none; }
+  .rail:focus-within, .drawer-toggle:focus-visible ~ .rail { outline: 2px solid #fff; outline-offset: 2px; }
+  .drawer { position: absolute; left: 14px; top: 14px; bottom: 14px; width: 300px; z-index: 4;
+    background: var(--float); border-radius: var(--r-float); box-shadow: var(--shadow-float);
+    display: none; flex-direction: column; }
+  .drawer-toggle:checked ~ .drawer { display: flex; }
+  .drawer-toggle:checked ~ .rail { visibility: hidden; }
+  .drawer-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid #eceef0; }
+  .drawer-head h2 { margin: 0; font-size: 13px; }
+  .drawer-head .chip { margin-left: auto; background: #f1f2f4; border-radius: 999px; padding: 3px 9px;
+    font-size: 11px; color: var(--ink-soft); }
+  .drawer-head .close { color: var(--ink-faint); font-size: 12px; border: 1px solid #dcdfe2;
+    border-radius: 5px; padding: 2px 8px; background: #fff; }
+  .rows { list-style: none; margin: 0; padding: 8px 10px 12px; overflow-y: auto; }
+  .row { display: grid; grid-template-columns: 24px 1fr auto auto; gap: 6px; align-items: center;
+    padding: 6px 8px; border-radius: 6px; }
+  .row:nth-child(odd) { background: #f7f8f9; }
+  .seq { color: var(--ink-faint); font-size: 11px; }
+  .expr { font-family: "Cascadia Mono", Consolas, monospace; }
+  .mini { border: 1px solid #dcdfe2; background: #fff; border-radius: 5px; font-size: 11px; padding: 2px 7px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">mathgen <small>老师端</small></span>
+  <nav>
+    <a href="#" class="on">出题配置</a>
+    <a href="#">卷库</a>
+  </nav>
+  <span class="health"><span class="dot"></span>后端已连接</span>
+</header>
+
+<div class="desk">
+  <!-- 浮动工具栏 -->
+  <div class="toolbar">
+    <h1>100 以内加减法 随堂练</h1>
+    <span class="meta">
+      <span>状态：草稿（可改题）</span>
+      <span>种子：20261014</span>
+      <span>题目：40 道</span>
+      <span>卷号：<b>2610-0001</b></span>
+    </span>
+    <span class="sep"></span>
+    <button class="btn" type="button">新建一套</button>
+    <button class="btn" type="button">去发卷</button>
+    <button class="btn btn-primary" type="button">打印题目版</button>
+    <button class="btn" type="button">打印答案版</button>
+  </div>
+
+  <!-- 左：默认折叠成窄条；点它展开浮动抽屉（checkbox 切换，无 JS）-->
+  <input class="drawer-toggle" id="drawer-toggle" type="checkbox">
+  <label class="rail" for="drawer-toggle" title="点开改题抽屉">
+    <span class="icon-btn" aria-hidden="true">☰</span>
+    <span class="vlabel">改题</span>
+    <span class="hint">点击展开<br>40 道</span>
+    <span class="count">40</span>
+  </label>
+
+  <aside class="drawer">
+    <div class="drawer-head">
+      <h2>改题</h2><span class="chip">40 道</span>
+      <label class="close" for="drawer-toggle">收起 ✕</label>
+    </div>
+    <ul class="rows">
+          <li class="row">
+            <span class="seq">01</span>
+            <span class="expr">53 + 15</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">02</span>
+            <span class="expr">100 - 42</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">03</span>
+            <span class="expr">62 - 5</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">04</span>
+            <span class="expr">38 + 47</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">05</span>
+            <span class="expr">3 - 3</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">06</span>
+            <span class="expr">43 + 34</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">07</span>
+            <span class="expr">97 - 95</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">08</span>
+            <span class="expr">91 + 1</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">09</span>
+            <span class="expr">83 - 24</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">10</span>
+            <span class="expr">5 + 4</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">11</span>
+            <span class="expr">81 - 11</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">12</span>
+            <span class="expr">6 + 40</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">13</span>
+            <span class="expr">68 - 44</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">14</span>
+            <span class="expr">9 + 33</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">15</span>
+            <span class="expr">96 - 91</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">16</span>
+            <span class="expr">1 + 81</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">17</span>
+            <span class="expr">64 - 64</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">18</span>
+            <span class="expr">59 + 20</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">19</span>
+            <span class="expr">52 - 41</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">20</span>
+            <span class="expr">67 + 22</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">21</span>
+            <span class="expr">60 - 16</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">22</span>
+            <span class="expr">57 + 41</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">23</span>
+            <span class="expr">66 - 26</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">24</span>
+            <span class="expr">93 + 6</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">25</span>
+            <span class="expr">53 + 15</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">26</span>
+            <span class="expr">100 - 42</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">27</span>
+            <span class="expr">62 - 5</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">28</span>
+            <span class="expr">38 + 47</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">29</span>
+            <span class="expr">3 - 3</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">30</span>
+            <span class="expr">43 + 34</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">31</span>
+            <span class="expr">97 - 95</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">32</span>
+            <span class="expr">91 + 1</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">33</span>
+            <span class="expr">83 - 24</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">34</span>
+            <span class="expr">5 + 4</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">35</span>
+            <span class="expr">81 - 11</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">36</span>
+            <span class="expr">6 + 40</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">37</span>
+            <span class="expr">68 - 44</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">38</span>
+            <span class="expr">9 + 33</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">39</span>
+            <span class="expr">96 - 91</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+          <li class="row">
+            <span class="seq">40</span>
+            <span class="expr">1 + 81</span>
+            <button class="mini" type="button">换一题</button>
+            <button class="mini" type="button">删除</button>
+          </li>
+    </ul>
+  </aside>
+
+  <!-- 右：浮动排版面板（可折叠的浮动卡） -->
+  <aside class="dock">
+    <section class="float-card">
+      <div class="float-head"><h2>排版面板</h2><span class="collapse">收起 ▾</span></div>
+      <div class="panel">
+        <p class="panel-note">六项参数直接驱动卷面；保存成功后自动重载卷面，预览 = 后端渲染结果。</p>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">每行题数</span><span class="ctl-value">4 <em>题/行</em></span></div>
+          <div class="track"><div class="thumb" style="left:30%"></div></div>
+          <div class="ctl-scale"><span>2</span><span>6</span></div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">行间距</span><span class="ctl-value">1.0 <em>倍</em></span></div>
+          <div class="track"><div class="thumb" style="left:12%"></div></div>
+          <div class="ctl-scale"><span>0.8</span><span>2.0</span></div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">字号</span><span class="ctl-value">14 <em>pt</em></span></div>
+          <div class="track"><div class="thumb" style="left:40%"></div></div>
+          <div class="ctl-scale"><span>10</span><span>20</span></div>
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">页边距</span><span class="ctl-value">2.0 <em>cm</em></span></div>
+          <div class="track"><div class="thumb" style="left:50%"></div></div>
+          <div class="ctl-scale"><span>1.0</span><span>3.0</span></div>
+        </div>
+        <div class="ctl ctl-bool">
+          <div class="ctl-head"><span class="ctl-label">答题横线</span><span class="ctl-value">保留</span></div>
+          <span class="switch switch-on"><i></i></span>
+        </div>
+        <div class="ctl ctl-bool">
+          <div class="ctl-head"><span class="ctl-label">卷头栏</span><span class="ctl-value">显示</span></div>
+          <span class="switch switch-on"><i></i></span>
+        </div>
+        <p class="saved">已保存，预览已刷新（当前显示 = 后端渲染结果）</p>
+      </div>
+    </section>
+  </aside>
+
+  <!-- 画布：纸居中占主 -->
+  <div class="canvas">
+    <article class="paper">
+      <div class="hb"><span>班级：</span><span>姓名：</span><span>得分：</span><span class="code">卷号 2610-0001</span></div>
+      <h1 class="p-title">100 以内加减法 随堂练</h1>
+      <div class="grid">
+            <div class="q"><span class="q-n">1.</span><span class="q-e">53 + 15</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">2.</span><span class="q-e">100 - 42</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">3.</span><span class="q-e">62 - 5</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">4.</span><span class="q-e">38 + 47</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">5.</span><span class="q-e">3 - 3</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">6.</span><span class="q-e">43 + 34</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">7.</span><span class="q-e">97 - 95</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">8.</span><span class="q-e">91 + 1</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">9.</span><span class="q-e">83 - 24</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">10.</span><span class="q-e">5 + 4</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">11.</span><span class="q-e">81 - 11</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">12.</span><span class="q-e">6 + 40</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">13.</span><span class="q-e">68 - 44</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">14.</span><span class="q-e">9 + 33</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">15.</span><span class="q-e">96 - 91</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">16.</span><span class="q-e">1 + 81</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">17.</span><span class="q-e">64 - 64</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">18.</span><span class="q-e">59 + 20</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">19.</span><span class="q-e">52 - 41</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">20.</span><span class="q-e">67 + 22</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">21.</span><span class="q-e">60 - 16</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">22.</span><span class="q-e">57 + 41</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">23.</span><span class="q-e">66 - 26</span> <span class="q-blank"></span></div>
+            <div class="q"><span class="q-n">24.</span><span class="q-e">93 + 6</span> <span class="q-blank"></span></div>
+      </div>
+    </article>
+  </div>
+</div>
+
+</body>
+</html>

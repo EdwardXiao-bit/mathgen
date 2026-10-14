@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mathgen 老师端 · C2 聚焦</title>
+<style>
+  /* ==========================================================
+     C2 —— 聚焦：保留留白，但让留白是有意的
+     保留 C 的身份：灰桌面 + 纸面居中 + 浮动层
+     ========================================================== */
+  :root {
+    --desk: #8b9097;
+    --desk-2: #767c84;
+    --paper: #ffffff;
+    --float: #ffffff;
+    --ink: #1f2227;
+    --ink-soft: #5c626a;
+    --ink-faint: #868c94;
+    --primary: #2b2f36;
+    --accent: #b4622a;
+    --r: 8px;
+    --sh-float: 0 1px 2px rgba(0,0,0,.16), 0 8px 22px rgba(0,0,0,.20);
+    --sh-paper: 0 1px 2px rgba(0,0,0,.22), 0 12px 28px rgba(0,0,0,.34), 0 40px 80px rgba(0,0,0,.42);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--desk); color: var(--ink); overflow: hidden;
+    font: 13px/1.5 "Segoe UI", "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+
+  header { display: flex; align-items: center; gap: 20px; height: 44px; padding: 0 16px;
+    background: linear-gradient(#3a3f46, #31353b); color: #eef1f4; }
+  .brand { font-weight: 600; }
+  .brand small { color: #a6adb6; font-weight: 400; margin-left: 5px; }
+  nav { display: flex; gap: 4px; }
+  nav a { color: #c8cdd4; text-decoration: none; padding: 5px 11px; border-radius: var(--r); }
+  nav a.on { background: rgba(255,255,255,.12); color: #fff; font-weight: 600; }
+  .health { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 12px; color: #b9c0c8; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ec38a; }
+
+  /* 桌面质感：顶部环境光渐晕 + 底部压暗 + 极淡网格（0.10），让灰底读成「桌面」 */
+  .desk { position: relative; height: calc(100vh - 44px); overflow: hidden;
+    background:
+      radial-gradient(130% 100% at 50% -10%, rgba(255,255,255,.22), rgba(255,255,255,0) 58%),
+      radial-gradient(90% 70% at 50% 120%, rgba(0,0,0,.20), rgba(0,0,0,0) 60%),
+      linear-gradient(180deg, var(--desk), var(--desk-2)); }
+  .desk::before { content: ""; position: absolute; inset: 0; opacity: .10; pointer-events: none;
+    background-image: linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px);
+    background-size: 30px 30px; }
+
+  /* 舞台：column 流，工具栏占位，纸按剩余高度缩放 */
+  .stage { position: absolute; top: 0; bottom: 0; left: 150px; right: 300px;
+    display: flex; flex-direction: column; align-items: center; padding: 14px 26px 18px; gap: 12px; }
+  .paper { aspect-ratio: 210 / 297; flex: 1 1 auto; min-height: 0; max-width: 100%;
+    box-shadow: var(--sh-paper); padding: 3.4% 3.9%; display: flex; flex-direction: column;
+    color: #000; font-family: "SimSun", "Songti SC", "Times New Roman", serif; background: var(--paper); }
+  .p-hb { flex: none; display: flex; gap: 16px; border-bottom: 2px solid #111;
+    padding-bottom: .5em; font-size: 1.6vh; }
+  .p-hb .code { margin-left: auto; color: var(--accent); font-weight: 700; }
+  .p-title { flex: none; margin: .55em 0 .2em; text-align: center; font-size: 2.3vh;
+    font-weight: 700; letter-spacing: .12em; }
+  .p-grid { flex: 0 1 auto; margin-top: 1.1em; display: grid; grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: min-content; row-gap: 2.4em; column-gap: 3.5%; }
+  .q { display: flex; align-items: center; gap: .4em; font-size: 1.55vh; white-space: nowrap; }
+  .q-n { color: #555; min-width: 1.7em; text-align: right; }
+  .q-blank { flex: 1 1 auto; border-bottom: 1px solid #9b9b9b; min-width: 1.4em; }
+
+  .float { background: var(--float); border-radius: var(--r); box-shadow: var(--sh-float); }
+
+  /* 左：缩略图 + 页码（与 C1 的核心差别：不做列表） */
+  .thumbrail { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); z-index: 4;
+    width: 122px; padding: 12px 10px; display: flex; flex-direction: column; gap: 10px; }
+  .thumb-label { font-size: 11px; color: var(--ink-faint); letter-spacing: .06em; }
+  .thumb { background: #fff; border: 1px solid #dfe2e5; border-radius: 3px; padding: 6px;
+    display: flex; flex-direction: column; gap: 4px; }
+  .thumb .bar { height: 3px; background: #d6d9dc; border-radius: 2px; }
+  .thumb-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(10, 1fr);
+    gap: 2px 3px; flex: 1 1 auto; }
+  .thumb-grid .t { height: 2px; background: #d9dcdf; border-radius: 1px; align-self: center; }
+  .thumb-pages { display: flex; gap: 5px; }
+  .pg { flex: 1 1 0; text-align: center; font-size: 11px; padding: 4px 0; border-radius: 5px;
+    border: 1px solid #dfe2e5; background: #fff; color: var(--ink-soft); }
+  .pg.on { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+
+  /* 顶部工具栏：更精简（stage 第一行占位） */
+  .toolbar { flex: none; z-index: 5; width: fit-content; max-width: 100%;
+    display: flex; align-items: center; gap: 9px; background: var(--float); white-space: nowrap;
+    border-radius: var(--r); box-shadow: var(--sh-float); padding: 7px 10px 7px 14px; }
+  .toolbar h1 { margin: 0; font-size: 13px; font-weight: 700; }
+  .toolbar .meta { color: var(--ink-soft); font-size: 11px; }
+  .toolbar .meta b { color: var(--accent); }
+  .sep { width: 1px; height: 20px; background: #e3e5e8; }
+  button { font: inherit; cursor: pointer; }
+  .btn { padding: 5px 11px; border: 1px solid #d9dcdf; background: #fff; border-radius: 6px; font-size: 12px; }
+  .btn.on { background: #eef0f3; border-color: #c3c8cd; font-weight: 600; }
+  .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+  /* 右：排版面板（六项平铺，收紧与纸面的距离） */
+  .sidepanel { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 4;
+    width: 268px; max-height: calc(100% - 28px); overflow-y: auto; padding: 12px 14px 14px; }
+  .panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .panel-head h2 { margin: 0; font-size: 13px; font-weight: 700; }
+  .panel-head .ok { margin-left: auto; font-size: 11px; color: #1d6b46; font-weight: 600; }
+  .ctl { margin-bottom: 11px; }
+  .ctl-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .ctl-label { font-size: 12px; }
+  .ctl-value { color: var(--accent); font-size: 12px; font-weight: 700; }
+  .ctl-value em { font-style: normal; color: var(--ink-faint); font-weight: 400; font-size: 10px; }
+  .track { position: relative; height: 4px; border-radius: 999px; background: #e6e8ea; }
+  .knob { position: absolute; top: -5px; width: 13px; height: 13px; margin-left: -6px;
+    background: #fff; border: 2px solid var(--primary); border-radius: 50%; }
+  .ctl-scale { display: flex; justify-content: space-between; color: var(--ink-faint); font-size: 10px; margin-top: 2px; }
+  .note { display: inline-block; margin-top: 3px; font-size: 10px; color: var(--accent); }
+  .ctl-bool { display: flex; align-items: center; justify-content: space-between; }
+  .switch { width: 34px; height: 19px; border-radius: 999px; background: #cdd1d5; position: relative; }
+  .switch i { position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; }
+  .switch-on { background: var(--primary); }
+  .switch-on i { left: auto; right: 2px; }
+  .saved { margin-top: 6px; padding-top: 10px; border-top: 1px solid #eceef0; font-size: 11px;
+    color: #1d6b46; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">mathgen <small>老师端</small></span>
+  <nav><a href="#" class="on">出题配置</a><a href="#">卷库</a></nav>
+  <span class="health"><span class="dot"></span>后端已连接</span>
+</header>
+
+<div class="desk">
+  <div class="stage">
+    <div class="toolbar">
+      <h1>100 以内加减法 随堂练</h1>
+      <span class="meta">卷号 <b>2610-0001</b> · 种子 <b>20261014</b> · 草稿（可改题）</span>
+      <span class="sep"></span>
+      <button class="btn on" type="button">适应宽度</button>
+      <button class="btn" type="button">100%</button>
+      <span class="sep"></span>
+      <button class="btn btn-primary" type="button">打印题目版</button>
+      <button class="btn" type="button">打印答案版</button>
+    </div>
+    <article class="paper">
+      <div class="p-hb"><span>班级：</span><span>姓名：</span><span>得分：</span><span class="code">卷号 2610-0001</span></div>
+      <h1 class="p-title">100 以内加减法 随堂练</h1>
+      <div class="p-grid">
+          <div class="q"><span class="q-n">1</span><span class="q-e">53 + 15</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">2</span><span class="q-e">100 - 42</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">3</span><span class="q-e">62 - 5</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">4</span><span class="q-e">38 + 47</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">5</span><span class="q-e">3 - 3</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">6</span><span class="q-e">43 + 34</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">7</span><span class="q-e">97 - 95</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">8</span><span class="q-e">91 + 1</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">9</span><span class="q-e">83 - 24</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">10</span><span class="q-e">5 + 4</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">11</span><span class="q-e">81 - 11</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">12</span><span class="q-e">6 + 40</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">13</span><span class="q-e">68 - 44</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">14</span><span class="q-e">9 + 33</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">15</span><span class="q-e">96 - 91</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">16</span><span class="q-e">1 + 81</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">17</span><span class="q-e">64 - 64</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">18</span><span class="q-e">59 + 20</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">19</span><span class="q-e">52 - 41</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">20</span><span class="q-e">67 + 22</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">21</span><span class="q-e">60 - 16</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">22</span><span class="q-e">57 + 41</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">23</span><span class="q-e">66 - 26</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">24</span><span class="q-e">93 + 6</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">25</span><span class="q-e">53 + 15</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">26</span><span class="q-e">100 - 42</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">27</span><span class="q-e">62 - 5</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">28</span><span class="q-e">38 + 47</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">29</span><span class="q-e">3 - 3</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">30</span><span class="q-e">43 + 34</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">31</span><span class="q-e">97 - 95</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">32</span><span class="q-e">91 + 1</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">33</span><span class="q-e">83 - 24</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">34</span><span class="q-e">5 + 4</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">35</span><span class="q-e">81 - 11</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">36</span><span class="q-e">6 + 40</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">37</span><span class="q-e">68 - 44</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">38</span><span class="q-e">9 + 33</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">39</span><span class="q-e">96 - 91</span><span class="q-blank"></span></div>
+          <div class="q"><span class="q-n">40</span><span class="q-e">1 + 81</span><span class="q-blank"></span></div>
+      </div>
+    </article>
+  </div>
+
+  <aside class="thumbrail float">
+    <div class="thumb-label">页面缩略图</div>
+    <div class="thumb">
+      <div class="bar"></div>
+      <div class="thumb-grid">
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+              <div class="t"></div>
+      </div>
+    </div>
+    <div class="thumb-pages">
+      <span class="pg on">1</span>
+    </div>
+    <div class="thumb-label">共 1 页 · 40 道</div>
+  </aside>
+
+  <aside class="sidepanel float">
+    <div class="panel-head"><h2>排版面板</h2><span class="ok">已保存</span></div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">每行题数</span><span class="ctl-value">4 <em>题/行</em></span></div>
+          <div class="track"><div class="knob" style="left:30%"></div></div>
+          <div class="ctl-scale"><span>2</span><span>6</span></div>
+          
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">行间距</span><span class="ctl-value">1.0 <em>倍</em></span></div>
+          <div class="track"><div class="knob" style="left:12%"></div></div>
+          <div class="ctl-scale"><span>0.8</span><span>2.0</span></div>
+          
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">字号</span><span class="ctl-value">14 <em>pt</em></span></div>
+          <div class="track"><div class="knob" style="left:40%"></div></div>
+          <div class="ctl-scale"><span>10</span><span>20</span></div>
+          
+        </div>
+        <div class="ctl">
+          <div class="ctl-head"><span class="ctl-label">页边距</span><span class="ctl-value">2.0 <em>cm</em></span></div>
+          <div class="track"><div class="knob" style="left:50%"></div></div>
+          <div class="ctl-scale"><span>1.0</span><span>3.0</span></div>
+          <span class="note">打印 / PDF 一定生效</span>
+        </div>
+        <div class="ctl ctl-bool">
+          <div class="ctl-head"><span class="ctl-label">答题横线</span><span class="ctl-value">保留</span></div>
+          <span class="switch switch-on"><i></i></span>
+        </div>
+        <div class="ctl ctl-bool">
+          <div class="ctl-head"><span class="ctl-label">卷头栏</span><span class="ctl-value">显示</span></div>
+          <span class="switch switch-on"><i></i></span>
+        </div>
+    <p class="saved">已保存，预览已刷新（当前显示 = 后端渲染结果）</p>
+  </aside>
+</div>
+
+</body>
+</html>
