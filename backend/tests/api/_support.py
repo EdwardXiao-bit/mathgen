@@ -35,7 +35,8 @@ from app.main import create_app  # noqa: E402
 
 __all__ = [
     "ApiTestCase", "make_client", "cli", "fresh_engine", "session_of", "patch_engine",
-    "render_unavailable", "render_with", "CONFIG_ADD_SUB", "CONFIG_ORAL", "url_of",
+    "render_unavailable", "render_with", "docx_with", "docx_unavailable",
+    "CONFIG_ADD_SUB", "CONFIG_ORAL", "url_of",
 ]
 
 #: 最小合法出题配置：20 以内加减、口算、6 题（生成快、约束好满足）
@@ -71,14 +72,16 @@ def session_of(engine: Engine) -> Session:
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)()
 
 
-def make_client(engine: Engine | None = None) -> TestClient:
+def make_client(engine: Engine | None = None, *, static_dir: object = False) -> TestClient:
     """建一个 TestClient（**必须配合 `with` 使用**，见 `ApiTestCase`）。
 
-    注意：Starlette 的 `TestClient` 只有进入上下文管理器才跑 lifespan，
-    而建表在 lifespan 里 —— 不进入上下文会拿到「no such table: paper」。
+    * 注意：Starlette 的 `TestClient` 只有进入上下文管理器才跑 lifespan，
+      而建表在 lifespan 里 —— 不进入上下文会拿到「no such table: paper」。
+    * `static_dir=False`（默认）：**不挂**前端产物，让 API 用例与真实 `dist` 解耦；
+      静态托管用例显式传目录，或传 `None` 走 `MATHGEN_STATIC_DIR` / 仓库默认。
     """
     engine = engine if engine is not None else fresh_engine()
-    app = create_app(engine=engine)
+    app = create_app(engine=engine, static_dir=static_dir)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
     def _override_get_db() -> Iterator[Session]:
@@ -200,6 +203,62 @@ def render_with(render_sheet) -> Iterator[None]:
                 sys.modules.pop(key, None)
             else:
                 sys.modules[key] = value
+
+
+@contextlib.contextmanager
+def docx_with(export_docx) -> Iterator[None]:
+    """注入一个假 Word 导出器（`app.export.docx.export_docx(ctx, path)`）。
+
+    与 `render_with` 同一套路：注册到 `sys.modules`，让服务层的延迟导入拿到假的。
+    """
+    module = types.ModuleType("app.export.docx")
+    module.export_docx = export_docx
+    package = sys.modules.get("app.export")
+    saved_module = sys.modules.get("app.export.docx")
+    saved_attr = getattr(package, "docx", None) if package is not None else None
+    sys.modules["app.export.docx"] = module
+    if package is not None:
+        package.docx = module
+    try:
+        yield
+    finally:
+        if saved_module is None:
+            sys.modules.pop("app.export.docx", None)
+        else:
+            sys.modules["app.export.docx"] = saved_module
+        if package is not None:
+            if saved_attr is None:
+                with contextlib.suppress(AttributeError):
+                    del package.docx
+            else:
+                package.docx = saved_attr
+
+
+@contextlib.contextmanager
+def docx_unavailable() -> Iterator[None]:
+    """让 `from app.export.docx import export_docx` 必定 ImportError（未就绪 → 503）。"""
+    saved_module = sys.modules.pop("app.export.docx", None)
+    package = sys.modules.get("app.export")
+    saved_attr = getattr(package, "docx", None) if package is not None else None
+    if package is not None and hasattr(package, "docx"):
+        with contextlib.suppress(AttributeError):
+            del package.docx
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "app.export.docx" or (name == "app.export" and "docx" in (fromlist or ())):
+            raise ImportError(f"模拟 Word 模块缺失：{name}")
+        return real_import(name, globals, locals, fromlist, level)
+
+    builtins.__import__ = fake_import
+    try:
+        yield
+    finally:
+        builtins.__import__ = real_import
+        if saved_module is not None:
+            sys.modules["app.export.docx"] = saved_module
+        if package is not None and saved_attr is not None:
+            package.docx = saved_attr
 
 
 def url_of(name: str, **params) -> str:

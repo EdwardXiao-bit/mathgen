@@ -1,14 +1,21 @@
-"""卷 API（契约 §5.1 老师端 12 条中的 9 条）。
+"""卷 API（契约 §5.1 老师端 12 条中的 11 条）。
 
-已实现：创建 / 列表 / 详情 / 删题 / 换一题 / 改排版 / 发布 / 另存副本 / 二维码。
-未实现（属其他里程碑）：导出、成绩列表、成绩明细、CSV 导出。
+已实现：创建 / 卷库列表 / 详情 / 按卷号取卷 / 删题 / 换一题 / 改排版 / 改答案版形式 /
+发布 / 另存副本 / 二维码。未实现（其他里程碑）：成绩列表、成绩明细、CSV 导出。
 
 强制约束：
 - 全部出入参用 `response_model=` 指定冻结模型（字段名 = JSON 字段名 = snake_case）
-- 全部路径引用 `ROUTES` 常量（含 D53 新收录的 `copy_paper`），不写字符串字面量
+- 全部路径引用 `ROUTES` 常量，不写字符串字面量
 - 已发布卷的编辑操作统一 409 `PAPER_NOT_EDITABLE`
 - 写操作统一走 `_finish()`：成功 commit，异常 rollback 后原样抛出
 - 学生端 URL 与二维码内容一律用**请求的 Host 头**构造绝对地址（D54）
+- **单资源参数平铺**（D55）：`/layout`、`/answer-layout` 的请求体不包一层
+
+M3 变更：
+- `GET /api/papers` 改为 `limit`/`offset`/`q`/`status`；M2 的 `page`/`size` **已移除**
+  （显式传旧参数报 422，不静默忽略）
+- 新增 `GET /api/papers/by-code/{code}`（卷号无效 → `CODE_NOT_FOUND`）、
+  `PATCH /api/papers/{id}/answer-layout`
 """
 from __future__ import annotations
 
@@ -20,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.contracts.api import (
     ROUTES,
+    AnswerLayoutIn,
     LayoutIn,
     PaperConfigIn,
     PaperDetail,
@@ -32,6 +40,8 @@ from app.db import get_db
 from app.routers.urls import qr_url_for, student_url_for
 from app.services import paper_service as svc
 from app.services import qr_svc
+from app.services.answer_layout_svc import answer_layout_from_json
+from app.services.errors import ApiError
 from app.services.layout_svc import layout_from_json, layout_in_from_params, to_layout_params
 
 __all__ = ["router"]
@@ -57,7 +67,11 @@ def create_paper(
     title: str | None = Query(default=None, max_length=200),
     db: Session = Depends(get_db),
 ) -> PaperDetail:
-    """生成一张新 draft 卷（FR-T1/T2）。`seed` 不给则随机；同 seed 必得同一套题。"""
+    """生成一张新 draft 卷（FR-T1/T2）。`seed` 不给则随机；同 seed 必得同一套题。
+
+    答案版形式不在请求体里（D55 的入参表只有 config/seed/title），新卷一律 D20 默认；
+    要改走 `PATCH /answer-layout`。
+    """
     with _finish(db):
         paper = svc.create_paper(db, payload, seed=seed, title=title)
         return svc.to_detail(db, paper)
@@ -65,14 +79,38 @@ def create_paper(
 
 @router.get(ROUTES["list_papers"], response_model=PaperListOut)
 def list_papers(
-    page: int = Query(default=1, ge=1),
-    size: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=svc.DEFAULT_LIMIT, ge=1, le=svc.MAX_LIMIT),
+    offset: int = Query(default=0, ge=0),
+    q: str | None = Query(default=None, max_length=200, description="标题模糊匹配"),
     status: PaperStatus | None = Query(default=None),
+    page: int | None = Query(default=None, deprecated=True, description="M2 旧参数，已移除"),
+    size: int | None = Query(default=None, deprecated=True, description="M2 旧参数，已移除"),
     db: Session = Depends(get_db),
 ) -> PaperListOut:
-    """分页列出卷（FR-T14）。"""
-    total, papers = svc.list_papers(db, page, size, status)
-    return PaperListOut(total=total, papers=papers)
+    """卷库检索（FR-T14 / M3）：`total` 是过滤后的总数，不受 `limit`/`offset` 影响。
+
+    分页参数**只有** `limit`/`offset`（D64）。M2 的 `page`/`size` 已删除，
+    只保留一条**迁移护栏**：显式传旧参数 → 422 并提示新写法。
+    护栏不是兼容层（它不接受旧参数）；存在的原因是 FastAPI 会**默默忽略**未知查询参数，
+    让调用方拿到第一页却以为翻页成功了。
+    """
+    if page is not None or size is not None:
+        raise ApiError(
+            "VALIDATION_ERROR",
+            "分页参数已改为 limit/offset（D64）；旧参数 page/size 不再支持，"
+            "请改用 ?limit=<1..100>&offset=<>=0>",
+        )
+    total, papers = svc.list_papers(db, limit=limit, offset=offset, status=status, q=q)
+    return PaperListOut(total=total, limit=limit, offset=offset, papers=papers)
+
+
+@router.get(ROUTES["get_paper_by_code"], response_model=PaperDetail)
+def get_paper_by_code(code: str, db: Session = Depends(get_db)) -> PaperDetail:
+    """按卷号取卷（「用卷号打开历史卷」）。
+
+    卷号无效 → 404 **`CODE_NOT_FOUND`**（契约 §9）；按 **id** 找不到卷才用 `PAPER_NOT_FOUND`。
+    """
+    return svc.to_detail(db, svc.get_paper_by_code(db, code))
 
 
 @router.get(ROUTES["get_paper"], response_model=PaperDetail)
@@ -104,6 +142,16 @@ def update_layout(paper_id: int, payload: LayoutIn, db: Session = Depends(get_db
     with _finish(db):
         paper = svc.update_layout(db, paper_id, params)
         return layout_in_from_params(layout_from_json(paper.layout_json))
+
+
+@router.patch(ROUTES["update_answer_layout"], response_model=AnswerLayoutIn)
+def update_answer_layout(
+    paper_id: int, payload: AnswerLayoutIn, db: Session = Depends(get_db)
+) -> AnswerLayoutIn:
+    """改「答案版形式」（M3 第六维，D55 平铺入参）；已发布卷 → 409 `PAPER_NOT_EDITABLE`。"""
+    with _finish(db):
+        paper = svc.update_answer_layout(db, paper_id, payload)
+        return answer_layout_from_json(paper.answer_layout)
 
 
 @router.post(ROUTES["publish_paper"], response_model=PublishResult)
@@ -151,7 +199,7 @@ def copy_paper(
 ) -> PaperDetail:
     """另存为可编辑副本（D32 / 契约 §5.1 `copy_paper`）。
 
-    新 id、新 draft、`code` 为空，题目快照逐字复制；原卷（及其成绩）不受影响。
+    新 id、新 draft、`code` 为空，题目快照与排版 / 答案版形式逐一复制；原卷不受影响。
     """
     with _finish(db):
         clone = svc.copy_paper(db, paper_id, title=title)

@@ -86,10 +86,12 @@ def main() -> int:
                     "page_margin": 2.0, "answer_line": True, "header_bar": True})
     print(f"用例卷 id={pid}（draft，answer_line=True）")
 
-    from playwright.sync_api import sync_playwright
+    # 浏览器启动走 _browser（= 产品的 app.export.browser），裸跑即可用
+    sys.path.insert(0, HERE)
+    from _browser import browser_session
 
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+    with browser_session() as sess:
+        browser = sess.browser()
         page = browser.new_page(viewport={"width": 1500, "height": 1000})
         page.goto(f"{args.preview_url}/teacher/paper/{pid}", wait_until="networkidle",
                   timeout=60_000)
@@ -139,7 +141,6 @@ def main() -> int:
 
         page.screenshot(path=os.path.join(ARTIFACTS, "d59-frontend-preview.png"),
                         full_page=False)
-        browser.close()
 
     print("\n" + ("全部通过" if not FAILURES else "未通过：" + "; ".join(FAILURES)))
     return 1 if FAILURES else 0

@@ -488,11 +488,46 @@ class TestExportRouteContract(M2Case):
         self.assertEqual(default.status_code, 200)
         self.assertEqual(default.content[:5], b"%PDF-")
 
-    def test_export_docx_is_501_not_fake_pdf(self):
+    def test_export_docx_is_real_ooxml_not_fake_pdf(self):
+        """M3（D64）：`format=docx` 已是**真实现**——但「不得假装成功」的意图要保住。
+
+        本用例原为 `test_export_docx_is_501_not_fake_pdf`（M2 时 docx 未实现，
+        501 是诚实答复）。M3 把 docx 做成真实现后，判据升级为：
+        返回的必须是**合法 OOXML**（zip 容器含 `[Content_Types].xml` 与 `word/document.xml`），
+        **且不是 PDF** —— 当初防的就是「拿一个 PDF 冒充 docx」。
+        """
+        import io
+        import zipfile
+
         pid = self._published_paper()
-        resp = self.client.get(f"/api/papers/{pid}/export", params={"format": "docx"})
-        self.assertEqual(resp.status_code, 501, resp.text[:200])
-        self.assertEqual(resp.json()["error"]["code"], "NOT_IMPLEMENTED")
+        resp = self.client.get(f"/api/papers/{pid}/export",
+                               params={"format": "docx", "mode": "question"})
+        self.assertEqual(resp.status_code, 200, resp.text[:300])
+        self.assertEqual(
+            resp.headers["content-type"],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "docx 必须用 OOXML 的 MIME 类型")
+        self.assertEqual(resp.content[:4], b"PK\x03\x04",
+                         "docx 是 zip 容器，文件头必须是 PK\\x03\\x04")
+        self.assertNotEqual(resp.content[:4], b"%PDF",
+                            "不得返回 PDF 冒充 docx（本用例的原始意图）")
+        self.assertIn("attachment",
+                      resp.headers.get("content-disposition", "").lower())
+
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as archive:
+            names = set(archive.namelist())
+            self.assertIn("[Content_Types].xml", names, "OOXML 必备部件缺失")
+            self.assertIn("word/document.xml", names,
+                          "缺少 word/document.xml ⇒ 不是可打开的 Word 文档")
+            document_xml = archive.read("word/document.xml").decode("utf-8", "ignore")
+        self.assertIn("<w:document", document_xml, "word/document.xml 不是有效 WordprocessingML")
+        # 内容侧：确实写了一篇卷子，而不是空壳 zip
+        runs = re.findall(r"<w:t[^>]*>(.*?)</w:t>", document_xml, re.S)
+        text_all = "".join(runs)
+        self.assertGreater(len(runs), 20, f"docx 文本片段过少（{len(runs)}），疑似空壳")
+        self.assertIn("验收卷", text_all, "卷面标题未写入 docx 正文")
+        with open(os.path.join(ARTIFACTS, "http-export-question.docx"), "wb") as fh:
+            fh.write(resp.content)
 
     def test_export_invalid_format_is_422(self):
         pid = self._published_paper()
@@ -606,7 +641,9 @@ class TestPdfGeometryIndependent(M2Case):
         cls.client.post("/api/papers", params={"seed": 7, "title": "几何卷"}, json=CFG)
 
     def _draft_id(self) -> int:
-        papers = self.client.get("/api/papers", params={"size": 50}).json()["papers"]
+        # D64：列表查询参数已改为 limit / offset（page/size 是 M4 起移除的 deprecated 别名）
+        papers = self.client.get("/api/papers",
+                                 params={"limit": 100, "offset": 0}).json()["papers"]
         drafts = [p for p in papers if p["status"] == "draft"]
         self.assertTrue(drafts, "没有 draft 卷可用于几何实验")
         return drafts[0]["id"]

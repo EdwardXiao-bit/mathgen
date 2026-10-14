@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -26,6 +27,7 @@ from app.engine.types import ConfigError, InsufficientQuestions
 from app.routers import exports as exports_router
 from app.routers import papers as papers_router
 from app.routers import sheet as sheet_router
+from app.services import static_site
 from app.services.errors import ApiError, code_for_status, http_status_for
 
 __all__ = ["app", "create_app"]
@@ -106,11 +108,20 @@ def _register_error_handlers(application: FastAPI) -> None:
         )
 
 
-def create_app(engine: Engine | None = None) -> FastAPI:
+def create_app(
+    engine: Engine | None = None,
+    *,
+    static_dir: "Path | str | bool | None" = None,
+) -> FastAPI:
     """装配应用。
 
-    `engine=None` 表示用生产单例引擎，但**解析延迟到 lifespan**——
-    这样 `import app.main`（例如测试）不会顺手创建 `data/mathgen.db`。
+    * `engine=None`：用生产单例引擎，但**解析延迟到 lifespan**——
+      这样 `import app.main`（例如测试）不会顺手创建 `data/mathgen.db`。
+    * `static_dir`（M3 单一服务托管）：
+      - `None`（默认）→ 用 `MATHGEN_STATIC_DIR`，否则 `<repo>/frontend/dist`
+      - 具体路径 → 用它
+      - `False` → 明确不挂界面（API 测试与纯后端场景）
+      目录不存在时**照常启动**，只是不提供界面。
     """
     explicit_engine = engine
 
@@ -123,8 +134,8 @@ def create_app(engine: Engine | None = None) -> FastAPI:
 
     application = FastAPI(
         title="mathgen 后端",
-        version="0.1.0",
-        description="小学四则运算练习题生成与批改系统 —— 老师端出卷 API（M2）",
+        version="0.2.0",
+        description="小学四则运算练习题生成与批改系统 —— 老师端 API（M3：卷库 / 答案版形式 / 单一服务托管）",
         lifespan=lifespan,
     )
     if explicit_engine is not None:
@@ -133,6 +144,12 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     application.include_router(papers_router.router)
     application.include_router(sheet_router.router)
     application.include_router(exports_router.router)
+
+    # 界面兜底**必须最后挂**：靠注册顺序让位给 /api、/docs 等精确路由
+    if static_site.mount_spa(application, static_dir):
+        logger.info("已挂载前端产物：%s", application.state.static_dir)
+    else:
+        logger.info("未挂载前端产物（dist 不存在或已显式关闭），仅提供 API")
     return application
 
 

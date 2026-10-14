@@ -106,11 +106,13 @@ def main() -> int:
           "dist 的 .css 里无 @page" if not css_page_rules else f"命中：{css_page_rules}")
 
     # ---------- ③ 运行时：iframe 来自后端 /sheet ----------
-    from playwright.sync_api import sync_playwright
+    # 浏览器启动走 _browser（= 产品的 app.export.browser），裸跑即可用
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from _browser import browser_session
 
     url = f"{args.preview_url}/teacher/paper/{args.paper_id}"
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+    with browser_session() as sess:
+        browser = sess.browser()
         page = browser.new_page(viewport={"width": 1400, "height": 1000})
         api_calls: list[str] = []
         page.on("request", lambda req: api_calls.append(req.url))
@@ -204,7 +206,6 @@ def main() -> int:
         page.screenshot(path=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                           "artifacts", "teacher-preview.png"),
                         full_page=False)
-        browser.close()
 
     print("\n" + ("全部通过" if not failures else "未通过：" + "; ".join(failures)))
     return 1 if failures else 0

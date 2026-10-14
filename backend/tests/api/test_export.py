@@ -24,7 +24,24 @@ if (_REPO / ".playwright").is_dir():
 
 from app.contracts.api import ROUTES  # noqa: E402
 from app.services import pdf_export  # noqa: E402
-from tests.api._support import ApiTestCase, render_unavailable, url_of  # noqa: E402
+from tests.api._support import (  # noqa: E402
+    ApiTestCase,
+    docx_unavailable,
+    docx_with,
+    render_unavailable,
+    url_of,
+)
+
+#: Word 导出通道的 MIME（契约 §5.1）
+MEDIA_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def _docx_module_available() -> bool:
+    try:
+        import app.export.docx  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
 
 class _FakePdf:
@@ -136,20 +153,90 @@ class TestExportRouteHermetic(ApiTestCase):
         self.assertEqual(self.fake.seen, [sheet.text])
         self.assertEqual(sheet.text.count('class="q-item"'), len(self.paper["items"]) - 1)
 
-    # ---- 错误路径 -------------------------------------------------------
+    # ---- Word（M3 真实现） ---------------------------------------------
 
-    def test_docx_returns_501_not_implemented(self):
-        response = self.client.get(
-            url_of("export", paper_id=self.pid), params={"format": "docx"}
+    def test_docx_export_returns_word_stream(self):
+        """`format=docx` 走真实现：正确的 MIME 与 zip 魔数（render-export 的模块）。"""
+        if not _docx_module_available():
+            self.skipTest("app.export.docx 尚未实现（render-export 并行开发中）")
+        captured: list = []
+
+        def fake_export_docx(ctx, out_path):
+            captured.append(ctx)
+            with open(out_path, "wb") as handle:
+                handle.write(b"PK\x03\x04fake-docx")
+
+        with docx_with(fake_export_docx):
+            response = self.client.get(
+                url_of("export", paper_id=self.pid),
+                params={"format": "docx", "mode": "answer"},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.headers["content-type"], MEDIA_TYPE_DOCX)
+        self.assertTrue(response.content.startswith(b"PK\x03\x04"))
+        self.assertEqual(
+            response.headers["content-disposition"],
+            f'attachment; filename="paper-{self.pid}-answer.docx"',
         )
-        self.assertEqual(response.status_code, 501, response.text)
+        # Word 拿到的是与 /sheet 同一份 SheetContext（含 answer_layout）
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0].mode.value, "answer")
+        self.assertEqual([item.seq for item in captured[0].items], [1, 2, 3, 4, 5])
+
+    def test_docx_ctx_carries_paper_answer_layout(self):
+        """组装 Word 用的 SheetContext 必须带上落库的 `answer_layout`（M3 关键点）。"""
+        self.client.patch(
+            url_of("update_answer_layout", paper_id=self.pid),
+            json={"separate_page": False, "include_steps": False,
+                  "include_difficulty": True, "include_tags": False},
+        )
+        captured: list = []
+
+        def fake_export_docx(ctx, out_path):
+            captured.append(ctx)
+            with open(out_path, "wb") as handle:
+                handle.write(b"PK\x03\x04x")
+
+        with docx_with(fake_export_docx):
+            response = self.client.get(
+                url_of("export", paper_id=self.pid), params={"format": "docx"}
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        layout = captured[0].answer_layout
+        self.assertFalse(layout.separate_page)
+        self.assertFalse(layout.include_steps)
+        self.assertTrue(layout.include_difficulty)
+        self.assertFalse(layout.include_tags)
+
+    def test_docx_503_when_module_missing(self):
+        """render-export 还没就绪时必须是 503 `RENDER_NOT_READY`，不是 500。"""
+        with docx_unavailable():
+            response = self.client.get(
+                url_of("export", paper_id=self.pid), params={"format": "docx"}
+            )
+        self.assertEqual(response.status_code, 503, response.text)
         body = response.json()
-        self.assertEqual(set(body), {"error"})
-        self.assertEqual(body["error"]["code"], "NOT_IMPLEMENTED")
-        self.assertIn("M3", body["error"]["message"])
-        # 关键：**不能**假装成功、也不能静默按 pdf 处理
-        self.assertEqual(self.fake.seen, [])
+        self.assertEqual(body["error"]["code"], "RENDER_NOT_READY")
+        self.assertIn("docx", body["error"]["message"])
         self.assertNotIn("detail", body)
+
+    def test_docx_503_when_generator_fails(self):
+        def broken(ctx, out_path):
+            raise RuntimeError("模拟 Word 生成失败")
+
+        with docx_with(broken):
+            response = self.client.get(
+                url_of("export", paper_id=self.pid), params={"format": "docx"}
+            )
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertEqual(response.json()["error"]["code"], "EXPORT_NOT_READY")
+
+    def test_docx_unknown_paper_is_404(self):
+        response = self.client.get(url_of("export", paper_id=999999), params={"format": "docx"})
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertEqual(response.json()["error"]["code"], "PAPER_NOT_FOUND")
+
+    # ---- 错误路径 -------------------------------------------------------
 
     def test_invalid_format_is_422(self):
         for value in ("doc", "xlsx", "", "PDFX"):
@@ -282,6 +369,81 @@ class TestExportPdfReal(ApiTestCase):
         self.assertEqual(second.status_code, 200, second.text[:400])
         self.assertEqual(first.content, second.content,
                          "同一份 HTML 两次导出应逐字节相同（export_pdf 已归一化时间）")
+
+
+@unittest.skipUnless(
+    _docx_module_available(),
+    "app.export.docx 尚未实现（render-export 并行开发中）；503 路径已由其他用例覆盖",
+)
+class TestExportDocxReal(ApiTestCase):
+    """真实 Word 实物：必须走完整链路（build_sheet_context → export_docx）。"""
+
+    def _export(self, paper_id: int, mode: str):
+        return self.client.get(
+            url_of("export", paper_id=paper_id), params={"format": "docx", "mode": mode}
+        )
+
+    def test_real_docx_end_to_end(self):
+        created = self.create_paper({"count": 4}, title="Word 实物卷")
+        question = self._export(created["id"], "question")
+        answer = self._export(created["id"], "answer")
+
+        for response in (question, answer):
+            self.assertEqual(response.status_code, 200, response.text[:300])
+            self.assertEqual(response.headers["content-type"], MEDIA_TYPE_DOCX)
+            self.assertTrue(response.content.startswith(b"PK\x03\x04"), "必须是 zip 容器")
+
+        question_text = _docx_text(question.content)
+        answer_text = _docx_text(answer.content)
+
+        # 卷头与题干都在（题目在表格里，不能只看 paragraphs）
+        self.assertIn(created["title"], question_text)
+        self.assertIn(created["items"][0]["display"], question_text)
+        self.assertIn("班级", question_text)
+
+        # 题目版不得出现答案区；答案版必须有
+        self.assertNotIn("答案与解析", question_text)
+        self.assertIn("答案与解析", answer_text)
+        self.assertIn(created["items"][0]["answer"], answer_text)
+
+    def test_real_docx_is_reproducible(self):
+        created = self.create_paper({"count": 3})
+        first = self._export(created["id"], "question")
+        second = self._export(created["id"], "question")
+        self.assertEqual(first.status_code, 200, first.text[:300])
+        self.assertEqual(second.status_code, 200, second.text[:300])
+        self.assertEqual(_docx_text(first.content), _docx_text(second.content),
+                         "同一份卷面两次导出的正文应一致")
+
+    def test_docx_reflects_answer_layout_edit(self):
+        """改答案版形式后导出的 Word 必须随之变化（同源的真实证据）。"""
+        created = self.create_paper({"count": 3})
+        with_tags = self._export(created["id"], "answer").content
+        self.assertIn(created["items"][0]["tags"][0], _docx_text(with_tags))
+
+        self.client.patch(
+            url_of("update_answer_layout", paper_id=created["id"]),
+            json={"separate_page": True, "include_steps": True,
+                  "include_difficulty": False, "include_tags": False},
+        )
+        without_tags = self._export(created["id"], "answer").content
+        text = _docx_text(without_tags)
+        self.assertIn("答案与解析", text)
+        self.assertNotIn("难度", text, "include_difficulty=False 时不应标难度")
+
+
+def _docx_text(payload: bytes) -> str:
+    """把 .docx 的段落与表格单元格拼成纯文本（用于内容断言）。"""
+    import io
+
+    import docx
+
+    document = docx.Document(io.BytesIO(payload))
+    chunks = [paragraph.text for paragraph in document.paragraphs]
+    for table in document.tables:
+        for row in table.rows:
+            chunks.extend(cell.text for cell in row.cells)
+    return "\n".join(chunk for chunk in chunks if chunk)
 
 
 if __name__ == "__main__":  # pragma: no cover

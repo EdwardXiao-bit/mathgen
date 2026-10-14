@@ -5,6 +5,10 @@
   * 再注入 `:root{--…:none}`（**只改变量、不动 HTML**，复刻老师端面板的覆盖行为）后复测；
   * `--page-margin` → 屏幕媒体下 `.sheet` 的宽度（≈210mm）与内边距（≈设定的 cm）。
 
+**环境适配**：浏览器启动一律走 `_browser.py` → 产品自己的 `app.export.browser`
+（内含 `mkdtemp` 回退与 Chromium 版本探测），因此本脚本**裸跑即可用**，
+不要求调用者先设 `PLAYWRIGHT_BROWSERS_PATH` / `TEMP` / `TMP`。
+
 用法（单独运行；输出 JSON 到 stdout）：
     & $VPY check_d59_layout.py --base <on.html> --off <off.html> --margin 1.0=<p1.html> ...
 """
@@ -12,7 +16,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from _browser import BrowserError, browser_session  # noqa: E402
 
 OVERRIDE_CSS = ":root{--answer-line-display:none;--header-bar-display:none}"
 
@@ -48,35 +59,35 @@ def main() -> int:
     parser.add_argument("--out", default="")
     args = parser.parse_args()
 
-    from playwright.sync_api import sync_playwright
-
     result: dict = {}
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1200, "height": 1000})
+    try:
+        with browser_session() as sess:
+            browser = sess.browser()
+            page = browser.new_page(viewport={"width": 1200, "height": 1000})
 
-        with open(args.base, encoding="utf-8") as fh:
-            page.set_content(fh.read(), wait_until="load")
-        result["base"] = page.evaluate(MEASURE_JS)
-
-        # **原始故障现场**：只覆盖变量，绝不动 HTML
-        page.add_style_tag(content=OVERRIDE_CSS)
-        result["base_after_variable_override"] = page.evaluate(MEASURE_JS)
-        result["override_css"] = OVERRIDE_CSS
-
-        with open(args.off, encoding="utf-8") as fh:
-            page.set_content(fh.read(), wait_until="load")
-        result["off"] = page.evaluate(MEASURE_JS)
-
-        for spec in args.margin:
-            cm, _, path = spec.partition("=")
-            with open(path, encoding="utf-8") as fh:
+            with open(args.base, encoding="utf-8") as fh:
                 page.set_content(fh.read(), wait_until="load")
-            measured = page.evaluate(MEASURE_JS)
-            measured["page_margin_cm"] = float(cm)
-            result[f"margin_{cm}"] = measured
+            result["base"] = page.evaluate(MEASURE_JS)
 
-        browser.close()
+            # **原始故障现场**：只覆盖变量，绝不动 HTML
+            page.add_style_tag(content=OVERRIDE_CSS)
+            result["base_after_variable_override"] = page.evaluate(MEASURE_JS)
+            result["override_css"] = OVERRIDE_CSS
+
+            with open(args.off, encoding="utf-8") as fh:
+                page.set_content(fh.read(), wait_until="load")
+            result["off"] = page.evaluate(MEASURE_JS)
+
+            for spec in args.margin:
+                cm, _, path = spec.partition("=")
+                with open(path, encoding="utf-8") as fh:
+                    page.set_content(fh.read(), wait_until="load")
+                measured = page.evaluate(MEASURE_JS)
+                measured["page_margin_cm"] = float(cm)
+                result[f"margin_{cm}"] = measured
+    except BrowserError as exc:
+        print(f"BROWSER_UNAVAILABLE: {exc}", file=sys.stderr)
+        return 2
 
     text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.out:

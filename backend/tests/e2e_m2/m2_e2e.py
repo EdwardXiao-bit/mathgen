@@ -183,9 +183,11 @@ def main() -> int:
          f"HTTP {r_qr.status_code} type={r_qr.headers.get('content-type')} "
          f"bytes={len(r_qr.content)}")
 
-    r_list = client.get("/api/papers", params={"page": 1, "size": 5})
+    # D64：列表参数为 limit / offset（page/size 已是 deprecated 别名，M4 起移除）
+    r_list = client.get("/api/papers", params={"limit": 5, "offset": 0})
     step("S6 卷库列表 GET /api/papers", r_list.status_code == 200,
-         f"HTTP {r_list.status_code} total={r_list.json().get('total')}")
+         f"HTTP {r_list.status_code} total={r_list.json().get('total')} "
+         f"limit={r_list.json().get('limit')} offset={r_list.json().get('offset')}")
 
     # 供后续脚本用：把关键 id/HTML 落盘
     meta = {"paper_id": pid, "copy_id": cid, "code": pub.get("code"),

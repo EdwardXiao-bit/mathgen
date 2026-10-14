@@ -209,10 +209,17 @@ def style_text(layout: LayoutParams) -> str:
     }}
 
     /* ---- 答案版 ---- */
-    /* D20：答案默认单独成页 */
+    /* D20：答案**默认**单独成页。`answer_layout.separate_page=false` 时
+       渲染器把 `data-break-before` 写成 `none`，由紧随其后的规则关掉分页。
+       用属性而不是「不输出元素」：与其余开关走同一条 CSS 通路，
+       且 HTML 与 DOCX 都由同一份 `build_answer_plan()` 决定（契约第 6 条）。 */
     .answer-section {{
       break-before: page;
       page-break-before: always;
+    }}
+    .answer-section[data-break-before="none"] {{
+      break-before: auto;
+      page-break-before: auto;
     }}
     .answer-heading {{
       margin: 0 0 calc(var({var_gap}) * 0.6em) 0;

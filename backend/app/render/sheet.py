@@ -23,6 +23,7 @@ from html import escape
 from app.contracts.layout import LayoutParams
 from app.contracts.sheet import SheetContext, SheetItem, SheetMode
 
+from app.layout.answers import AnswerEntry, AnswerPlan, build_answer_plan
 from app.layout.styles import (
     layout_fingerprint,
     root_style_attr,
@@ -59,7 +60,9 @@ def render_with_layout(ctx: SheetContext, layout: LayoutParams) -> str:
         if not isinstance(item, SheetItem):
             raise SheetRenderError("items 里出现非 SheetItem 元素")
 
-    include_answers = ctx.mode is SheetMode.ANSWER
+    # 答案版内容计划：HTML 与 export_docx 共用同一份判据（契约第 6 条）。
+    # `mode=QUESTION` 时 plan.enabled 恒为 False，所以这里不可能读到 answer / steps。
+    plan = build_answer_plan(ctx)
 
     body_parts = [
         '<main class="sheet" data-mode="%s"' % escape(ctx.mode.value, quote=True),
@@ -68,10 +71,10 @@ def render_with_layout(ctx: SheetContext, layout: LayoutParams) -> str:
         _render_title(ctx),
         _render_meta(ctx),
         _render_header_bar(ctx),
-        _render_items(items, layout, include_answers),
+        _render_items(items, layout, plan.enabled),
     ]
-    if include_answers:
-        body_parts.append(_render_answer_section(ctx, items))
+    if plan.enabled:
+        body_parts.append(_render_answer_section(ctx, plan))
     body_parts.append("</main>")
 
     return _document(ctx, layout, "".join(body_parts))
@@ -229,51 +232,61 @@ def _render_blank(layout: LayoutParams) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _render_answer_section(ctx: SheetContext, items: tuple[SheetItem, ...]) -> str:
+def _render_answer_section(ctx: SheetContext, plan: AnswerPlan) -> str:
     """答案区：最终答案 + 难度 + 考点标签 + 脱式逐步过程。
 
-    `.answer-section` 带 `break-before: page`，所以**默认单独成页**（D20）。
+    内容与显隐**全部由 `app.layout.answers.build_answer_plan(ctx)` 决定**——
+    HTML 与 `export_docx` 消费同一份 plan，契约第 6 条的结构一致性因此是结构性的。
+
+    `answer_layout.separate_page` 决定是否单独成页：
+    * True（D20 默认）→ `.answer-section { break-before: page }` 生效；
+    * False → 加 `data-break-before="none"`，样式里由该属性关掉分页
+      （与开关走同一条 CSS 通路，前端覆盖变量/属性都能实时生效）。
     """
-    blocks = "".join(_render_answer_item(item) for item in items)
-    heading = "答案与解析" if items else "答案与解析（本卷无题目）"
+    blocks = "".join(_render_answer_item(entry) for entry in plan.entries)
+    heading = "答案与解析" if plan.entries else "答案与解析（本卷无题目）"
+    break_attr = "page" if plan.separate_page else "none"
     return (
-        '<section class="answer-section" '
-        'data-break-before="page">\n'
+        f'<section class="answer-section" data-break-before="{break_attr}">\n'
         f'<h2 class="answer-heading">{escape(heading)}</h2>\n'
         f"{blocks}"
         "</section>\n"
     )
 
 
-def _render_answer_item(item: SheetItem) -> str:
+def _render_answer_item(entry: AnswerEntry) -> str:
     parts = [
-        f'<div class="a-item" data-seq="{int(item.seq)}">',
+        f'<div class="a-item" data-seq="{int(entry.seq)}">',
         '<div class="a-head">',
-        f'<span class="a-seq">{int(item.seq)}.</span>',
-        f'<span class="a-answer">{escape(item.answer)}</span>',
+        f'<span class="a-seq">{int(entry.seq)}.</span>',
+        f'<span class="a-answer">{escape(entry.answer)}</span>',
         "</div>",
-        _render_answer_meta(item),
-        _render_answer_steps(item),
+        _render_answer_meta(entry),
+        _render_answer_steps(entry),
         "</div>",
     ]
     return "".join(parts)
 
 
-def _render_answer_meta(item: SheetItem) -> str:
-    """难度等级 + 知识点标签（D20 的第 ②③ 项）。"""
+def _render_answer_meta(entry: AnswerEntry) -> str:
+    """难度等级 + 知识点标签（D20 的第 ②③ 项）。
+
+    关掉的项在 `build_answer_plan` 里已被裁掉（`difficulty=0` / `tags=()`），
+    这里不需要再判断一次开关。
+    """
     parts: list[str] = []
-    if item.difficulty:
-        parts.append(f'<span class="a-difficulty">难度 {int(item.difficulty)}/5</span>')
-    for tag in item.tags:
+    if entry.difficulty:
+        parts.append(f'<span class="a-difficulty">难度 {int(entry.difficulty)}/5</span>')
+    for tag in entry.tags:
         parts.append(f'<span class="a-tag">{escape(tag)}</span>')
     if not parts:
         return ""
     return '<div class="a-meta">' + "".join(parts) + "</div>"
 
 
-def _render_answer_steps(item: SheetItem) -> str:
+def _render_answer_steps(entry: AnswerEntry) -> str:
     """脱式 / 混合运算的逐步递等过程（D20 的第 ④ 项）。"""
-    steps = tuple(item.steps)
+    steps = tuple(entry.steps)
     if not steps:
         return ""
     lis = "".join(f"<li>{escape(step)}</li>" for step in steps)

@@ -16,7 +16,7 @@ class TestPaperFlow(ApiTestCase):
 
         self.assertEqual(
             set(detail),
-            {"id", "code", "title", "status", "seed", "config", "layout",
+            {"id", "code", "title", "status", "seed", "config", "layout", "answer_layout",
              "created_at", "published_at", "items"},
         )
         self.assertEqual(detail["status"], "draft")
@@ -67,13 +67,17 @@ class TestPaperFlow(ApiTestCase):
         self.assertEqual(fetched, created)
 
     def test_list_papers_paginates(self):
+        """M3：`limit`/`offset`，`total` 是过滤后的总数（不受分页影响）。"""
         for _ in range(3):
             self.create_paper({"count": 2})
 
-        response = self.client.get(url_of("list_papers"), params={"page": 1, "size": 2})
-        self.assertEqual(response.status_code, 200)
+        response = self.client.get(url_of("list_papers"), params={"limit": 2, "offset": 0})
+        self.assertEqual(response.status_code, 200, response.text)
         body = response.json()
+        self.assertEqual(set(body), {"total", "limit", "offset", "papers"})
         self.assertEqual(body["total"], 3)
+        self.assertEqual(body["limit"], 2)
+        self.assertEqual(body["offset"], 0)
         self.assertEqual(len(body["papers"]), 2)
         self.assertEqual(
             set(body["papers"][0]),
@@ -81,7 +85,11 @@ class TestPaperFlow(ApiTestCase):
         )
         self.assertEqual(body["papers"][0]["item_count"], 2)
 
-        page2 = self.client.get(url_of("list_papers"), params={"page": 2, "size": 2}).json()
+        page2 = self.client.get(
+            url_of("list_papers"), params={"limit": 2, "offset": 2}
+        ).json()
+        self.assertEqual(page2["total"], 3)
+        self.assertEqual(page2["offset"], 2)
         self.assertEqual(len(page2["papers"]), 1)
 
     def test_list_papers_filters_by_status(self):

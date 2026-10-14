@@ -33,8 +33,15 @@ import os
 import subprocess
 import sys
 import threading
-import uuid
-from pathlib import Path
+
+from app.services.export_common import (
+    BACKEND_DIR,
+    best_effort_unlink,
+    export_tmp_dir,
+    new_token,
+    purge_stale,
+    read_text_quietly,
+)
 
 __all__ = [
     "ExportUnavailable",
@@ -47,12 +54,7 @@ __all__ = [
 #: PDF 文件头（测试与自检用）
 PDF_MAGIC = b"%PDF"
 
-BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
-
 _EXPORT_LOCK = threading.RLock()
-
-#: 中间文件目录必须可由**子进程**写入：默认落在仓库内（见模块 docstring）
-DEFAULT_TMP = BACKEND_DIR / "data" / "exports"
 
 #: 单次导出的超时（秒），可用 MATHGEN_EXPORT_TIMEOUT 覆盖
 DEFAULT_TIMEOUT_S = 120.0
@@ -63,12 +65,6 @@ WORKER_MODULE = "app.services.pdf_export_worker"
 
 class ExportUnavailable(RuntimeError):
     """导出通道不可用（浏览器缺失 / 启动失败 / 超时）——映射为 503。"""
-
-
-def export_tmp_dir() -> Path:
-    """中间文件的落盘目录（`MATHGEN_EXPORT_TMP` 可覆盖）。"""
-    override = os.environ.get("MATHGEN_EXPORT_TMP")
-    return Path(override) if override else DEFAULT_TMP
 
 
 def export_timeout_seconds() -> float:
@@ -87,7 +83,7 @@ def export_pdf_bytes(html: str) -> bytes:
     if not isinstance(html, str) or not html.strip():
         raise ValueError("html 为空，拒绝导出空 PDF")
 
-    token = uuid.uuid4().hex
+    token = new_token()
     out_dir = export_tmp_dir()
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -99,25 +95,25 @@ def export_pdf_bytes(html: str) -> bytes:
     error_path = out_dir / f"error-{token}.txt"
 
     with _EXPORT_LOCK:                      # 一个 Chromium 实例，串行打印
-        _purge_stale(out_dir)
+        purge_stale(out_dir)
         try:
             html_path.write_text(html, encoding="utf-8")
             returncode = _run_worker(html_path, pdf_path, error_path)
             if returncode != 0:
                 raise ExportUnavailable(
                     "PDF 导出子进程失败（这是浏览器/打印环境问题，不是排版问题）："
-                    f"退出码 {returncode}；原因尾部：{_tail(_read_error(error_path))}"
+                    f"退出码 {returncode}；原因尾部：{_tail(read_text_quietly(error_path))}"
                 )
             if not pdf_path.exists():
                 raise ExportUnavailable(
                     "PDF 导出子进程未产出文件（退出码 0），"
-                    f"原因尾部：{_tail(_read_error(error_path))}"
+                    f"原因尾部：{_tail(read_text_quietly(error_path))}"
                 )
             data = pdf_path.read_bytes()
         finally:
             # **尽力而为**地清理：Windows 上子进程（及其 Playwright 驱动）可能
             # 还短暂持有句柄（实测 WinError 32），此时删不掉也不能让请求失败。
-            _best_effort_unlink(html_path, pdf_path, error_path)
+            best_effort_unlink(html_path, pdf_path, error_path)
 
     if not data.startswith(PDF_MAGIC):
         raise ExportUnavailable(
@@ -126,36 +122,7 @@ def export_pdf_bytes(html: str) -> bytes:
     return data
 
 
-def _read_error(error_path: Path) -> str:
-    try:
-        return error_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-def _best_effort_unlink(*paths: Path) -> None:
-    for path in paths:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:  # pragma: no cover - 句柄未释放（Windows）
-            pass
-
-
-def _purge_stale(out_dir: Path, max_age_s: float = 3600.0) -> None:
-    """清掉上次遗留的中间文件（子进程句柄未释放时删不掉，留待下次）。"""
-    import time
-
-    now = time.time()
-    for pattern in ("request-*.html", "sheet-*.pdf", "error-*.txt", "worker-*.log"):
-        for path in out_dir.glob(pattern):
-            try:
-                if now - path.stat().st_mtime > max_age_s:
-                    path.unlink(missing_ok=True)
-            except OSError:  # pragma: no cover - 句柄仍被占用
-                pass
-
-
-def _run_worker(html_path: Path, pdf_path: Path, error_path: Path) -> int:
+def _run_worker(html_path, pdf_path, error_path) -> int:
     """执行一次导出子进程；返回退出码。
 
     子进程的 stdout/stderr 一律丢弃：出错原因由**子进程自己**写 `error_path`

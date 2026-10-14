@@ -1,14 +1,16 @@
-"""卷服务：状态机、题号前移、快照读写、卷号分配（T-M2-BE 核心）。
+"""卷服务：状态机、题号前移、快照读写、卷号分配、卷库检索（T-M2-BE + T-M3-BE 核心）。
 
 冻结语义（docs/04-接口契约.md §6 / docs/02-技术设计.md §4）：
-- `draft`（可删题 / 换题 / 改排版，无卷号）→ `published`（只读、有卷号）**单向不可逆**；
+- `draft`（可删题 / 换题 / 改排版 / 改答案版形式）→ `published`（只读、有卷号）**单向不可逆**；
   对已发布卷的任何编辑操作 → `ApiError(PAPER_NOT_EDITABLE)` → HTTP 409
 - 「另存为可编辑副本」：复制全部题目快照为新 draft（新 id、`code` 为空）
 - 删题后**后续题号前移**，并在 `edit_log` 记一条 `delete, seq=N`
 - 题目一律以 `Question` **快照**进入 `paper_item.payload`，读取不重跑引擎
+- **M3**：`paper.answer_layout` 存答案版形式（D53③）；卷库按 `limit/offset/q/status` 检索，
+  `total` 是**过滤后的总数**、不受分页影响；可按卷号（`code`）打开历史卷
 
 事务纪律：本模块内所有写操作只 `flush()`，由路由层统一 `commit()`；
-异常路径由路由层 `rollback()`（见 routers/papers.py 的 `transaction` 契约）。
+异常路径由路由层 `rollback()`（见 routers/papers.py 的 `_finish`）。
 """
 from __future__ import annotations
 
@@ -21,7 +23,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import engine
-from app.contracts.api import PaperConfigIn, PaperDetail, PaperItemOut, PaperSummary
+from app.contracts.api import (
+    AnswerLayoutIn,
+    PaperConfigIn,
+    PaperDetail,
+    PaperItemOut,
+    PaperSummary,
+)
 from app.contracts.layout import LayoutParams
 from app.engine.types import ConfigError, GenerateConfig, Question
 from app.models import (
@@ -37,6 +45,7 @@ from app.models import (
     PaperItem,
 )
 from app.services import numbering
+from app.services.answer_layout_svc import answer_layout_from_json, answer_layout_to_json
 from app.services.config_svc import config_from_json, config_to_json, to_engine_config
 from app.services.errors import ApiError
 from app.services.layout_svc import layout_from_json, layout_in_from_params, layout_to_json
@@ -44,11 +53,11 @@ from app.services.snapshot import dump_payload, load_payload
 from app.services.timeutil import now, to_iso, utcnow_iso
 
 __all__ = [
-    "create_paper", "list_papers", "get_paper", "get_paper_or_404",
+    "create_paper", "list_papers", "get_paper", "get_paper_or_404", "get_paper_by_code",
     "load_items", "load_item_pairs", "delete_item", "regenerate_item",
-    "update_layout", "publish_paper", "copy_paper", "purge_paper",
+    "update_layout", "update_answer_layout", "publish_paper", "copy_paper", "purge_paper",
     "require_editable", "require_published", "to_detail", "to_item_out", "to_summary",
-    "AUTO_SEED_MAX", "SHIFT_OFFSET",
+    "DEFAULT_LIMIT", "MAX_LIMIT", "AUTO_SEED_MAX", "SHIFT_OFFSET",
 ]
 
 #: 未显式给 seed 时的随机上界（真正随机：每次出题得到不同的一套题）
@@ -58,6 +67,13 @@ AUTO_SEED_MAX = 2 ** 31 - 1
 #: 避免 `UPDATE ... SET seq = seq - 1` 逐行触发 UNIQUE(paper_id, seq) 冲突。
 SHIFT_OFFSET = 1000
 
+#: 卷库检索的分页边界（与契约 `PaperListOut` 的 `limit` 一致）
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 100
+
+#: LIKE 通配符的转义字符（老师搜「50%」时不应被当成通配符）
+_LIKE_ESCAPE = "\\"
+
 
 # --------------------------------------------------------------------------- 查询
 
@@ -66,6 +82,24 @@ def get_paper_or_404(db: Session, paper_id: int) -> Paper:
     paper = db.get(Paper, paper_id)
     if paper is None:
         raise ApiError("PAPER_NOT_FOUND", f"卷 {paper_id} 不存在")
+    return paper
+
+
+def get_paper_by_code(db: Session, code: str) -> Paper:
+    """按卷号取卷（FR-T14「用卷号打开历史卷」）。
+
+    错误码用契约 §9 的 **`CODE_NOT_FOUND` | 404 | 卷号无效**：
+    它与 `PAPER_NOT_FOUND`（按 **id** 找不到卷）语义不同，两者不可混用。
+
+    只有 `published` 卷才有卷号，所以 draft 卷永远查不到 —— 这也是「卷号无效」，
+    返回 404 是正确语义。
+    """
+    wanted = (code or "").strip()
+    if not wanted:
+        raise ApiError("CODE_NOT_FOUND", "卷号不能为空")
+    paper = db.execute(select(Paper).where(Paper.code == wanted)).scalar_one_or_none()
+    if paper is None:
+        raise ApiError("CODE_NOT_FOUND", f"卷号 {wanted} 无效")
     return paper
 
 
@@ -137,6 +171,7 @@ def to_detail(db: Session, paper: Paper) -> PaperDetail:
         seed=paper.seed,
         config=_config_in(paper),
         layout=layout_in_from_params(layout_from_json(paper.layout_json)),
+        answer_layout=answer_layout_from_json(paper.answer_layout),
         created_at=paper.created_at,
         published_at=paper.published_at,
         items=items,
@@ -192,10 +227,15 @@ def create_paper(
     seed: int | None = None,
     title: str | None = None,
     layout: LayoutParams | None = None,
+    answer_layout: AnswerLayoutIn | None = None,
 ) -> Paper:
-    """生成一张新 draft 卷：跑一次引擎取快照后落库（此后永不重算）。"""
+    """生成一张新 draft 卷：跑一次引擎取快照后落库（此后永不重算）。
+
+    答案版形式（M3）落显式 JSON；不传则用 D20 默认（四项全 true）。
+    """
     config: GenerateConfig = to_engine_config(config_in)
     layout = layout if layout is not None else LayoutParams()
+    answer_layout = answer_layout if answer_layout is not None else AnswerLayoutIn()
     actual_seed = int(seed) if seed is not None else random.SystemRandom().randrange(AUTO_SEED_MAX)
 
     questions = engine.generate(config, actual_seed)   # 违约抛 ConfigError / InsufficientQuestions
@@ -212,7 +252,7 @@ def create_paper(
         seed=actual_seed,
         config_json=config_to_json(config),
         layout_json=layout_to_json(layout),
-        answer_layout="{}",
+        answer_layout=answer_layout_to_json(answer_layout),
         created_at=to_iso(now()),
         published_at=None,
     )
@@ -291,6 +331,15 @@ def update_layout(db: Session, paper_id: int, params: LayoutParams) -> Paper:
     return paper
 
 
+def update_answer_layout(db: Session, paper_id: int, payload: AnswerLayoutIn) -> Paper:
+    """改「答案版形式」（M3，六维中的第六维）；仅 draft 允许（已发布 → 409）。"""
+    paper = get_paper_or_404(db, paper_id)
+    require_editable(paper)
+    paper.answer_layout = answer_layout_to_json(payload)
+    db.flush()
+    return paper
+
+
 def _publish_once(db: Session, paper: Paper) -> Paper:
     paper.code = numbering.next_code(db)
     paper.status = PAPER_STATUS_PUBLISHED
@@ -347,20 +396,47 @@ def copy_paper(db: Session, paper_id: int, title: str | None = None) -> Paper:
     return clone
 
 
-def list_papers(db: Session, page: int, size: int, status: str | None = None):
-    """分页列出卷（按创建时间倒序，同刻按 id 倒序）。"""
+def _like_pattern(raw: str) -> str:
+    """把老师输入里的 LIKE 通配符转义掉（搜「50%」不应匹配一切）。"""
+    escaped = (
+        raw.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
+        .replace("%", _LIKE_ESCAPE + "%")
+        .replace("_", _LIKE_ESCAPE + "_")
+    )
+    return f"%{escaped}%"
+
+
+def list_papers(
+    db: Session,
+    *,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
+    status: str | None = None,
+    q: str | None = None,
+):
+    """卷库检索（FR-T14 / M3）：`limit`/`offset` 分页 + `status`/`q` 过滤。
+
+    返回 `(total, papers)`，其中 **`total` 是过滤后的总数，不受 limit/offset 影响**
+    （契约 `PaperListOut.total` 的明确语义）。排序：创建时间倒序，同刻按 id 倒序。
+    """
+    conditions = []
+    if status:
+        conditions.append(Paper.status == status)
+    if q and q.strip():
+        conditions.append(Paper.title.like(_like_pattern(q.strip()), escape=_LIKE_ESCAPE))
+
     base = select(Paper)
     counter = select(func.count()).select_from(Paper)
-    if status:
-        base = base.where(Paper.status == status)
-        counter = counter.where(Paper.status == status)
+    if conditions:
+        base = base.where(*conditions)
+        counter = counter.where(*conditions)
 
     total = int(db.execute(counter).scalar_one())
     rows = list(
         db.execute(
             base.order_by(Paper.created_at.desc(), Paper.id.desc())
-            .offset((page - 1) * size)
-            .limit(size)
+            .limit(limit)
+            .offset(offset)
         ).scalars()
     )
     return total, [to_summary(db, row) for row in rows]

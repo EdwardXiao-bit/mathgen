@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.contracts.layout import LayoutParams
 from app.contracts.sheet import SheetContext, SheetItem, SheetMode
+from app.services.answer_layout_svc import answer_layout_from_json
 from app.services.layout_svc import layout_from_json
 from app.services.paper_service import get_paper_or_404, load_item_pairs
 
@@ -40,7 +41,9 @@ def build_sheet_context(
 ) -> SheetContext:
     """从数据库快照组装一次渲染所需的全部输入。
 
-    **不重跑引擎**：题目一律来自 `paper_item.payload`（契约 §6 快照语义）。
+    * **不重跑引擎**：题目一律来自 `paper_item.payload`（契约 §6 快照语义）。
+    * **答案版形式随卷携带**（M3 / D53③）：`/sheet`、PDF、Word 三条路都拿到
+      同一个 `answer_layout`，行为不会各说各话。
     """
     paper = get_paper_or_404(db, paper_id)
     layout: LayoutParams = layout_from_json(paper.layout_json)
@@ -62,4 +65,5 @@ def build_sheet_context(
         layout=layout,
         code=paper.code,
         header_note=header_note,
+        answer_layout=answer_layout_from_json(paper.answer_layout),
     )
