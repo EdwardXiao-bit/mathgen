@@ -248,8 +248,10 @@ class TestLayoutToggles(M2Case):
 class TestExportPdfRoute(M2Case):
     """契约 §5.1 `GET /api/papers/{id}/export` —— M2 里程碑的「导出」一步。
 
-    **本用例是验收判据本身**：M2 要求「能通过 HTTP 走完 … → 导出」，
-    若该冻结路由不存在，这里必须红，而不是被绕过。
+    这是**判据本身**：M2 要求「能通过 HTTP 走完 … → 导出」。
+    历史：task-8 首轮验收时该路由缺失（HTTP 404），本用例红；D57 修复后转绿。
+    更细的契约面（501/422/404/统一错误结构/C3 同源/D58 隔离）见
+    `TestExportRouteContract` 与 `TestPlaywrightIsolation`。
     """
 
     def test_export_route_serves_pdf(self):
@@ -262,6 +264,132 @@ class TestExportPdfRoute(M2Case):
             "`GET /api/papers/{id}/export?format=pdf&mode=` 返回 PDF 文件流；"
             f"实测 HTTP {resp.status_code}，响应体={resp.text[:120]!r}")
         self.assertEqual(resp.content[:4], b"%PDF")
+
+
+class TestExportRouteContract(M2Case):
+    """D57 修复后的导出路由与统一错误结构（verify 独立复核）。
+
+    判据来自契约 §5.1（导出路由）与 §9（错误码表：`PAPER_NOT_FOUND` 404）。
+    """
+
+    def _published_paper(self) -> int:
+        pid = self.make_paper()["id"]
+        layout = {"cols_per_row": 3, "row_gap": 1.4, "font_size": 16,
+                  "page_margin": 1.5, "answer_line": True, "header_bar": True}
+        self.client.patch(f"/api/papers/{pid}/layout", json=layout)
+        self.assertEqual(self.client.post(f"/api/papers/{pid}/publish").status_code, 200)
+        return pid
+
+    def test_export_pdf_both_modes(self):
+        import io
+
+        import pypdfium2 as pdfium
+
+        pid = self._published_paper()
+        page_counts = {}
+        for mode in ("question", "answer"):
+            resp = self.client.get(f"/api/papers/{pid}/export",
+                                   params={"format": "pdf", "mode": mode})
+            with self.subTest(mode=mode):
+                self.assertEqual(resp.status_code, 200, resp.text[:200])
+                self.assertEqual(resp.headers["content-type"], "application/pdf")
+                self.assertEqual(resp.content[:5], b"%PDF-")
+                self.assertIn("attachment",
+                              resp.headers.get("content-disposition", "").lower())
+                document = pdfium.PdfDocument(io.BytesIO(resp.content))
+                try:
+                    page_counts[mode] = len(document)
+                finally:
+                    document.close()
+                with open(os.path.join(ARTIFACTS, f"http-export-{mode}.pdf"), "wb") as fh:
+                    fh.write(resp.content)
+        self.assertGreater(page_counts["answer"], page_counts["question"],
+                           "答案版页数应多于题目版")
+        default = self.client.get(f"/api/papers/{pid}/export", params={"format": "pdf"})
+        self.assertEqual(default.status_code, 200)
+        self.assertEqual(default.content[:5], b"%PDF-")
+
+    def test_export_docx_is_501_not_fake_pdf(self):
+        pid = self._published_paper()
+        resp = self.client.get(f"/api/papers/{pid}/export", params={"format": "docx"})
+        self.assertEqual(resp.status_code, 501, resp.text[:200])
+        self.assertEqual(resp.json()["error"]["code"], "NOT_IMPLEMENTED")
+
+    def test_export_invalid_format_is_422(self):
+        pid = self._published_paper()
+        resp = self.client.get(f"/api/papers/{pid}/export", params={"format": "xml"})
+        self.assertEqual(resp.status_code, 422, resp.text[:200])
+        self.assertEqual(resp.json()["error"]["code"], "VALIDATION_ERROR")
+
+    def test_export_missing_paper_is_documented_404_code(self):
+        resp = self.client.get("/api/papers/999999/export", params={"format": "pdf"})
+        self.assertEqual(resp.status_code, 404, resp.text[:200])
+        self.assertEqual(resp.json()["error"]["code"], "PAPER_NOT_FOUND",
+                         "契约 §9 明列 PAPER_NOT_FOUND | 404 | 卷不存在")
+
+    def test_unknown_path_and_method_use_unified_error(self):
+        """D57②：不得再泄漏 FastAPI 默认的 `{"detail": ...}`。"""
+        for resp, expected in (
+            (self.client.get("/api/nonexistent"), (404, "NOT_FOUND")),
+            (self.client.put("/api/papers"), (405, "METHOD_NOT_ALLOWED")),
+        ):
+            with self.subTest(url=str(resp.request.url), method=resp.request.method):
+                self.assertEqual(resp.status_code, expected[0], resp.text[:200])
+                body = resp.json()
+                self.assertNotIn("detail", body, "错误响应不得是 FastAPI 默认结构")
+                self.assertEqual(body["error"]["code"], expected[1])
+                self.assertTrue(body["error"]["message"].strip())
+
+    def test_sheet_body_is_byte_identical_to_shared_renderer(self):
+        """C3：`/sheet` 的响应体必须与共享渲染器 `render_html` 的输出逐字节相同。
+
+        （D57③ 说 `/export` 与 `/sheet` 收拢到同一个 `services.sheet_render`；
+        这里从消费侧独立验证 `/sheet` 确实用了它，并以源码检查确认 `/export` 同路。）
+        """
+        from sqlalchemy.orm import sessionmaker
+
+        from app.db import default_engine
+        from app.services.sheet_ctx import build_sheet_context, parse_mode
+        from app.services.sheet_render import render_html
+
+        pid = self.make_paper()["id"]
+        resp = self.client.get(f"/api/papers/{pid}/sheet", params={"mode": "question"})
+        self.assertEqual(resp.status_code, 200)
+        session = sessionmaker(bind=default_engine())()
+        try:
+            ctx = build_sheet_context(session, pid, parse_mode("question"), "")
+            rendered = render_html(ctx)
+        finally:
+            session.close()
+        self.assertEqual(resp.text, rendered, "/sheet 与共享渲染器输出不一致（C3 破坏）")
+
+        exports_src = open(os.path.join(BACKEND, "app", "routers", "exports.py"),
+                           encoding="utf-8").read()
+        sheet_src = open(os.path.join(BACKEND, "app", "routers", "sheet.py"),
+                         encoding="utf-8").read()
+        self.assertIn("render_html", exports_src)
+        self.assertIn("render_html", sheet_src)
+
+
+class TestPlaywrightIsolation(M2Case):
+    """D58：HTTP 导出走一次性子进程，不得毁掉本进程主线程的 Playwright 会话。"""
+
+    def test_inprocess_export_still_works_after_http_exports(self):
+        from app.export import export_pdf, is_available
+
+        if not is_available():
+            self.skipTest("本机浏览器不可用")
+        pid = self.make_paper()["id"]
+        for _ in range(3):
+            resp = self.client.get(f"/api/papers/{pid}/export",
+                                   params={"format": "pdf", "mode": "question"})
+            self.assertEqual(resp.status_code, 200, resp.text[:200])
+        html = self.client.get(f"/api/papers/{pid}/sheet",
+                               params={"mode": "question"}).text
+        out = os.path.join(ARTIFACTS, "ut-inprocess-after-http.pdf")
+        export_pdf(html, out)          # 若隔离失效，这里会抛 Playwright 线程错误
+        with open(out, "rb") as fh:
+            self.assertEqual(fh.read(5), b"%PDF-")
 
 
 def _pdf_text(pdf_path: str) -> str:
