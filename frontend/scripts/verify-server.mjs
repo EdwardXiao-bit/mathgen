@@ -94,6 +94,13 @@ const MOCK_PAPER = {
   },
   created_at: '2026-10-14T20:00:00+08:00',
   published_at: null,
+  // M3：第六维答案版形式（`paper.answer_layout`），四字段与 AnswerLayoutIn 一致
+  answer_layout: {
+    separate_page: true,
+    include_steps: true,
+    include_difficulty: true,
+    include_tags: true,
+  },
   items: [
     ['243 × 12', '2916', 2],
     ['187 × 34', '6358', 3],
@@ -115,6 +122,82 @@ const MOCK_PAPER = {
 
 /** 请求流水：验收脚本靠它判断「调参期间有没有读卷」和「改题打到哪条路径」。 */
 const apiLog = [];
+
+/**
+ * 卷库用的**多卷数据集**（M3 分页 / 搜索 / 筛选 / 按卷号打开需要足够样本）。
+ *
+ * 共 37 套：前 20 套已发布（有卷号 `2610-NNNN`），后 17 套是草稿（无卷号）。
+ * 标题里混入「三位数」/「两位数」关键字，便于断言搜索过滤真的生效。
+ *
+ * **id 从 100 起**，刻意避开 `MOCK_PAPER.id = 1`：否则 `/teacher/paper/1` 会被这份
+ * 数据集覆盖成「已发布」，把其它门禁全带偏（实测踩到：卷页面变只读，连 reset 都找不到）。
+ */
+const LIBRARY_ID_BASE = 100;
+const MOCK_LIBRARY = Array.from({ length: 37 }, (_, index) => {
+  const seq = index + 1;
+  const published = seq <= 20;
+  return {
+    id: LIBRARY_ID_BASE + index,
+    code: published ? `2610-${String(seq).padStart(4, '0')}` : null,
+    // 两类标题**互不包含**（关键字只出现在一类里），这样搜索过滤才有可判定的效果：
+    // 「两位数乘一位数」不含「三位数乘两位数」，反之亦然。
+    title: seq % 3 === 0 ? `两位数乘一位数 练习 ${seq}` : `三位数乘两位数 练习 ${seq}`,
+    status: published ? 'published' : 'draft',
+    item_count: 10 + (seq % 5),
+    created_at: `2026-10-${String(10 + (seq % 20)).padStart(2, '0')}T09:${String(seq % 60).padStart(2, '0')}:00+08:00`,
+    published_at: published ? `2026-10-${String(10 + (seq % 20)).padStart(2, '0')}T10:00:00+08:00` : null,
+  };
+});
+
+/** 列表里的每套卷都能按 ID / 卷号打开；`MOCK_PAPER`（id=1，草稿）保持原样 */
+const MOCK_DETAILS = new Map();
+MOCK_DETAILS.set(MOCK_PAPER.id, MOCK_PAPER);
+for (const summary of MOCK_LIBRARY) {
+  MOCK_DETAILS.set(summary.id, {
+    ...summary,
+    seed: 1000 + summary.id,
+    config: { ...MOCK_PAPER.config, count: summary.item_count },
+    layout: { ...MOCK_PAPER.layout },
+    answer_layout: { ...MOCK_PAPER.answer_layout },
+    items: MOCK_PAPER.items.slice(0, 2),
+  });
+}
+
+/** 卷库列表：契约形态（回显 limit/offset） */
+function listPapers(url) {
+  const limit = Number(url.searchParams.get('limit') ?? 20);
+  const offset = Number(url.searchParams.get('offset') ?? 0);
+  const q = (url.searchParams.get('q') ?? '').trim();
+  const status = url.searchParams.get('status') ?? '';
+  let rows = MOCK_LIBRARY;
+  if (q !== '') rows = rows.filter((paper) => paper.title.includes(q));
+  if (status === 'draft' || status === 'published') {
+    rows = rows.filter((paper) => paper.status === status);
+  }
+  return { total: rows.length, limit, offset, papers: rows.slice(offset, offset + limit) };
+}
+
+/** 历史形态（只有 total + papers，靠 page/size）—— 用来验证前端形状自适应回退 */
+function listPapersLegacy(url) {
+  const size = Number(url.searchParams.get('size') ?? 20);
+  const page = Number(url.searchParams.get('page') ?? 1);
+  const q = (url.searchParams.get('q') ?? '').trim();
+  const status = url.searchParams.get('status') ?? '';
+  let rows = MOCK_LIBRARY;
+  if (q !== '') rows = rows.filter((paper) => paper.title.includes(q));
+  if (status === 'draft' || status === 'published') {
+    rows = rows.filter((paper) => paper.status === status);
+  }
+  const start = (page - 1) * size;
+  return { total: rows.length, papers: rows.slice(start, start + size) };
+}
+
+function findDetailByCode(code) {
+  for (const paper of MOCK_DETAILS.values()) {
+    if (paper.code === code) return paper;
+  }
+  return undefined;
+}
 
 /**
  * 模拟 `app/render/sheet.py` 的卷面 HTML。
@@ -207,7 +290,29 @@ function html(res, body) {
 
 const apiServer = createServer((req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${API_PORT}`);
-  apiLog.push({ method: req.method, path: url.pathname });
+  /** 本次请求的 JSON body（PATCH 之类）——验收要断言「请求体形状」而不只是「发了请求」 */
+  let rawBody = '';
+  req.on('data', (chunk) => {
+    rawBody += chunk;
+  });
+  req.on('end', () => {
+    let parsedBody = null;
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = { __unparsable: rawBody.slice(0, 120) };
+      }
+    }
+    req.parsedBody = parsedBody;
+    const entry = { method: req.method, path: url.pathname };
+    if (parsedBody !== null) entry.body = parsedBody;
+    apiLog.push(entry);
+    dispatchApi(req, res, url);
+  });
+});
+
+function dispatchApi(req, res, url) {
   log(`API ${req.method} ${url.pathname}`);
 
   if (url.pathname === '/__api-log') return json(res, 200, apiLog);
@@ -218,27 +323,66 @@ const apiServer = createServer((req, res) => {
     });
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/papers/1/sheet') {
+  // 卷面 HTML：任意卷都用它自己那份 detail 渲染（M3 卷库里的卷也要能打开预览）
+  const sheetMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/sheet$/);
+  if (req.method === 'GET' && sheetMatch) {
     const mode = url.searchParams.get('mode') === 'answer' ? 'answer' : 'question';
-    return html(res, sheetHtml(MOCK_PAPER, mode));
+    const detail = MOCK_DETAILS.get(Number(sheetMatch[1])) ?? MOCK_PAPER;
+    return html(res, sheetHtml(detail, mode));
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/papers/1') return json(res, 200, MOCK_PAPER);
+  // ---- M3：按卷号取卷 ----------------------------------------------------
+  // **路由顺序很重要**：`/api/papers/by-code/{code}` 必须排在 `/api/papers/{id}` 之前，
+  // 否则 `by-code` 会被当成 id。真实后端（FastAPI 按声明顺序匹配）同样有此要求，
+  // 这里照着排，顺便让「顺序写错」在验收里立刻暴露。
+  const byCodeMatch = url.pathname.match(/^\/api\/papers\/by-code\/(.+)$/);
+  if (req.method === 'GET' && byCodeMatch) {
+    const code = decodeURIComponent(byCodeMatch[1]);
+    const found = findDetailByCode(code);
+    if (!found) {
+      return json(res, 404, { error: { code: 'CODE_NOT_FOUND', message: `卷号 ${code} 不存在` } });
+    }
+    return json(res, 200, found);
+  }
+
+  // ---- M3：第六维答案版形式落库 ------------------------------------------
+  const answerLayoutMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/answer-layout$/);
+  if (req.method === 'PATCH' && answerLayoutMatch) {
+    const id = Number(answerLayoutMatch[1]);
+    const detail = MOCK_DETAILS.get(id);
+    if (!detail) {
+      return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: `卷 ${id} 不存在` } });
+    }
+    if (detail.status === 'published') {
+      // 与真实后端一致：已发布卷只读 → 409 PAPER_NOT_EDITABLE
+      return json(res, 409, {
+        error: { code: 'PAPER_NOT_EDITABLE', message: '已发布的卷不能直接修改，请另存为副本' },
+      });
+    }
+    const parsed = req.parsedBody ?? {};
+    const next = { ...detail.answer_layout };
+    for (const key of ['separate_page', 'include_steps', 'include_difficulty', 'include_tags']) {
+      if (typeof parsed[key] === 'boolean') next[key] = parsed[key];
+    }
+    detail.answer_layout = next;
+    return json(res, 200, next);
+  }
+
+  // 卷详情：任意 id 都从数据集取（`/api/papers/1` 与卷库里的 100+ 都能打开）
+  const detailMatch = url.pathname.match(/^\/api\/papers\/(\d+)$/);
+  if (req.method === 'GET' && detailMatch) {
+    const detail = MOCK_DETAILS.get(Number(detailMatch[1]));
+    if (!detail) {
+      return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: `卷 ${detailMatch[1]} 不存在` } });
+    }
+    return json(res, 200, detail);
+  }
+
+  // ---- M3：卷库列表（分页 / 搜索 / 状态筛选）-----------------------------
+  // MODE=legacy-list 时退化成历史形态（只有 total + papers，靠 page/size），
+  // 专门用来验证前端 `detectPaginationMode` 的兜底路径真的会切换。
   if (req.method === 'GET' && url.pathname === '/api/papers') {
-    return json(res, 200, {
-      total: 1,
-      papers: [
-        {
-          id: 1,
-          code: null,
-          title: MOCK_PAPER.title,
-          status: 'draft',
-          item_count: MOCK_PAPER.items.length,
-          created_at: MOCK_PAPER.created_at,
-          published_at: null,
-        },
-      ],
-    });
+    return json(res, 200, MODE === 'legacy-list' ? listPapersLegacy(url) : listPapers(url));
   }
 
   const deleteMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/items\/(\d+)$/);
@@ -268,20 +412,19 @@ const apiServer = createServer((req, res) => {
 
   const layoutMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/layout$/);
   if (req.method === 'PATCH' && layoutMatch) {
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk;
-    });
-    req.on('end', () => {
-      const parsed = JSON.parse(body || '{}');
-      Object.assign(MOCK_PAPER.layout, parsed.layout ?? {});
-      json(res, 200, { layout: MOCK_PAPER.layout });
-    });
-    return undefined;
+    // body 已由 createServer 统一读完（见 req.parsedBody）；
+    // 这里**不要再挂 req.on('data')** —— 流已被消费，重复监听会让请求永远等不到 'end'，
+    // 表现是前端保存状态卡在 saving（本机实测踩过）。
+    const parsed = req.parsedBody ?? {};
+    const patch = parsed.layout ?? parsed;
+    Object.assign(MOCK_PAPER.layout, patch);
+    const detail = MOCK_DETAILS.get(Number(layoutMatch[1]));
+    if (detail) Object.assign(detail.layout, patch);
+    return json(res, 200, MOCK_PAPER.layout);
   }
 
   return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: 'mock 没有这条路由' } });
-});
+}
 
 // ---------------------------------------------------------------------------
 // 静态服务：frontend/dist（生产产物）+ /api 反代 + SPA 回落
@@ -333,11 +476,55 @@ if (!existsSync(path.join(DIST_DIR, 'index.html'))) {
   process.exit(2);
 }
 
-await new Promise((resolve) => staticServer.listen(STATIC_PORT, '127.0.0.1', resolve));
-if (MODE !== 'proxy-down') {
-  await new Promise((resolve) => apiServer.listen(API_PORT, '127.0.0.1', resolve));
+/**
+ * 先 bind 再宣称端口：谁绑上谁说了算。
+ *
+ * 为什么不用「父进程探测空闲端口再传进来」：探测（listen→close）与子进程真正 listen
+ * 之间有竞态，实测在 Windows 上会拿到一个已经关掉、子进程又绑不上的端口。
+ * 这里自己从 BASE 起逐个试，绑不上（EADDRINUSE）就 +1，最多试 20 个。
+ *
+ * 动因：本机上同时有别的服务（老师端预览 4173、样张静态服务 4180 等）。
+ * 实测踩到过最坏的形态：服务退让到 4174，而父进程仍按硬编码的 4173 去驱动 ——
+ * Playwright 打开的是**别人的应用**，然后等一个永远不存在的元素。
+ */
+async function listenWithRetry(server, basePort, label) {
+  for (let step = 0; step < 20; step += 1) {
+    const port = basePort + step;
+    try {
+      await new Promise((resolve, reject) => {
+        const onError = (error) => {
+          server.removeListener('listening', onListening);
+          reject(error);
+        };
+        const onListening = () => {
+          server.removeListener('error', onError);
+          resolve();
+        };
+        server.once('error', onError);
+        server.once('listening', onListening);
+        server.listen(port, '127.0.0.1');
+      });
+      return port;
+    } catch (error) {
+      if (error.code !== 'EADDRINUSE') throw error;
+      log(`${label} 端口 ${port} 被占用，试 ${port + 1}`);
+    }
+  }
+  throw new Error(`${label} 从 ${basePort} 起连续 20 个端口都被占用`);
 }
-console.log(`dist: http://127.0.0.1:${STATIC_PORT}/  api: ${MODE === 'proxy-down' ? '(未启动：模拟后端未就绪)' : `http://127.0.0.1:${API_PORT}/api/`}  模式: ${MODE}`);
+
+const actualApiPort = MODE === 'proxy-down'
+  ? null
+  : await listenWithRetry(apiServer, API_PORT, '模拟后端');
+const actualStaticPort = await listenWithRetry(staticServer, STATIC_PORT, '静态服务');
+
+// 父进程（verify-*.mjs）解析这一行拿到**真实**端口，不要靠猜
+console.log(`VERIFY_PORTS static=${actualStaticPort} api=${actualApiPort ?? 0}`);
+console.log(
+  `dist: http://127.0.0.1:${actualStaticPort}/  api: ${
+    MODE === 'proxy-down' ? '(未启动：模拟后端未就绪)' : `http://127.0.0.1:${actualApiPort}/api/`
+  }  模式: ${MODE}`,
+);
 console.log('VERIFY_SERVER_READY');
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

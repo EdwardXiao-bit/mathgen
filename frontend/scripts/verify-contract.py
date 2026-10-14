@@ -122,6 +122,30 @@ def main() -> int:
         pattern = rf"{field}:\s*\[(?:{lo}|{lo}\.0),\s*(?:{hi}|{hi}\.0)\]"
         check(f"BOUNDS['{field}'] = [{lo}, {hi}]", re.search(pattern, ts_source) is not None)
 
+    # ③-c **M3 答案版形式**：`AnswerLayoutIn` 的四个字段必须在 api.ts 的 interface 里齐全
+    print("\n=== ③-c AnswerLayoutIn 四字段一致（M3 第六维）===")
+    answer_fields = set(api.AnswerLayoutIn.model_fields.keys())
+    check(
+        "AnswerLayoutIn 字段数 = 4",
+        len(answer_fields) == 4,
+        f"后端字段={sorted(answer_fields)}",
+    )
+    for field in sorted(answer_fields):
+        check(f"api.ts 里有 AnswerLayoutIn.{field}", re.search(rf"\b{field}\s*:\s*boolean", ts_source) is not None)
+    # 默认值也要一致：四个都为 true（D20 默认「单独成页 + 含过程 / 难度 / 考点」）
+    defaults = {
+        name: field.default for name, field in api.AnswerLayoutIn.model_fields.items()
+    }
+    check(
+        "AnswerLayoutIn 默认值全为 True（与前端 DEFAULT_ANSWER_LAYOUT 一致）",
+        all(value is True for value in defaults.values()),
+        f"后端默认值={defaults}",
+    )
+    check(
+        "api.ts 的 DEFAULT_ANSWER_LAYOUT 四字段都是 true",
+        len(re.findall(r"(separate_page|include_steps|include_difficulty|include_tags):\s*true", ts_source)) >= 4,
+    )
+
     # ③-b **取值**也要一致（D59 的实质）：前端 `cssVariables()` 的产物必须与后端
     # `css_variables()` 逐字相同，否则「服务端渲染」与「面板实时覆盖」会写出不同的值。
     #

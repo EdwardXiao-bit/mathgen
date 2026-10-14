@@ -17,9 +17,13 @@ export const ROUTES = {
   create_paper: '/api/papers',
   list_papers: '/api/papers',
   get_paper: '/api/papers/{paper_id}',
+  // M3：按**卷号**直接取卷（FR-T15）——不要退化成「翻列表找卷号」
+  get_paper_by_code: '/api/papers/by-code/{code}',
   delete_item: '/api/papers/{paper_id}/items/{seq}',
   regenerate_item: '/api/papers/{paper_id}/items/{seq}/regenerate',
   update_layout: '/api/papers/{paper_id}/layout',
+  // M3：第六维「答案版形式」落库（`paper.answer_layout`）
+  update_answer_layout: '/api/papers/{paper_id}/answer-layout',
   publish_paper: '/api/papers/{paper_id}/publish',
   // D53 新收录：已发布卷只读，改题走「另存为可编辑副本」（契约 §6 状态机）
   copy_paper: '/api/papers/{paper_id}/copy',
@@ -80,6 +84,68 @@ export interface LayoutIn {
   header_bar: boolean;
 }
 
+/**
+ * 对应 `AnswerLayoutIn` —— 第六维「答案版形式」（M3 起落库到 `paper.answer_layout`）。
+ *
+ * 四个开关与后端同名字段逐条对应；默认值也与后端一致（4 个 true = D20 默认）。
+ */
+export interface AnswerLayoutIn {
+  /** 答案单独成页（D20 默认 true） */
+  separate_page: boolean;
+  /** 脱式题是否带逐步过程 */
+  include_steps: boolean;
+  /** 是否标难度 */
+  include_difficulty: boolean;
+  /** 是否标考点标签 */
+  include_tags: boolean;
+}
+
+/** 答案版形式的四项开关元数据（界面与契约不漂移）。 */
+export const ANSWER_LAYOUT_FIELDS: ReadonlyArray<{
+  field: keyof AnswerLayoutIn;
+  label: string;
+  onLabel: string;
+  offLabel: string;
+  hint: string;
+}> = [
+  {
+    field: 'separate_page',
+    label: '答案单独成页',
+    onLabel: '单独成页',
+    offLabel: '与题目同页',
+    hint: 'D20 默认：答案版另起一页，便于只打印给老师',
+  },
+  {
+    field: 'include_steps',
+    label: '含逐步过程',
+    onLabel: '含过程',
+    offLabel: '不含',
+    hint: '脱式题的递等式步骤（stepwise 题型才有内容）',
+  },
+  {
+    field: 'include_difficulty',
+    label: '含难度',
+    onLabel: '标难度',
+    offLabel: '不标',
+    hint: '每题难度 1–5',
+  },
+  {
+    field: 'include_tags',
+    label: '含考点标签',
+    onLabel: '标考点',
+    offLabel: '不标',
+    hint: '如「三位数乘两位数 · 进位」',
+  },
+];
+
+/** 第六维默认值 —— 与后端 `AnswerLayoutIn` 的默认值逐条一致。 */
+export const DEFAULT_ANSWER_LAYOUT: AnswerLayoutIn = {
+  separate_page: true,
+  include_steps: true,
+  include_difficulty: true,
+  include_tags: true,
+};
+
 /** 对应 `PaperItemOut`（老师端**包含** answer / steps，学生端必须剔除）。 */
 export interface PaperItemOut {
   seq: number;
@@ -101,6 +167,8 @@ export interface PaperDetail {
   seed: number;
   config: PaperConfigIn;
   layout: LayoutIn;
+  /** M3 新增：第六维答案版形式（`paper.answer_layout`）。 */
+  answer_layout: AnswerLayoutIn;
   created_at: string;
   published_at: string | null;
   items: PaperItemOut[];
@@ -117,11 +185,31 @@ export interface PaperSummary {
   published_at: string | null;
 }
 
-/** 对应 `PaperListOut`。 */
+/** 对应 `PaperListOut`（M3 起带分页回显）。 */
 export interface PaperListOut {
+  /** 符合筛选条件的总数（不受 limit/offset 影响） */
   total: number;
+  limit: number;
+  offset: number;
   papers: PaperSummary[];
 }
+
+/** 卷库列表的查询参数 —— 与契约 §5.1 的 `limit` / `offset` / `q` / `status` 对应。 */
+export interface PaperListQuery {
+  limit: number;
+  offset: number;
+  /** 标题模糊匹配 */
+  q?: string;
+  /** 留空 = 全部 */
+  status?: PaperStatus;
+}
+
+/** 卷库分页的边界（与后端 Query 约束一致）。 */
+export const LIST_BOUNDS = {
+  limitMin: 1,
+  limitMax: 100,
+  defaultLimit: 20,
+} as const;
 
 /** 对应 `PublishResult`。 */
 export interface PublishResult {
@@ -261,14 +349,11 @@ export const QUESTION_TYPE_OPTIONS: ReadonlyArray<OptionMeta<QuestionTypeName>> 
   { value: 'fill', label: '填空求未知数' },
 ];
 
-/** 答案版形式 —— FR-T6「题目版与答案版分别打印」的用户可见开关。 */
-export type AnswerForm = 'separate_page' | 'same_page' | 'none';
-
-export const ANSWER_FORM_OPTIONS: ReadonlyArray<OptionMeta<AnswerForm>> = [
-  { value: 'separate_page', label: '答案版单独打印（默认，D20）' },
-  { value: 'same_page', label: '答案版与题目版同屏对照' },
-  { value: 'none', label: '只要题目版' },
-];
+/**
+ * 答案版形式已由 `AnswerLayoutIn`（四个布尔开关）承接 —— M2 期间那三个「形式」选项
+ * （单独打印 / 同屏对照 / 只要题目版）是**未被契约支持的本地枚举**，已删除：
+ * 契约里没有对应字段，留着只会让人以为它能生效。
+ */
 
 export const CONFIG_BOUNDS = {
   count: [1, 100] as const,

@@ -40,8 +40,17 @@ const TMP_DIR = path.join(FRONTEND_DIR, '.tmp-playwright');
 mkdirSync(TMP_DIR, { recursive: true });
 const SERVER_LOG = path.join(TMP_DIR, 'verify-server.log');
 
-const STATIC_PORT = 4173;
-const API_PORT = 8123;
+/**
+ * 端口：默认 4173 / 8123，但**以服务进程自己绑上的端口为准**（见 startServers 的解析）。
+ *
+ * 动因：本机上同时有别的服务（老师端预览 4173、样张静态服务 4180）。
+ * 实测踩过最坏的形态：服务端因端口被占退让到 4174，而父进程仍按硬编码的 4173 驱动 ——
+ * Playwright 打开的是**别人的应用**，等一个永远不存在的元素，报错却指向别处。
+ */
+const BASE_STATIC_PORT = Number(process.env.MATHGEN_VERIFY_STATIC_PORT ?? 4173);
+const BASE_API_PORT = Number(process.env.MATHGEN_VERIFY_API_PORT ?? 8123);
+let STATIC_PORT = BASE_STATIC_PORT;
+let API_PORT = BASE_API_PORT;
 
 const PYTHON = path.join(REPO_ROOT, 'backend', '.venv', 'Scripts', 'python.exe');
 
@@ -64,6 +73,11 @@ function startServers() {
   const child = spawn(NODE_EXE, [path.join(__dirname, 'verify-server.mjs')], {
     cwd: FRONTEND_DIR,
     stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      MATHGEN_VERIFY_STATIC_PORT: String(BASE_STATIC_PORT),
+      MATHGEN_VERIFY_API_PORT: String(BASE_API_PORT),
+    },
   });
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
@@ -73,12 +87,20 @@ function startServers() {
   });
 
   return new Promise((resolve, reject) => {
+    let stdoutBuffer = '';
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`服务进程 15 秒内没就绪。stderr:\n${stderr}`));
     }, 15_000);
     child.stdout.on('data', (chunk) => {
-      if (chunk.includes('VERIFY_SERVER_READY')) {
+      stdoutBuffer += chunk;
+      // 以服务进程自己绑上的端口为准（它可能因端口被占而退让）
+      const ports = stdoutBuffer.match(/VERIFY_PORTS static=(\d+) api=(\d+)/);
+      if (ports) {
+        STATIC_PORT = Number(ports[1]);
+        API_PORT = Number(ports[2]);
+      }
+      if (stdoutBuffer.includes('VERIFY_SERVER_READY')) {
         clearTimeout(timer);
         resolve(child);
       }
@@ -94,12 +116,23 @@ function startServers() {
 // ② Playwright 断言（内联 Python，用 backend/.venv 里已装的 Playwright）
 // ---------------------------------------------------------------------------
 
-const PLAYWRIGHT_SCRIPT = String.raw`
+/**
+ * 内联 Python 脚本的**模板**。
+ *
+ * 注意它是 `String.raw` 模板字面量，所以 `${...}` 会在**模块加载时**就做替换。
+ * 因此这里不能直接写 `const PLAYWRIGHT_SCRIPT = String.raw\`...${STATIC_PORT}...\``——
+ * 那样会把「服务进程退让前的 4173」固化进脚本，而 Playwright 实际去打开的却是
+ * 端口被占时服务真正绑上的 4174/…，于是**打开了另一个应用**（本机实测：打开了
+ * Lead 的 vite preview，页面标题与题目数都对不上，报错却指向选择器超时）。
+ *
+ * 所以端口用占位符，到 `buildPlaywrightScript()` 里用**当时的**真实端口替换。
+ */
+const PLAYWRIGHT_SCRIPT_TEMPLATE = String.raw`
 import glob, json, os
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:${STATIC_PORT}"
-API = "http://127.0.0.1:${API_PORT}"
+BASE = "http://127.0.0.1:@@STATIC_PORT@@"
+API = "http://127.0.0.1:@@API_PORT@@"
 
 def find_chromium():
     """本机 ms-playwright 里已下好的 Chromium 可能比 pip 版 Playwright 期望的版本旧
@@ -140,228 +173,281 @@ with sync_playwright() as p:
     page.on("console", lambda m: result["console_errors"].append(m.text) if m.type == "error" else None)
     page.on("pageerror", lambda e: result["console_errors"].append(str(e)))
 
-    page.goto(BASE + "/teacher/paper/1", wait_until="domcontentloaded")
-    # 等 iframe 里的卷面真的加载出来（D56：卷面 HTML 来自后端 /sheet）
-    page.wait_for_selector("#sheet-frame", timeout=15000)
-    page.wait_for_function(
-        "() => { const f = document.getElementById('sheet-frame');"
-        " return f && f.contentDocument && f.contentDocument.querySelector('.sheet'); }",
-        timeout=15000,
-    )
-    page.wait_for_timeout(400)
+    def run_flow():
+        page.goto(BASE + "/teacher/paper/1", wait_until="domcontentloaded")
+        # 等 iframe 里的卷面真的加载出来（D56：卷面 HTML 来自后端 /sheet）
+        page.wait_for_selector("#sheet-frame", timeout=15000)
+        page.wait_for_function(
+            "() => { const f = document.getElementById('sheet-frame');"
+            " return f && f.contentDocument && f.contentDocument.querySelector('.sheet'); }",
+            timeout=15000,
+        )
+        page.wait_for_timeout(400)
 
-    def read_vars():
-        # 关键：读的是 **iframe 内部文档**（后端渲染的卷面）根元素上的变量与真实 display 值，
-        # 不是 React 自己画的 DOM —— D56 之后前端不再有卷面 DOM。
-        return page.evaluate("""() => {
-            const frame = document.getElementById('sheet-frame');
-            const doc = frame && frame.contentDocument;
-            const names = ['--cols-per-row','--row-gap','--font-size','--page-margin',
-                           '--answer-line-display','--header-bar-display'];
-            if (!doc || !doc.documentElement) {
-                return { error: 'iframe 文档不可读' };
-            }
-            const root = doc.documentElement;
-            const cs = getComputedStyle(root);
-            const inline = {}, computed = {};
-            for (const n of names) {
-                inline[n] = root.style.getPropertyValue(n);
-                computed[n] = cs.getPropertyValue(n);
-            }
-            const sheet = doc.querySelector('.sheet');
-            const grid = doc.querySelector('.q-row');
-            const blank = doc.querySelector('.q-blank');
-            const headerBar = doc.querySelector('.header-bar');
-            return {
-                inline, computed,
-                src: frame.getAttribute('src'),
-                frameDocTitle: doc.title,
-                hasSheet: Boolean(sheet),
-                sheetMode: sheet ? sheet.getAttribute('data-mode') : null,
-                gridColumns: grid ? getComputedStyle(grid).gridTemplateColumns : null,
-                gridRowGap: grid ? getComputedStyle(grid).rowGap : null,
-                itemCount: doc.querySelectorAll('.q-item').length,
-                answerItems: doc.querySelectorAll('.a-item').length,
-                // D59 的核心：开关是否真的作用到卷面元素上
-                blankDisplay: blank ? getComputedStyle(blank).display : null,
-                headerBarDisplay: headerBar ? getComputedStyle(headerBar).display : null,
-                headerBarCount: doc.querySelectorAll('.header-bar').length,
-                // 浏览器真正解析后的字号（用来证明 --font-size 生效到卷面上）
-                itemFontSize: doc.querySelector('.q-item')
-                    ? getComputedStyle(doc.querySelector('.q-item')).fontSize : null,
-                sheetPadding: sheet ? getComputedStyle(sheet).paddingLeft : null,
-                dump: (document.querySelector('[data-testid="css-var-dump"]') || {}).textContent || '',
+        def read_vars():
+            # 关键：读的是 **iframe 内部文档**（后端渲染的卷面）根元素上的变量与真实 display 值，
+            # 不是 React 自己画的 DOM —— D56 之后前端不再有卷面 DOM。
+            return page.evaluate("""() => {
+                const frame = document.getElementById('sheet-frame');
+                const doc = frame && frame.contentDocument;
+                const names = ['--cols-per-row','--row-gap','--font-size','--page-margin',
+                               '--answer-line-display','--header-bar-display'];
+                if (!doc || !doc.documentElement) {
+                    return { error: 'iframe 文档不可读' };
+                }
+                const root = doc.documentElement;
+                const cs = getComputedStyle(root);
+                const inline = {}, computed = {};
+                for (const n of names) {
+                    inline[n] = root.style.getPropertyValue(n);
+                    computed[n] = cs.getPropertyValue(n);
+                }
+                const sheet = doc.querySelector('.sheet');
+                const grid = doc.querySelector('.q-row');
+                const blank = doc.querySelector('.q-blank');
+                const headerBar = doc.querySelector('.header-bar');
+                return {
+                    inline, computed,
+                    src: frame.getAttribute('src'),
+                    frameDocTitle: doc.title,
+                    hasSheet: Boolean(sheet),
+                    sheetMode: sheet ? sheet.getAttribute('data-mode') : null,
+                    gridColumns: grid ? getComputedStyle(grid).gridTemplateColumns : null,
+                    gridRowGap: grid ? getComputedStyle(grid).rowGap : null,
+                    itemCount: doc.querySelectorAll('.q-item').length,
+                    answerItems: doc.querySelectorAll('.a-item').length,
+                    // D59 的核心：开关是否真的作用到卷面元素上
+                    blankDisplay: blank ? getComputedStyle(blank).display : null,
+                    headerBarDisplay: headerBar ? getComputedStyle(headerBar).display : null,
+                    headerBarCount: doc.querySelectorAll('.header-bar').length,
+                    // 浏览器真正解析后的字号（用来证明 --font-size 生效到卷面上）
+                    itemFontSize: doc.querySelector('.q-item')
+                        ? getComputedStyle(doc.querySelector('.q-item')).fontSize : null,
+                    sheetPadding: sheet ? getComputedStyle(sheet).paddingLeft : null,
+                    dump: (document.querySelector('[data-testid="css-var-dump"]') || {}).textContent || '',
+                };
+            }""")
+
+        result["before"] = read_vars()
+        log_before = len(api_log())
+
+        def set_range(testid, value):
+            page.eval_on_selector(
+                '[data-testid="' + testid + '"]',
+                """(el, v) => {
+                    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                    setter.call(el, String(v));
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }""",
+                value,
+            )
+            page.wait_for_timeout(130)
+
+        set_range("layout-cols_per_row", 3)
+        result["after_cols"] = read_vars()
+        set_range("layout-row_gap", 2.0)
+        result["after_gap"] = read_vars()
+        set_range("layout-font_size", 20)
+        result["after_font"] = read_vars()
+        set_range("layout-page_margin", 3.0)
+        result["after_margin"] = read_vars()
+
+        # ---- D59 回归：两个开关（本次真 bug 的现场）----
+        #
+        # 防的是什么：面板写的 CSS 变量在渲染器样式表里**从来没被任何规则读取**时，
+        # 「拖动时实时覆盖」看起来一切正常（变量确实改了），但后端 HTML 是加载时定格的，
+        # 所以预览完全不动，而界面还显示「已保存」——比报错更糟。
+        # 两个层次分别断言：
+        #   ① 拖动瞬间：实时覆盖让卷面元素立刻变（手感，0 请求）
+        #   ② 保存 + 重载之后：后端**重新渲染**出来的卷面里开关仍然生效
+        #     （② 才是真正抓到 bug 的那条：只有渲染器真消费变量才会过）
+        def wait_persist_done(timeout_ms=8000):
+            page.wait_for_function(
+                "() => { const el = document.querySelector('.layout-panel-status');"
+                " return el && (el.getAttribute('data-persist-state') === 'refreshed'"
+                " || el.getAttribute('data-persist-state') === 'error'); }",
+                timeout=timeout_ms,
+            )
+            return page.get_attribute('.layout-panel-status', 'data-persist-state')
+
+        page.click('[data-control="answer_line"] .switch')
+        page.wait_for_timeout(130)
+        result["after_line_instant"] = read_vars()
+        result["persist_after_line"] = wait_persist_done()
+        result["after_line"] = read_vars()
+
+        page.click('[data-control="header_bar"] .switch')
+        page.wait_for_timeout(130)
+        result["after_header_instant"] = read_vars()
+        result["persist_after_header"] = wait_persist_done()
+        result["after_header"] = read_vars()
+
+        # 关闭之后再打开一次，验证反向（这条防的是「只能关不能开」的假修复）
+        page.click('[data-control="answer_line"] .switch')
+        page.wait_for_timeout(130)
+        result["after_line_on_instant"] = read_vars()
+        result["persist_after_line_on"] = wait_persist_done()
+        result["after_line_on"] = read_vars()
+
+        page.click('[data-control="header_bar"] .switch')
+        page.wait_for_timeout(130)
+        result["after_header_on_instant"] = read_vars()
+        result["persist_after_header_on"] = wait_persist_done()
+        result["after_header_on"] = read_vars()
+
+        # 调参窗口内的后端请求（等过 debounce 400ms，让排版 PATCH 落下去）
+        page.wait_for_timeout(900)
+        window = api_log()[log_before:]
+        result["panel_window_requests"] = window
+        result["panel_preview_reads"] = len(
+            [r for r in window if r["method"] == "GET" and r["path"] == "/api/papers/1"]
+        )
+        # D59 兜底会重载卷面，所以这里期望 **恰好等于保存次数**，而不是 0：
+        # 拖动过程中 0 次；每次保存成功后 1 次。
+        result["panel_sheet_reads"] = len(
+            [r for r in window if r["method"] == "GET" and r["path"] == "/api/papers/1/sheet"]
+        )
+        result["panel_layout_patches"] = len(
+            [r for r in window if r["method"] == "PATCH" and r["path"].endswith("/layout")]
+        )
+
+        # 改题：换一题 / 删题
+        requests = []
+        page.on("request", lambda r: requests.append((r.method, r.url)))
+        page.click('[data-testid="regenerate-1"]')
+        page.wait_for_timeout(400)
+        page.click('[data-testid="delete-1"]')
+        page.wait_for_timeout(400)
+        result["mutation_requests"] = [
+            m + " " + u.split("127.0.0.1:@@STATIC_PORT@@")[-1] for m, u in requests if "/api/" in u
+        ]
+
+        # 打印：D56 之后打印的是**隐藏 iframe 里的后端卷面**（.print-frame），
+        # 不是 window.print() 打主文档。所以要在打印 iframe 的 window 上装桩。
+        #
+        # 实现里是「fetch 卷面 HTML → document.write 进 about:blank iframe → 轮询 readyState → print()」，
+        # 没有 load 事件可依赖；所以这里轮询接管 print，每次调用都抓下**打印时刻**的卷面内容。
+        page.evaluate("""() => {
+            window.__printed = [];
+            const origCreate = document.createElement.bind(document);
+            document.createElement = function(tag) {
+                const el = origCreate(tag);
+                if (String(tag).toLowerCase() !== 'iframe') return el;
+                let hooked = false;
+                const hook = () => {
+                    if (hooked) return;
+                    const win = el.contentWindow;
+                    const doc = win && win.document;
+                    if (!win || !doc || !doc.documentElement || doc.readyState === 'loading') return;
+                    hooked = true;
+                    win.print = () => {
+                        const d = win.document;
+                        const sheet = d.querySelector('.sheet');
+                        window.__printed.push({
+                            src: el.getAttribute('src'),
+                            mode: sheet ? sheet.getAttribute('data-mode') : null,
+                            hasAnswerSection: Boolean(d.querySelector('.answer-section')),
+                            answerItems: d.querySelectorAll('.a-item').length,
+                            qItems: d.querySelectorAll('.q-item').length,
+                            vars: {
+                                cols: d.documentElement.style.getPropertyValue('--cols-per-row'),
+                                rowGap: d.documentElement.style.getPropertyValue('--row-gap'),
+                                fontSize: d.documentElement.style.getPropertyValue('--font-size'),
+                                answerLineDisplay: d.documentElement.style.getPropertyValue('--answer-line-display'),
+                            },
+                        });
+                    };
+                };
+                const timer = setInterval(hook, 20);
+                setTimeout(() => clearInterval(timer), 12000);
+                return el;
             };
         }""")
 
-    result["before"] = read_vars()
-    log_before = len(api_log())
+        page.click('[data-testid="print-question"]')
+        page.wait_for_timeout(900)
+        page.click('[data-testid="print-answer"]')
+        page.wait_for_timeout(900)
+        result["prints"] = page.evaluate("() => window.__printed")
 
-    def set_range(testid, value):
-        page.eval_on_selector(
-            '[data-testid="' + testid + '"]',
-            """(el, v) => {
-                const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                setter.call(el, String(v));
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            }""",
-            value,
-        )
-        page.wait_for_timeout(130)
-
-    set_range("layout-cols_per_row", 3)
-    result["after_cols"] = read_vars()
-    set_range("layout-row_gap", 2.0)
-    result["after_gap"] = read_vars()
-    set_range("layout-font_size", 20)
-    result["after_font"] = read_vars()
-    set_range("layout-page_margin", 3.0)
-    result["after_margin"] = read_vars()
-
-    # ---- D59 回归：两个开关（本次真 bug 的现场）----
-    #
-    # 防的是什么：面板写的 CSS 变量在渲染器样式表里**从来没被任何规则读取**时，
-    # 「拖动时实时覆盖」看起来一切正常（变量确实改了），但后端 HTML 是加载时定格的，
-    # 所以预览完全不动，而界面还显示「已保存」——比报错更糟。
-    # 两个层次分别断言：
-    #   ① 拖动瞬间：实时覆盖让卷面元素立刻变（手感，0 请求）
-    #   ② 保存 + 重载之后：后端**重新渲染**出来的卷面里开关仍然生效
-    #     （② 才是真正抓到 bug 的那条：只有渲染器真消费变量才会过）
-    def wait_persist_done(timeout_ms=8000):
+        # 答案版：切页签后 iframe 重新指向 mode=answer，并且卷面里出现答案区
+        page.click('[data-testid="preview-tab-answer"]')
         page.wait_for_function(
-            "() => { const el = document.querySelector('.layout-panel-status');"
-            " return el && (el.getAttribute('data-persist-state') === 'refreshed'"
-            " || el.getAttribute('data-persist-state') === 'error'); }",
-            timeout=timeout_ms,
+            "() => { const f = document.getElementById('sheet-frame');"
+            " return f && f.contentDocument && f.contentDocument.querySelector('.answer-section'); }",
+            timeout=15000,
         )
-        return page.get_attribute('.layout-panel-status', 'data-persist-state')
+        result["answer_tab"] = read_vars()
+        page.click('[data-testid="preview-tab-question"]')
+        page.wait_for_function(
+            "() => { const f = document.getElementById('sheet-frame');"
+            " return f && f.contentDocument && f.contentDocument.querySelector('.sheet')"
+            " && !f.contentDocument.querySelector('.answer-section'); }",
+            timeout=15000,
+        )
+        result["question_tab"] = read_vars()
 
-    page.click('[data-control="answer_line"] .switch')
-    page.wait_for_timeout(130)
-    result["after_line_instant"] = read_vars()
-    result["persist_after_line"] = wait_persist_done()
-    result["after_line"] = read_vars()
-
-    page.click('[data-control="header_bar"] .switch')
-    page.wait_for_timeout(130)
-    result["after_header_instant"] = read_vars()
-    result["persist_after_header"] = wait_persist_done()
-    result["after_header"] = read_vars()
-
-    # 关闭之后再打开一次，验证反向（这条防的是「只能关不能开」的假修复）
-    page.click('[data-control="answer_line"] .switch')
-    page.wait_for_timeout(130)
-    result["after_line_on_instant"] = read_vars()
-    result["persist_after_line_on"] = wait_persist_done()
-    result["after_line_on"] = read_vars()
-
-    page.click('[data-control="header_bar"] .switch')
-    page.wait_for_timeout(130)
-    result["after_header_on_instant"] = read_vars()
-    result["persist_after_header_on"] = wait_persist_done()
-    result["after_header_on"] = read_vars()
-
-    # 调参窗口内的后端请求（等过 debounce 400ms，让排版 PATCH 落下去）
-    page.wait_for_timeout(900)
-    window = api_log()[log_before:]
-    result["panel_window_requests"] = window
-    result["panel_preview_reads"] = len(
-        [r for r in window if r["method"] == "GET" and r["path"] == "/api/papers/1"]
-    )
-    # D59 兜底会重载卷面，所以这里期望 **恰好等于保存次数**，而不是 0：
-    # 拖动过程中 0 次；每次保存成功后 1 次。
-    result["panel_sheet_reads"] = len(
-        [r for r in window if r["method"] == "GET" and r["path"] == "/api/papers/1/sheet"]
-    )
-    result["panel_layout_patches"] = len(
-        [r for r in window if r["method"] == "PATCH" and r["path"].endswith("/layout")]
-    )
-
-    # 改题：换一题 / 删题
-    requests = []
-    page.on("request", lambda r: requests.append((r.method, r.url)))
-    page.click('[data-testid="regenerate-1"]')
-    page.wait_for_timeout(400)
-    page.click('[data-testid="delete-1"]')
-    page.wait_for_timeout(400)
-    result["mutation_requests"] = [
-        m + " " + u.split(str(${STATIC_PORT}))[-1] for m, u in requests if "/api/" in u
-    ]
-
-    # 打印：D56 之后打印的是**隐藏 iframe 里的后端卷面**（.print-frame），
-    # 不是 window.print() 打主文档。所以要在打印 iframe 的 window 上装桩。
-    #
-    # 实现里是「fetch 卷面 HTML → document.write 进 about:blank iframe → 轮询 readyState → print()」，
-    # 没有 load 事件可依赖；所以这里轮询接管 print，每次调用都抓下**打印时刻**的卷面内容。
-    page.evaluate("""() => {
-        window.__printed = [];
-        const origCreate = document.createElement.bind(document);
-        document.createElement = function(tag) {
-            const el = origCreate(tag);
-            if (String(tag).toLowerCase() !== 'iframe') return el;
-            let hooked = false;
-            const hook = () => {
-                if (hooked) return;
-                const win = el.contentWindow;
-                const doc = win && win.document;
-                if (!win || !doc || !doc.documentElement || doc.readyState === 'loading') return;
-                hooked = true;
-                win.print = () => {
-                    const d = win.document;
-                    const sheet = d.querySelector('.sheet');
-                    window.__printed.push({
-                        src: el.getAttribute('src'),
-                        mode: sheet ? sheet.getAttribute('data-mode') : null,
-                        hasAnswerSection: Boolean(d.querySelector('.answer-section')),
-                        answerItems: d.querySelectorAll('.a-item').length,
-                        qItems: d.querySelectorAll('.q-item').length,
-                        vars: {
-                            cols: d.documentElement.style.getPropertyValue('--cols-per-row'),
-                            rowGap: d.documentElement.style.getPropertyValue('--row-gap'),
-                            fontSize: d.documentElement.style.getPropertyValue('--font-size'),
-                            answerLineDisplay: d.documentElement.style.getPropertyValue('--answer-line-display'),
-                        },
-                    });
+    try:
+        run_flow()
+    except Exception as exc:  # noqa: BLE001
+        # 失败时把「当时页面长什么样」带回去：只有一行 TimeoutError 时无从下手（本机踩过）
+        result["failure"] = f"{type(exc).__name__}: {exc}".split("\n")[0]
+        try:
+            result["failure_state"] = page.evaluate("""() => {
+                const f = document.getElementById('sheet-frame');
+                return {
+                    url: location.href,
+                    bodyHead: document.body.innerText.slice(0, 400),
+                    frameSrc: f ? f.getAttribute('src') : null,
+                    hasSheet: Boolean(f && f.contentDocument && f.contentDocument.querySelector('.sheet')),
+                    frameVars: (() => {
+                        const d = f && f.contentDocument;
+                        if (!d) return null;
+                        const r = d.documentElement;
+                        return {
+                            cols: r.style.getPropertyValue('--cols-per-row'),
+                            gap: r.style.getPropertyValue('--row-gap'),
+                            font: r.style.getPropertyValue('--font-size'),
+                            margin: r.style.getPropertyValue('--page-margin'),
+                        };
+                    })(),
+                    hasAnswerLineSwitch: Boolean(document.querySelector('[data-control="answer_line"] .switch')),
+                    panelStatus: (document.querySelector('.layout-panel-status') || {}).getAttribute
+                        ? document.querySelector('.layout-panel-status').getAttribute('data-persist-state') : null,
                 };
-            };
-            const timer = setInterval(hook, 20);
-            setTimeout(() => clearInterval(timer), 12000);
-            return el;
-        };
-    }""")
-
-    page.click('[data-testid="print-question"]')
-    page.wait_for_timeout(900)
-    page.click('[data-testid="print-answer"]')
-    page.wait_for_timeout(900)
-    result["prints"] = page.evaluate("() => window.__printed")
-
-    # 答案版：切页签后 iframe 重新指向 mode=answer，并且卷面里出现答案区
-    page.click('[data-testid="preview-tab-answer"]')
-    page.wait_for_function(
-        "() => { const f = document.getElementById('sheet-frame');"
-        " return f && f.contentDocument && f.contentDocument.querySelector('.answer-section'); }",
-        timeout=15000,
-    )
-    result["answer_tab"] = read_vars()
-    page.click('[data-testid="preview-tab-question"]')
-    page.wait_for_function(
-        "() => { const f = document.getElementById('sheet-frame');"
-        " return f && f.contentDocument && f.contentDocument.querySelector('.sheet')"
-        " && !f.contentDocument.querySelector('.answer-section'); }",
-        timeout=15000,
-    )
-    result["question_tab"] = read_vars()
-
-    page.screenshot(path=os.path.join(r"${FRONTEND_DIR}", "verify-layout-preview.png"))
+            }""")
+        except Exception:  # noqa: BLE001
+            result["failure_state"] = {"note": "页面已不可读"}
+    # 截图只是辅助证据，**不能让它拖垮门禁**：路径形态在不同机器上可能不可写
+    try:
+        page.screenshot(path=os.path.join(r"@@FRONTEND_DIR@@".lstrip("/"), "verify-layout-preview.png"))
+    except Exception as exc:  # noqa: BLE001
+        result["screenshot_error"] = f"{type(exc).__name__}: {exc}"[:200]
     browser.close()
-
 emit(result)
 `;
 
+/**
+ * 用**当时**的端口/路径渲染出真正要执行的 Python。
+ *
+ * 必须在 `startServers()` 之后调用 —— 这时 STATIC_PORT / API_PORT 才是服务进程
+ * 真正绑上的端口（可能因为被占用而与默认值不同）。
+ */
+function buildPlaywrightScript() {
+  // 用「可识别标记」而不是 `${...}` 做占位：`${...}` 在模板字面量里会被**立即插值**，
+  // 于是脚本被固化成「服务退让前的端口」，Playwright 就会去打开另一个应用
+  // （本机实测：打开了 Lead 的 vite preview，页面标题/题目数都对不上）。
+  // @@NAME@@ 不参与任何转义规则，纯文本替换，最不容易出错。
+  return PLAYWRIGHT_SCRIPT_TEMPLATE
+    .replaceAll('@@STATIC_PORT@@', String(STATIC_PORT))
+    .replaceAll('@@API_PORT@@', String(API_PORT))
+    // 路径统一成正斜杠：Windows 上 Python 也认，且不必再操心反斜杠转义
+    .replaceAll('@@FRONTEND_DIR@@', FRONTEND_DIR.replace(/\\/g, '/'));
+}
+
 function runPlaywright() {
-  const proc = spawnSync(PYTHON, ['-c', PLAYWRIGHT_SCRIPT], {
+  const proc = spawnSync(PYTHON, ['-c', buildPlaywrightScript()], {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, PYTHONUTF8: '1', TEMP: TMP_DIR, TMP: TMP_DIR, TMPDIR: TMP_DIR },
@@ -405,6 +491,11 @@ async function main() {
   }
 
   console.log(`Chromium: ${result.chromium ?? '(默认)'}`);
+  if (result.failure) {
+    console.log(`\n⚠ Playwright 流程中断：${result.failure}`);
+    console.log('  中断时的页面状态：');
+    console.log(JSON.stringify(result.failure_state, null, 2));
+  }
   console.log('\n—— 断言 ——');
   const b = result.before;
   const a = {
@@ -416,8 +507,7 @@ async function main() {
     header: result.after_header,
   };
 
-  check('卷面 iframe 加载出后端渲染的卷面（.sheet）', b?.hasSheet === true, `src=${b?.src} 标题=${b?.frameDocTitle} 题目数=${b?.itemCount}`);
-  check('iframe src 指向 /api/papers/1/sheet?mode=question', (b?.src ?? '').includes('/api/papers/1/sheet?mode=question'), b?.src);
+  check('卷面 iframe 加载出后端渲染的卷面（.sheet）', b?.hasSheet === true, `src=${b?.src} 标题=${b?.frameDocTitle} 题目数=${b?.itemCount}`);  check('iframe src 指向 /api/papers/1/sheet?mode=question', (b?.src ?? '').includes('/api/papers/1/sheet?mode=question'), b?.src);
   check('iframe 文档根元素上已是初始六个变量', b.inline['--cols-per-row'] === '4' && b.inline['--answer-line-display'] === 'block', JSON.stringify(b.inline));
   check('初始 --cols-per-row = 4', b.inline['--cols-per-row'] === '4');
   check('初始 --row-gap = 1', b.inline['--row-gap'] === '1');

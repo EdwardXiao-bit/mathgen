@@ -3,7 +3,7 @@
 面向**小学老师**的「出题 + 批改」工具：**老师端**配置题目、生成、打印、发卷、看成绩；**学生端**局域网扫码、自主练习、自动批改。
 部署形态：跑在老师本机 / 教室内网机器，**不依赖公网**（D10）。
 
-当前阶段：**需求已冻结 → 技术设计 v0.4 → 课程 Word 已产出 → M1、M2 均已验收**。
+当前阶段：**需求已冻结 → 技术设计 v0.4 → 课程 Word 已产出 → M1、M2 已验收 → M3 进行中**。
 
 ## 先读什么
 
@@ -27,14 +27,14 @@
 | 协作体系 | **已建立**（`docs/03`–`06` + `PROJECT.md`） |
 | 课程提交 Word | **需求分析、技术设计 已产出**；测试文档待写（M7） |
 | 配图 | **10 张 PNG**，见 `docs/word/figures/` |
-| 代码 | **M1、M2 已验收** —— 出题引擎 / 判分 / 后端 API / 卷面渲染导出 / 老师端界面，全量 496 用例；M3 起未开始 |
+| 代码 | **M1、M2 已验收**（引擎 / 判分 / API / 卷面渲染导出 / 老师端界面）；**M3 进行中**（卷库、Word 导出、单一服务托管） |
 
 ## 文档索引
 
 | 文件 | 作用 |
 | --- | --- |
 | `docs/PROJECT.md` | **项目总览与导航**：范围、里程碑、约束、文档地图 |
-| `docs/00-决策记录.md` | **唯一事实来源**：已定决策 D1–D60 + 待决问题 |
+| `docs/00-决策记录.md` | **唯一事实来源**：已定决策 D1–D64 + 待决问题 |
 | `docs/01-需求分析.md` | 需求分析文档（v1.2 冻结） |
 | `docs/02-技术设计.md` | 技术设计文档（v0.4，含设计理由与 DQ） |
 | `docs/03-协作规范.md` | **多智能体协作硬规则**：写域、交接、冲突、验证 |
@@ -98,8 +98,10 @@ $VPY = 'C:\Users\Ed\dsh_workspace\mathgen\backend\.venv\Scripts\python.exe'
 & $VPY -m unittest discover -s backend/tests/engine -t backend -v     # 只跑引擎
 & $VPY -m unittest discover -s backend/tests/api    -t backend -v     # 只跑 API（M2）
 
-# 启动服务（M2 起）：后端 127.0.0.1:8000，前端 Vite dev 5173 并代理 /api
+# 启动服务（M3 起**一条命令**即可，后端同时托管前端产物）
 & $VPY -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend
+#   → http://127.0.0.1:8000/teacher 即为老师端（无需另开 Vite）
+#   → 若要从局域网访问（学生端 M4 用），把 --host 改成 0.0.0.0
 
 # 文档与配图
 & $PY tools\make_diagrams.py    # 10 张配图 -> docs/word/figures/
@@ -131,6 +133,10 @@ LibreOffice Kit 的 `render`（**docx → PNG**）在本机会把整个版心**�
 
 **版式验收一律走 `convert` 成 PDF 再渲染**，不要用 docx → PNG 判断版式。
 （已用 docGrid 与边距对照实验排除文档侧原因。）
+
+> **同一个 `mkdtemp` 坑也命中 LibreOffice Kit**（M3 实测）：转换子进程若用系统 `TEMP`，会报
+> `EPERM: operation not permitted`（目录形如 `libreoffice-kit-XXXXXX`）。
+> **调用 LibreOffice 时同样要把 `TEMP`/`TMP` 指向可写目录**，与坑 2 是同一类问题、同一套绕法。
 
 ### 坑 2 · Playwright 启动（PDF 导出依赖它）
 

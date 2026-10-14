@@ -18,16 +18,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import {
+  DEFAULT_ANSWER_LAYOUT,
   LAYOUT_DEFAULTS,
   clampLayout,
   cssVariables,
   route,
+  type AnswerLayoutIn,
   type LayoutIn,
   type PaperDetail,
   type SheetMode,
 } from '../../shared/api';
 import { ApiError, teacherApi } from '../../shared/apiClient';
 import { queryKeys } from '../../shared/queryKeys';
+import { AnswerLayoutEditor } from '../AnswerLayoutEditor';
 import { LayoutPanel } from '../LayoutPanel';
 import { SheetFrame, applyLayoutToDocument } from '../SheetFrame';
 
@@ -209,10 +212,48 @@ export function PaperPage() {
     onSuccess: (clone) => {
       setEditError(null);
       queryClient.setQueryData(queryKeys.paper(clone.id), clone);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.papers });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.papersRoot });
       navigate(`/teacher/paper/${clone.id}`);
     },
     onError: (error) => setEditError(readError(error)),
+  });
+
+  // ---- 第六维「答案版形式」（M3 起正式接入）-------------------------------
+  const serverAnswerLayout = serverPaper?.answer_layout;
+  const [answerLayout, setAnswerLayout] = useState<AnswerLayoutIn>(DEFAULT_ANSWER_LAYOUT);
+  const answerLayoutHydratedFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (!serverPaper || !serverAnswerLayout) return;
+    if (answerLayoutHydratedFor.current === serverPaper.id) return;
+    answerLayoutHydratedFor.current = serverPaper.id;
+    setAnswerLayout(serverAnswerLayout);
+  }, [serverPaper, serverAnswerLayout]);
+
+  const [answerLayoutState, setAnswerLayoutState] = useState<
+    'idle' | 'saving' | 'saved' | 'error'
+  >('idle');
+  const [answerLayoutError, setAnswerLayoutError] = useState<string | null>(null);
+
+  const answerLayoutMutation = useMutation({
+    mutationFn: (next: AnswerLayoutIn) =>
+      teacherApi.updateAnswerLayout(paperId as number, next),
+    onMutate: () => {
+      setAnswerLayoutState('saving');
+      setAnswerLayoutError(null);
+    },
+    onSuccess: (saved) => {
+      setAnswerLayoutState('saved');
+      setAnswerLayout(saved);
+      queryClient.setQueryData<PaperDetail>(queryKeys.paper(paperId as number), (previous) =>
+        previous ? { ...previous, answer_layout: saved } : previous,
+      );
+      // 答案版页面的呈现由后端按 answer_layout 渲染 → 重载 answer 预览，别让老师看到旧样子
+      setSheetReloadToken((token) => token + 1);
+    },
+    onError: (error) => {
+      setAnswerLayoutState('error');
+      setAnswerLayoutError(readError(error));
+    },
   });
 
   // ---- 预览 / 打印 ---------------------------------------------------------
@@ -220,11 +261,6 @@ export function PaperPage() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const sheetFrameRef = useRef<HTMLIFrameElement | null>(null);
 
-  /**
-   * 答案版形式在 M2 固定为 D20 默认（单独成页）。
-   * 契约的 `PaperConfigIn` 里没有这个字段，`paper.answer_layout` 留到 M3——
-   * 所以这里不再有任何「本地假装生效」的状态（之前存在 sessionStorage 里，已删除）。
-   */
   const answerAllowed = true;
 
   // 卷面 HTML 的地址：预览 iframe 与打印共用同一个 `/sheet` 接口（D56）
@@ -506,6 +542,54 @@ export function PaperPage() {
             persistError={persistError}
             localOnly={persistState === 'error' && persistError !== null && persistError.includes('连接不上后端')}
           />
+
+          <section className="answer-layout-panel" aria-label="答案版形式" data-testid="answer-layout-panel">
+            <div className="layout-panel-head">
+              <h2>答案版形式</h2>
+              <span
+                className="answer-layout-state"
+                data-testid="answer-layout-state"
+                data-state={editable ? answerLayoutState : 'locked'}
+              >
+                {!editable
+                  ? '已发布 · 不可改'
+                  : answerLayoutState === 'saving'
+                    ? '正在保存…'
+                    : answerLayoutState === 'saved'
+                      ? '已保存，答案版预览已刷新'
+                      : answerLayoutState === 'error'
+                        ? '保存失败'
+                        : '改动后立即保存'}
+              </span>
+            </div>
+
+            <AnswerLayoutEditor
+              value={answerLayout}
+              onChange={(next) => {
+                // 已发布卷：控件本身是 disabled，这里再兜一层，避免任何路径发出必然 409 的请求
+                if (!editable) return;
+                setAnswerLayout(next);
+                answerLayoutMutation.mutate(next);
+              }}
+              readOnly={!editable}
+              idPrefix={`paper-${paper.id}-answer-layout`}
+            />
+
+            {answerLayoutError ? (
+              <p className="form-error" role="alert" data-testid="answer-layout-error">
+                {answerLayoutMutation.error instanceof ApiError &&
+                answerLayoutMutation.error.code === 'PAPER_NOT_EDITABLE'
+                  ? '这套卷已经发布，答案版形式不能再改（后端返回 PAPER_NOT_EDITABLE）。请先「另存为可编辑副本」再调整。'
+                  : `答案版形式保存失败：${answerLayoutError}`}
+              </p>
+            ) : null}
+
+            {answerLayoutState === 'saved' ? (
+              <p className="dim-hint" data-testid="answer-layout-saved-hint">
+                切到「答案版」页签可看到最新呈现（预览由后端按 answer_layout 渲染）。
+              </p>
+            ) : null}
+          </section>
 
           <section className="item-editor" aria-label="改题">
             <h2>改题（{paper.items.length} 道）</h2>

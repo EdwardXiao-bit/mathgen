@@ -3,10 +3,12 @@
  *
  * 用法：& $NODE $PNPM --dir frontend verify      （等价于 node scripts/run-all-verifications.mjs）
  *
- * 依次跑三个脚本，任一失败即整体失败，最后打印汇总与产物路径：
- *   1. scripts/verify-contract.py           前端类型 ↔ backend/app/contracts/{api,layout}.py
- *   2. scripts/verify-layout-css-vars.mjs   排版面板六控件实时驱动预览区 CSS 变量
- *   3. scripts/verify-teacher-ui.mjs        六维表单 / 打印版式 / 后端未就绪降级
+ * 依次跑五个脚本，任一失败即整体失败，最后打印汇总与产物路径：
+ *   1. scripts/verify-no-cdn.mjs           产物无外部资源引用（位置感知：只看资源位）
+ *   2. scripts/verify-contract.py          前端类型 ↔ backend/app/contracts/{api,layout}.py
+ *   3. scripts/verify-layout-css-vars.mjs  排版面板六控件实时驱动预览区 CSS 变量
+ *   4. scripts/verify-teacher-ui.mjs       六维表单 / 打印版式 / 后端未就绪降级
+ *   5. scripts/verify-library-m3.mjs       M3 卷库（分页/搜索/筛选/按卷号）与第六维落库
  */
 
 import { spawnSync } from 'node:child_process';
@@ -39,6 +41,11 @@ const steps = [
     name: '④ 老师端界面（六维表单 / 打印 / 后端未就绪）',
     cmd: process.execPath,
     args: [path.join(__dirname, 'verify-teacher-ui.mjs')],
+  },
+  {
+    name: '⑤ M3 卷库与第六维（分页 / 搜索 / 按卷号 / answer-layout 落库）',
+    cmd: process.execPath,
+    args: [path.join(__dirname, 'verify-library-m3.mjs')],
   },
 ];
 

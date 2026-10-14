@@ -27,8 +27,18 @@ const NODE_EXE = process.execPath;
 const TMP_DIR = path.join(FRONTEND_DIR, '.tmp-playwright');
 mkdirSync(TMP_DIR, { recursive: true });
 
-const STATIC_PORT = 4173;
-const API_PORT = 8123;
+/**
+ * 端口：默认 4173 / 8123，但**以服务进程自己绑上的端口为准**。
+ *
+ * 与服务退让有关的坑见 verify-layout-css-vars.mjs 的同名注释：本机上别的服务
+ * （老师端预览、样张静态服务）可能已占用 4173，服务会退让到 4174/…，
+ * 而模块级模板字面量若在那之前就把端口固化成 4173，Playwright 就会**打开别人的应用**，
+ * 表现为一堆「元素找不到」的假失败。所以端口用 @@TOKEN@@ 占位，到 buildPythonScript() 再替换。
+ */
+const BASE_STATIC_PORT = Number(process.env.MATHGEN_VERIFY_STATIC_PORT ?? 4173);
+const BASE_API_PORT = Number(process.env.MATHGEN_VERIFY_API_PORT ?? 8123);
+let STATIC_PORT = BASE_STATIC_PORT;
+let API_PORT = BASE_API_PORT;
 const PYTHON = path.join(REPO_ROOT, 'backend', '.venv', 'Scripts', 'python.exe');
 
 const checks = [];
@@ -47,7 +57,12 @@ function startServers(mode) {
   const child = spawn(NODE_EXE, [path.join(__dirname, 'verify-server.mjs')], {
     cwd: FRONTEND_DIR,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, MATHGEN_VERIFY_MODE: mode },
+    env: {
+      ...process.env,
+      MATHGEN_VERIFY_MODE: mode,
+      MATHGEN_VERIFY_STATIC_PORT: String(BASE_STATIC_PORT),
+      MATHGEN_VERIFY_API_PORT: String(BASE_API_PORT),
+    },
   });
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
@@ -57,12 +72,20 @@ function startServers(mode) {
   });
 
   return new Promise((resolve, reject) => {
+    let stdoutBuffer = '';
     const timer = setTimeout(() => {
       child.kill();
       reject(new Error(`服务进程没就绪。stderr:\n${stderr}`));
     }, 15_000);
     child.stdout.on('data', (chunk) => {
-      if (chunk.includes('VERIFY_SERVER_READY')) {
+      stdoutBuffer += chunk;
+      // 以服务进程自己绑上的端口为准（它可能因端口被占而退让）
+      const ports = stdoutBuffer.match(/VERIFY_PORTS static=(\d+) api=(\d+)/);
+      if (ports) {
+        STATIC_PORT = Number(ports[1]);
+        API_PORT = Number(ports[2]);
+      }
+      if (stdoutBuffer.includes('VERIFY_SERVER_READY')) {
         clearTimeout(timer);
         resolve(child);
       }
@@ -80,7 +103,7 @@ const PY_SCRIPT = String.raw`
 import glob, json, os
 from playwright.sync_api import sync_playwright
 
-BASE = "http://127.0.0.1:${STATIC_PORT}"
+BASE = "http://127.0.0.1:@@STATIC_PORT@@"
 
 def find_chromium():
     explicit = os.environ.get("MATHGEN_CHROMIUM")
@@ -126,11 +149,19 @@ with sync_playwright() as p:
         '[data-dimension="question_type"] .chip', "els => els.map(e => e.textContent.trim())")
     result["answer_forms"] = page.eval_on_selector_all(
         '[data-dimension="answer_form"] .chip', "els => els.map(e => e.textContent.trim())")
+    # M3：第六维从「只读占位」改成**四个可保存的开关**（契约 AnswerLayoutIn）。
+    # 这里量的是「真的可控」，以及默认值是 D20 的四个 true。
+    result["answer_layout_switches"] = page.eval_on_selector_all(
+        '[data-dimension="answer_form"] input[type="checkbox"]',
+        "els => els.map(e => ({id: e.getAttribute('data-testid'), checked: e.checked, disabled: e.disabled}))")
+    result["answer_layout_labels"] = page.eval_on_selector_all(
+        '[data-dimension="answer_form"] .switch-row-label', "els => els.map(e => e.textContent.trim())")
+    # 旧 M2 的「M3 起生效」占位必须**不再存在**（存在就说明没真正接入）
     result["answer_form_pending"] = (page.inner_text('[data-testid="answer-form-pending"]')
         if page.locator('[data-testid="answer-form-pending"]').count() > 0 else None)
     result["answer_form_clickable_count"] = page.eval_on_selector_all(
-        '[data-dimension="answer_form"] input[type="radio"]',
-        "els => els.filter(e => !e.disabled && !e.readOnly).length")
+        '[data-dimension="answer_form"] input[type="checkbox"]',
+        "els => els.filter(e => !e.disabled).length")
     result["answer_form_radio_count"] = page.locator(
         '[data-dimension="answer_form"] input[type="radio"]').count()
     result["count_value"] = page.input_value('[data-testid="count"]')
@@ -251,7 +282,10 @@ emit(result)
 `;
 
 function runPython() {
-  const proc = spawnSync(PYTHON, ['-c', PY_SCRIPT], {
+  // 端口在 startServers() 之后才确定，所以脚本必须在**调用时**渲染
+  const script = PY_SCRIPT.replaceAll('@@STATIC_PORT@@', String(STATIC_PORT))
+    .replaceAll('@@API_PORT@@', String(API_PORT));
+  const proc = spawnSync(PYTHON, ['-c', script], {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, PYTHONUTF8: '1', TEMP: TMP_DIR, TMP: TMP_DIR, TMPDIR: TMP_DIR },
@@ -311,20 +345,41 @@ async function main() {
     online.count_value === '20' && online.count_bounds?.min === '1' && online.count_bounds?.max === '100',
     `value=${online.count_value} min=${online.count_bounds?.min} max=${online.count_bounds?.max}`,
   );
+  // ── 第六维（M3 变更）──────────────────────────────────────────────
+  // M2 时它是「只读 + 标注 M3 起生效」的占位；M3 已正式接入，所以断言**反过来**：
+  // 必须真的可控（四个 checkbox），且旧占位必须消失 —— 否则又变成「看起来完成了」。
+  const al = online.answer_layout_switches ?? [];
   check(
-    '第六维答案版形式：只展示 1 个 D20 默认选项',
-    (online.answer_forms ?? []).length === 1 && (online.answer_forms ?? [])[0].includes('单独打印'),
-    (online.answer_forms ?? []).join(' / '),
+    '第六维答案版形式：4 个开关（契约 AnswerLayoutIn 四字段）',
+    al.length === 4,
+    al.map((s) => s.id).join(' / '),
   );
   check(
-    '第六维：标注「M3 起生效」而不是假装可点（D55 / D20）',
-    (online.answer_form_pending ?? '').includes('M3 起生效'),
-    (online.answer_form_pending ?? '').slice(0, 60),
+    '第六维：开关默认全是 D20 默认（四项 true）',
+    al.length === 4 && al.every((s) => s.checked === true),
+    al.map((s) => `${s.id}=${s.checked}`).join(' '),
   );
   check(
-    '第六维：没有可点的 radio（全部 readonly）',
-    online.answer_form_clickable_count === 0 && online.answer_form_radio_count === 1,
-    `可点数=${online.answer_form_clickable_count} / radio 总数=${online.answer_form_radio_count}`,
+    '第六维：开关全部**可点**（不再是只读占位）',
+    al.length === 4 && al.every((s) => s.disabled === false) && online.answer_form_clickable_count === 4,
+    `可点数=${online.answer_form_clickable_count}`,
+  );
+  check(
+    '第六维：旧「M3 起生效」占位已移除',
+    online.answer_form_pending === null,
+    online.answer_form_pending ?? '(不存在，正确)',
+  );
+  check(
+    '第六维：不再有 radio（改由开关承载）',
+    online.answer_form_radio_count === 0,
+    `radio 总数=${online.answer_form_radio_count}`,
+  );
+  check(
+    '第六维四个开关的文案与契约字段对应',
+    ['答案单独成页', '含逐步过程', '含难度', '含考点标签'].every(
+      (label) => (online.answer_layout_labels ?? []).some((actual) => actual.includes(label)),
+    ),
+    (online.answer_layout_labels ?? []).join(' / '),
   );
   check('未选 R7 时不显示 max_value 输入框', online.max_value_visible_before === false);
   check('勾选 R7 后出现 max_value 输入框', online.max_value_visible_after === true);

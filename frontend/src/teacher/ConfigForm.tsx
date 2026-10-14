@@ -12,29 +12,34 @@
 
 import { useState } from 'react';
 import {
-  ANSWER_FORM_OPTIONS,
   CONFIG_BOUNDS,
+  DEFAULT_ANSWER_LAYOUT,
   DEFAULT_CONFIG,
   OP_OPTIONS,
   QUESTION_TYPE_OPTIONS,
   RANGE_OPTIONS,
   validateConfig,
+  type AnswerLayoutIn,
   type OpName,
   type PaperConfigIn,
   type QuestionTypeName,
   type RangeName,
 } from '../shared/api';
+import { AnswerLayoutEditor } from './AnswerLayoutEditor';
 
 export interface ConfigDraft {
   config: PaperConfigIn;
   seedText: string;
   title: string;
+  /** 第六维「答案版形式」——随创建一起落库（M3） */
+  answerLayout: AnswerLayoutIn;
 }
 
 export const DEFAULT_DRAFT: ConfigDraft = {
   config: DEFAULT_CONFIG,
   seedText: '',
   title: '',
+  answerLayout: DEFAULT_ANSWER_LAYOUT,
 };
 
 const CONSTRAINT_TOGGLES: ReadonlyArray<{
@@ -254,17 +259,13 @@ export function ConfigForm({
         <h2>
           <span className="dim-index">⑥</span> 答案版形式
         </h2>
-        <div className="chip-row">
-          <label className="chip chip-on chip-static" data-testid="answer-form-separate_page">
-            <input type="radio" name="answer-form" checked readOnly />
-            {ANSWER_FORM_OPTIONS[0].label}
-          </label>
-          <span className="chip-pending">M3 起生效</span>
-        </div>
-        <p className="dim-hint" data-testid="answer-form-pending">
-          M3 起生效：M2 期间答案版形式固定为 D20 默认（单独成页，含答案 / 难度 / 考点标签 / 脱式过程）。
-          「同屏对照」与「只要题目版」两种形式留到 M3 由 paper.answer_layout 承接——
-          现在选了也不会起作用，所以这里不做成可点控件（避免老师以为它已经生效）。
+        <AnswerLayoutEditor
+          value={draft.answerLayout}
+          onChange={(next) => onChange({ ...draft, answerLayout: next })}
+          idPrefix="config-answer-layout"
+        />
+        <p className="dim-hint" data-testid="answer-layout-note">
+          四项开关随「生成」一起保存到该卷（`paper.answer_layout`）；生成后还可以在卷页继续调整。
         </p>
       </section>
 

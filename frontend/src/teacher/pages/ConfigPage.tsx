@@ -27,11 +27,20 @@ export function ConfigPage() {
         config: payload.config,
         ...(seedText === '' ? {} : { seed: Number(seedText) }),
         ...(payload.title.trim() === '' ? {} : { title: payload.title.trim() }),
+        // 第六维：把用户在表单里勾的四个开关一并落库（见 createPaper 的两条落库路径）
+        answerLayout: payload.answerLayout,
       });
     },
-    onSuccess: (paper) => {
+    onSuccess: ({ paper, answerLayoutMode }) => {
       queryClient.setQueryData(queryKeys.paper(paper.id), paper);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.papers });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.papersRoot });
+      // 如实告诉老师「答案版形式是怎么落库的」：一次创建带上 / 创建后补一次 PATCH
+      if (answerLayoutMode === 'follow-up-patch') {
+        window.sessionStorage.setItem(
+          `mathgen.answerLayoutNotice.${paper.id}`,
+          '答案版形式已在创建后单独保存（后端创建接口暂不接受 answer_layout）。',
+        );
+      }
       navigate(`/teacher/paper/${paper.id}`);
     },
   });

@@ -14,8 +14,9 @@ export interface BackendHealth {
 
 export function useBackendHealth(): BackendHealth {
   const query = useQuery({
-    queryKey: queryKeys.papers,
-    queryFn: () => teacherApi.listPapers(),
+    // 健康探测只关心「后端在不在」，用最小请求（limit=1）；与卷库分页查询分开缓存键
+    queryKey: queryKeys.health,
+    queryFn: () => teacherApi.listPapers({ limit: 1, offset: 0 }),
     retry: false,
     refetchInterval: 15_000,
   });

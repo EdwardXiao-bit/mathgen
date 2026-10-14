@@ -682,14 +682,121 @@ code {
   min-width: 0;
 }
 
-/* 排版面板 */
+/* 排版面板 / 答案版形式面板 / 改题 */
 
 .layout-panel,
+.answer-layout-panel,
 .item-editor {
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius);
   padding: 14px;
+}
+
+/* ---- 第六维「答案版形式」（M3） ---- */
+
+.answer-layout-state {
+  font-size: 12px;
+  color: var(--ui-text-soft);
+}
+
+.answer-layout-state[data-state='saved'] {
+  color: var(--ui-ok);
+}
+
+.answer-layout-state[data-state='saving'] {
+  color: var(--ui-accent);
+}
+
+.answer-layout-state[data-state='error'] {
+  color: var(--ui-danger);
+}
+
+.answer-layout-state[data-state='locked'] {
+  color: var(--ui-text-soft);
+}
+
+.answer-layout-editor[data-readonly='1'] .switch-row {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.answer-layout-panel .form-error {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+/* ---- 卷库工具条（M3：搜索 / 筛选 / 按卷号打开） ---- */
+
+.library-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.library-toolbar label,
+.library-code label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ui-text-soft);
+}
+
+.library-toolbar input,
+.library-toolbar select {
+  padding: 6px 8px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 4px;
+  font: inherit;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+.library-search input {
+  width: 240px;
+}
+
+.library-code {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.library-code input {
+  width: 160px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.library-summary {
+  margin-bottom: 8px;
+  color: var(--ui-text-soft);
+  font-size: 13px;
+}
+
+.library-summary b {
+  color: var(--ui-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.library-legacy-note {
+  color: var(--ui-warn-border);
+  font-size: 12px;
+}
+
+.library-pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.library-pager-info {
+  color: var(--ui-text-soft);
+  font-size: 13px;
 }
 
 .layout-panel-head {

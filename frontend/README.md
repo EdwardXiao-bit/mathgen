@@ -23,33 +23,48 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 & $NODE $PNPM --dir frontend verify     # 跑全部验收（见下）
 ```
 
-## 三条验收脚本（都可复现，退出码 0 = 通过）
+## 五条验收脚本（都可复现，退出码 0 = 通过）
 
 ```powershell
-& $NODE $PNPM --dir frontend verify                       # 一次跑完四条
+& $NODE $PNPM --dir frontend verify                       # 一次跑完五条
 # 或分开跑：
 & $NODE frontend\scripts\verify-no-cdn.mjs
 & backend\.venv\Scripts\python.exe frontend\scripts\verify-contract.py
 & $NODE frontend\scripts\verify-layout-css-vars.mjs
 & $NODE frontend\scripts\verify-teacher-ui.mjs
+& $NODE frontend\scripts\verify-library-m3.mjs
 ```
 
 | 脚本 | 验证什么 | 怎么保证不是「自证」 |
 | --- | --- | --- |
-| `verify-no-cdn.mjs` | 产物不引用外部 CDN（NFR-9） | 扫 dist 全部文本文件里的完整 URL；白名单只放行**非资源性字符串常量**（W3C 命名空间、React 压缩产物的错误文档地址），每条都打印放行理由与 bundle 位置 |
-| `verify-contract.py` | 前端 TS 类型 ↔ `backend/app/contracts/api.py` 的**每个模型逐字段**、`ROUTES` 键值、`layout.py` 的 CSS 变量名与取值范围；并断言前端不出现裸 `/api` 字面量 | 用 Pydantic **真加载** `api.py` 取字段，不是正则对着注释猜 |
+| `verify-no-cdn.mjs` | 产物不引用外部 CDN（NFR-9） | **位置感知**：只有出现在**资源位**（`src=` / `href=` / `url()` / `@import` / `fetch()` / `import()` …）的绝对 URL 才算违规；普通字符串常量与提示文案里的 URL 逐条打印为 `[TEXT]` 但**不计失败**。判据写在脚本头注释里 |
+| `verify-contract.py` | 前端 TS 类型 ↔ `backend/app/contracts/api.py` 的**每个模型逐字段**（含 M3 新增的 `AnswerLayoutIn` 与 `answer_layout` / `limit` / `offset`）、`ROUTES` 键值（含 `by-code` / `answer-layout`）、`layout.py` 的 CSS 变量名与取值范围；并断言前端不出现裸 `/api` 字面量 | 用 Pydantic **真加载** `api.py` 取字段，不是正则对着注释猜 |
 | `verify-layout-css-vars.mjs` | 排版面板六个控件**实时**改变 **iframe 文档**里的 CSS 变量；打印取的是后端卷面 | 真实产物 + 模拟后端（含 `/sheet` 路由），Playwright 读 `iframe.contentDocument`；断言调参期间 **0 次**读卷/读卷面 |
-| `verify-teacher-ui.mjs` | 六维表单选项 = D16/D17、第六维只读、打印的是后端卷面、后端未就绪三种形态都不白屏 | 三个场景各跑一遍：后端可用 / 代理 502 / 后端 500 |
+| `verify-teacher-ui.mjs` | 六维表单选项 = D16/D17、**第六维四个开关可保存**（M3 起不再是只读占位）、打印的是后端卷面、后端未就绪三种形态都不白屏 | 三个场景各跑一遍：后端可用 / 代理 502 / 后端 500 |
+| `verify-library-m3.mjs` | M3 卷库：**分页**（20→17、区间文案、末页禁用、offset 真的发给后端）、**搜索**（20→12、带 `q`）、**状态筛选**、**按卷号打开成/败两条路径**（失败给明确提示且不跳转）、**第六维保存**真的 `PATCH .../answer-layout` 且 body 是平铺的 `AnswerLayoutIn`、已发布卷只读 | 断言同时看**界面**与**后端请求流水**（`/__api-log`）：只看界面的话，前端本地切片也能"看起来分页了" |
+
+> **端口自适应**：本机 4173 常被别的服务占用（老师端预览、样张静态服务）。服务进程会自己退让到
+> 4174…，并把**真实端口**打印成 `VERIFY_PORTS static=… api=…`，父脚本解析后用它渲染
+> Playwright 脚本。**不要**在父进程里把端口写成常量：实测踩过「服务在 4174、脚本仍去 4173」，
+> 结果 Playwright 打开的是**别人的应用**，报错却指向选择器超时。
 
 > 另有一条**真后端**验收（不随 `verify` 一起跑，因为它需要起两个服务）：
 > 用 Playwright 打开卷页，断言 iframe 里的产物带 `meta[name=generator]="mathgen render_sheet"`
 > 与 `layout-fingerprint`，改面板后真卷面的 `--cols-per-row` / `--font-size` 跟着变、
 > 刷新后仍是已落库的值、答案版页签拿到含 `.answer-section` 的后端卷面。
 > 本轮实测 13/13 通过。
+>
+> **M3 联调实测**（前端产物 × 真实后端 `uvicorn`，466 套卷）：卷库列出 20 行、翻页后按卷 id
+> 无交集、搜索把总数从 466 改到 440、不存在的卷号给明确提示且不跳转、第六维拨开关 →
+> `PATCH` 成功 → **刷新后仍是新值**（真的落库）、无 pageerror，**10/10 通过**。
 
-> `verify-server.mjs` 是被上面两个脚本 spawn 的**独立进程**服务。独立进程不是洁癖：
+> `verify-server.mjs` 是被上面几个脚本 spawn 的**独立进程**服务。独立进程不是洁癖：
 > 驱动 Playwright 用的 `spawnSync` 会阻塞 Node 事件循环，服务若同进程则连 `connection` 事件都派发不到
 > （实测：Chromium 连接超时，服务端一条请求日志都没有）。
+>
+> `verify-server.mjs` 里 **body 只读一次**（`createServer` 统一读完放 `req.parsedBody`）。
+> 各路由**不要再挂 `req.on('data')`**：流已被消费，重复监听会让请求永远等不到 `end`，
+> 表现是前端保存状态卡在 `saving`（M3 实测踩过）。
 
 ## 几个必须知道的实现约定
 
@@ -107,12 +122,38 @@ flush 待写入的排版（PATCH，让后端渲染时读到最新值）
 
 面板文案只说人话（「保留 / 不留」「显示 / 隐藏」），变量名与关键字降级为调试小字。
 
-### 5. 第六维「答案版形式」在 M2 是只读的
+### 5. 第六维「答案版形式」——M3 起真的可保存
 
-`PaperConfigIn` 里没有这个字段，`paper.answer_layout` 留到 M3。所以界面上它只有 D20 默认一项、
-标注「M3 起生效」，**不是可点控件**，也不再往 sessionStorage 里存「假装生效」的选择。
+`paper.answer_layout` 在 M3 正式接入，字段即契约的 `AnswerLayoutIn` 四个布尔：
+**答案单独成页 / 含逐步过程 / 含难度 / 含考点标签**（默认全 `true`，即 D20 默认）。
 
-### 6. `--page-margin` 在屏幕上的可见性取决于渲染器
+- 组件 `src/teacher/AnswerLayoutEditor.tsx` 被**两处**复用：出题配置页（`/teacher`）与卷页
+  （`/teacher/paper/:id`）。两处若各写一遍，字段名/文案/默认值必然漂移——这是本项目已发生过的失效模式。
+- 保存走 `PATCH /api/papers/{id}/answer-layout`，body 是**平铺的** `AnswerLayoutIn`
+  （与 D55 的排版一致，不包一层）。
+- **创建时怎么落库**：`AnswerLayoutIn` 不是 `PaperConfigIn` 的字段，按契约不该出现在创建请求体里；
+  但用户在创建表单上已经勾了开关，丢掉就是「选了不生效」。所以 `createPaper` 先尝试带在创建请求里，
+  被拒（422）则退回「创建后补一次 `PATCH`」，并把走的是哪条路径回传，界面如实显示。
+- **已发布卷**：后端返回 **409 `PAPER_NOT_EDITABLE`**。界面把四个开关禁用并写明
+  「已发布 · 不可改 / 需要调整请先另存为可编辑副本」——**不允许静默失败**（D59 的教训）。
+- 保存成功后会让答案版预览重新加载（iframe `reloadToken`），确保预览 = 后端当前渲染结果。
+
+### 6. 卷库（M3）：分页 / 搜索 / 筛选 / 按卷号
+
+- 列表走契约的 `limit` / `offset` / `q` / `status`。`q` 与 `status` 变化会**回到第 1 页**
+  （否则会停在「第 3 页但结果只有 5 条」的空页上）。
+- 搜索输入**防抖 300ms**（输入即查，但不每敲一个字符打一次请求）。
+- **按卷号打开**走 `ROUTES.get_paper_by_code`，**不是**「翻列表找卷号」：列表是分页 + 带筛选的，
+  用卷号去列表里搜在过滤条件不匹配时会「明明存在却找不到」。
+- 失败提示**分两类**：卷号不存在（404）说「没有找到卷号…」且**留在卷库页**；
+  后端连不上说「暂时连不上后端」。混在一起会把老师引向错误方向。
+- **形状自适应**：契约参数是 `limit`/`offset`，而 M2 的后端曾是 `page`/`size`。两者语义不同，
+  且后端对未知查询参数通常是**忽略**——盲目发 `limit` 会拿到「永远是第 1 页的 20 条」。
+  所以 `listPapers` 先探测一次（`limit=1`，判据是**响应回显**而不是「请求没报错」），
+  不匹配才回退 `page`/`size`，并把模式回传（命中的是旧形态时界面会显示「后端仍是 page/size 分页，前端已换算」）。
+  探测结果按 origin 缓存，不每次多打一发。**后端已支持新参数后，这段回退是死代码但无害。**
+
+### 7. `--page-margin` 在屏幕上的可见性取决于渲染器
 
 该变量只进 `@page { margin }`（打印 / PDF 一定生效）。屏幕预览能否看出变化，
 取决于卷面样式表有没有给一段 `@media screen` 的 A4 纸面留白（render-export 那边在做）。
@@ -139,12 +180,12 @@ flush 待写入的排版（PATCH，让后端渲染时读到最新值）
 src/
   shared/          类型 + API 客户端 + query key（老师端与学生端唯一共享层，契约 §8 D-5）
     api.ts         冻结契约的镜像（字段名 snake_case，禁止驼峰映射）
-    apiClient.ts   fetch 封装：统一错误结构、超时、可读的中文提示
+    apiClient.ts   fetch 封装：统一错误结构、超时、可读的中文提示、分页形状自适应
   teacher/         老师端页面（不 import student/**）
-    ConfigForm.tsx       六维表单（D16 档位 / D17 题型；第六维只读）
-    SheetFrame.tsx       卷面 iframe 容器 + 六个变量的实时注入（D56）
-    LayoutPanel.tsx      排版面板六控件
-    pages/               ConfigPage / PaperPage / LibraryPage / PublishPage
-    sheet.css            卷面样式（屏幕预览与打印共用）
+    ConfigForm.tsx           六维表单（D16 档位 / D17 题型；第六维可保存，M3）
+    AnswerLayoutEditor.tsx   第六维四开关（配置页与卷页复用同一份语义）
+    SheetFrame.tsx           卷面 iframe 容器 + 六个变量的实时注入（D56）
+    LayoutPanel.tsx          排版面板六控件
+    pages/                   ConfigPage / PaperPage / LibraryPage / PublishPage（LibraryPage 含 M3 分页/搜索/按卷号）
 scripts/           验收脚本（见上）
 ```
