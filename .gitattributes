@@ -1,0 +1,16 @@
+# 统一按 LF 存储，避免 Windows 上 CRLF 造成无意义的整文件 diff
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换与 diff
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.pdf  binary
+
+# Word / PDF 是派生产物（D37），在 diff 中折叠显示
+docs/word/*.docx -diff
+docs/word/*.pdf  -diff

@@ -1,0 +1,39 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# ---------- Node / 前端 ----------
+node_modules/
+dist/
+.vite/
+*.local
+
+# ---------- 运行时数据（数据库与导出产物不入库）----------
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# ---------- 测试与构建产物 ----------
+coverage/
+.playwright/
+test-results/
+
+# ---------- 编辑器 / 操作系统 ----------
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ---------- 一次性临时文件（工作区约定）----------
+*.log
+.tmp-*
+tmp-*
+
+# 说明：docs/word/ 下的 docx / pdf / figures 是课程交付物与配图源文件，必须入库，故不忽略。
