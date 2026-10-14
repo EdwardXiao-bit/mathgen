@@ -34,7 +34,7 @@
 | 文件 | 作用 |
 | --- | --- |
 | `docs/PROJECT.md` | **项目总览与导航**：范围、里程碑、约束、文档地图 |
-| `docs/00-决策记录.md` | **唯一事实来源**：已定决策 D1–D41 + 待决问题 |
+| `docs/00-决策记录.md` | **唯一事实来源**：已定决策 D1–D42 + 待决问题 |
 | `docs/01-需求分析.md` | 需求分析文档（v1.2 冻结） |
 | `docs/02-技术设计.md` | 技术设计文档（v0.4，含设计理由与 DQ） |
 | `docs/03-协作规范.md` | **多智能体协作硬规则**：写域、交接、冲突、验证 |
@@ -63,6 +63,20 @@
 | `docs/01-需求分析.md`、`docs/02-技术设计.md` | 只读；修改需申请并同步重新生成 Word |
 | `docs/06-测试方案.md` | verify |
 | `docs/word/**`、`tools/**` | docs-build |
+
+## 仓库与远程
+
+| 项 | 值 |
+| --- | --- |
+| 远程 | `https://github.com/EdwardXiao-bit/mathgen.git` |
+| 分支 | **`main` 单分支直接提交**（项目规模小，不设 dev/release 分支） |
+| 代理 | **必需**：本机直连 `github.com` 会被 reset。已在仓库内设 `http.proxy=http://127.0.0.1:7890`；**新克隆需自行设置**（`git config http.proxy http://127.0.0.1:7890`） |
+| 凭据 | 走 Git Credential Manager（system 配置 `credential.helper=manager`），首次推送会弹登录 |
+| 行尾 | 统一 LF，见 `.gitattributes`（不要在 Windows 上改成 CRLF，会产生整文件 diff） |
+| 入库 | `docs/word/` 的 docx / pdf / figures **入库**（课程交付物与配图源文件） |
+| 不入库 | `data/`、`*.db`、`node_modules/`、`__pycache__/`、测试与构建产物，见 `.gitignore` |
+
+提交信息格式见 [`docs/03-协作规范.md`](docs/03-协作规范.md) §10；**提交前必须跑通该模块的门禁测试**（[`docs/06-测试方案.md`](docs/06-测试方案.md)）。
 
 ## 常用命令
 

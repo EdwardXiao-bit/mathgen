@@ -10,6 +10,7 @@
 | 课程 | 现代软件工程课程设计（指导教师：罗以宁） |
 | 成员 | 肖铭皓、胡宇书 |
 | 技术栈 | Python FastAPI + SQLite + React/Vite（D18） |
+| 远程仓库 | `https://github.com/EdwardXiao-bit/mathgen.git`（分支 `main`） |
 | 当前阶段 | 需求已冻结 → 技术设计 v0.4 → 课程 Word 已产出 → **代码未开始** |
 | 唯一事实来源 | [`00-决策记录.md`](00-决策记录.md) |
 
