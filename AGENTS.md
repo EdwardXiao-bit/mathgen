@@ -81,18 +81,27 @@
 ## 常用命令
 
 ```powershell
-# 文档与配图（唯一需要 Python 的场景）
+# 工作区 Python（后端测试与文档构建都用它）
 $PY = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
+
+# 后端门禁测试（M1 起生效；标准库 unittest，无需安装任何依赖，见 D43）
+$PY -m unittest discover -s backend/tests -t backend -v            # 全部
+$PY -m unittest discover -s backend/tests/engine -t backend -v     # 只跑引擎
+
+# 文档与配图
 & $PY tools\make_diagrams.py    # 10 张配图 -> docs/word/figures/
 & $PY tools\build_docs.py       # md -> docx（封面 / 目录 / 图表题注）-> docs/word/
 
-# 代码（M1 起生效，目录尚未创建）
-uv run pytest backend/tests -q          # 后端门禁测试
-pnpm --dir frontend test                # 前端单元测试
-npx playwright test tests/e2e           # 端到端
+# 前端与端到端（M2 起生效，目录尚未创建）
+pnpm --dir frontend test
+npx playwright test tests/e2e
 ```
 
 **文档构建要点**：图的位置在 `build_docs.py` 的 `ANCHORS` 里按标题声明，锚点找不到会**报错退出**（不会静默错位）；Word 打开后按 **F9 更新目录**（python-docx 只写域代码，无法预生成条目）。
+
+> **本机 pwsh 陷阱（已实测）**：`unittest` 把输出写到 stderr，PowerShell 会把它包成 `NativeCommandError`，
+> 命令看起来是 `exit code 1`。**判门禁必须以 `$LASTEXITCODE` 为准**（Python 自身返回 0）。
+> 取证写法：`& $PY -m unittest ...; "exit=$LASTEXITCODE"`
 
 ## 验收必读：LibreOffice 光栅渲染有一个已实测的坑
 

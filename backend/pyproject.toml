@@ -1,0 +1,18 @@
+[project]
+name = "mathgen-backend"
+version = "0.1.0"
+description = "mathgen 后端：出题引擎、判分、渲染与导出"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app", "app.engine", "app.grading"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
