@@ -1,0 +1,286 @@
+"""卷面 HTML 渲染 —— **冻结入口** `render_sheet(ctx) -> str`。
+
+契约来源：`app/contracts/sheet.py` 文件末尾的五条渲染契约（docs/04-接口契约.md §4 / §9）。
+
+实现要点与契约逐条对应：
+
+| # | 契约 | 落实 |
+| --- | --- | --- |
+| 1 | 完整 HTML 文档、无外部资源 | `_document()` 产出 `<!DOCTYPE html>`…`</html>`；全文只有内联 `<style>`，不出现 `http://` / `https://` / `src=` / `href=`（NFR-9） |
+| 2 | 六个排版参数经 `css_variables()` 注入 | `layout.root_style_attr(layout)` 的每一项都来自 `css_variables()`，变量名取自冻结的 `CSS_VAR_NAMES` |
+| 3 | `mode=QUESTION` 不含 answer / steps | `_render_items()` / `_render_row()` 只在 `SheetMode.ANSWER` 分支里读 `item.answer` / `steps` / `difficulty` / `tags`；`include_answers = ctx.mode is SheetMode.ANSWER` |
+| 4 | `mode=ANSWER` 答案单独成页 | `.answer-section { break-before: page }`（CSS）+ 答案区独立渲染 |
+| 5 | 纯函数 | 无 I/O、无时间戳、无随机、无全局可变状态；遍历 `ctx.items` 顺序固定 |
+
+**为什么不用 Jinja2 模板文件**：唯一收益是外部模板文件（打包与「模板找不到」这类运行期
+失败面），而不是安全性；而本项目的 HTML 结构简单、字段少，字符串拼装 + 显式转义更可控，
+也让「渲染是纯函数、不读磁盘」这条变得可静态检查。故**有意**采用字符串模板。
+"""
+from __future__ import annotations
+
+from html import escape
+
+from app.contracts.layout import LayoutParams
+from app.contracts.sheet import SheetContext, SheetItem, SheetMode
+
+from app.layout.styles import (
+    layout_fingerprint,
+    root_style_attr,
+    style_text,
+)
+
+__all__ = ["render_sheet", "render_with_layout", "chunk_rows", "SheetRenderError"]
+
+
+class SheetRenderError(ValueError):
+    """渲染输入不合法（例如排版参数越界）。"""
+
+
+def render_sheet(ctx: SheetContext) -> str:
+    """把一份 `SheetContext` 渲染成完整 HTML 文档（**冻结签名**）。"""
+    if not isinstance(ctx, SheetContext):
+        raise SheetRenderError("render_sheet 只接受 SheetContext")
+    return render_with_layout(ctx, ctx.layout)
+
+
+def render_with_layout(ctx: SheetContext, layout: LayoutParams) -> str:
+    """用指定排版参数渲染同一份卷面。
+
+    这是 NFR-5 自动微调的入口（`layout.pagination.reflow` 会反复调用它）。
+    `render_sheet` 等价于 `render_with_layout(ctx, ctx.layout)`。
+    """
+    if not isinstance(ctx, SheetContext):
+        raise SheetRenderError("render_sheet 只接受 SheetContext")
+    if not isinstance(layout, LayoutParams):
+        raise SheetRenderError("layout 必须是 LayoutParams")
+
+    items = tuple(ctx.items)
+    for item in items:
+        if not isinstance(item, SheetItem):
+            raise SheetRenderError("items 里出现非 SheetItem 元素")
+
+    include_answers = ctx.mode is SheetMode.ANSWER
+
+    body_parts = [
+        '<main class="sheet" data-mode="%s"' % escape(ctx.mode.value, quote=True),
+        ' data-header-bar="%s"' % ("1" if layout.header_bar else "0"),
+        ' data-answer-line="%s">' % ("1" if layout.answer_line else "0"),
+        _render_title(ctx),
+        _render_meta(ctx),
+        _render_header_bar(ctx),
+        _render_items(items, layout, include_answers),
+    ]
+    if include_answers:
+        body_parts.append(_render_answer_section(ctx, items))
+    body_parts.append("</main>")
+
+    return _document(ctx, layout, "".join(body_parts))
+
+
+# ---------------------------------------------------------------------------
+# 文档骨架
+# ---------------------------------------------------------------------------
+
+
+def _document(ctx: SheetContext, layout: LayoutParams, body: str) -> str:
+    """完整 HTML 文档。样式全部内联；不引用任何外部资源。"""
+    title = escape(ctx.title or "练习卷")
+    mode_label = "答案版" if ctx.mode is SheetMode.ANSWER else "题目版"
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="zh-CN">\n'
+        "<head>\n"
+        '<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f'<meta name="generator" content="mathgen render_sheet">\n'
+        f'<meta name="layout-fingerprint" content="{escape(layout_fingerprint(layout), quote=True)}">\n'
+        f"<title>{title}（{mode_label}）</title>\n"
+        "<style>\n"
+        f"{style_text(layout)}\n"
+        "</style>\n"
+        "</head>\n"
+        f'<body class="mode-{escape(ctx.mode.value, quote=True)}">\n'
+        f"{body}\n"
+        "</body>\n"
+        "</html>\n"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 卷头
+# ---------------------------------------------------------------------------
+
+
+def _render_title(ctx: SheetContext) -> str:
+    title = escape(ctx.title or "")
+    if not title:
+        return ""
+    return f'<h1 class="sheet-title">{title}</h1>\n'
+
+
+def _render_meta(ctx: SheetContext) -> str:
+    """卷号（发布后才有）与卷头补充说明。"""
+    parts: list[str] = []
+    if ctx.code:
+        parts.append(f'<span class="sheet-code">卷号 {escape(ctx.code)}</span>')
+    if ctx.header_note:
+        parts.append(f'<span class="sheet-note">{escape(ctx.header_note)}</span>')
+    if not parts:
+        return ""
+    return '<div class="sheet-meta">' + "".join(parts) + "</div>\n"
+
+
+def _render_header_bar(ctx: SheetContext) -> str:
+    """班级 / 姓名 / 得分 填写栏。
+
+    显示与否由 `.sheet[data-header-bar="0"]` 决定，而该属性的值来自
+    `layout.header_bar`——即冻结的 `--header-bar` CSS 变量。
+    """
+    return (
+        '<div class="header-bar">'
+        '<span class="hb-field">班级：</span>'
+        '<span class="hb-field">姓名：</span>'
+        '<span class="hb-field">得分：</span>'
+        "</div>\n"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 题目区
+# ---------------------------------------------------------------------------
+
+
+def _chunk(items: tuple[SheetItem, ...], size: int) -> list[tuple[SheetItem, ...]]:
+    """按每行题数切行。
+
+    `size` 来自 `layout.cols_per_row`；这里**不做**任何重排或排序——
+    `seq` 由 API 层负责前移（契约 §6 删题语义）。
+    """
+    if size <= 0:
+        raise SheetRenderError("cols_per_row 必须为正整数")
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def _render_items(items: tuple[SheetItem, ...], layout: LayoutParams, include_answers: bool) -> str:
+    if not items:
+        return '<p class="q-empty">（本卷暂无题目）</p>\n'
+    rows = _chunk(items, layout.cols_per_row)
+    return "".join(
+        _render_row(row, layout, index) for index, row in enumerate(rows)
+    )
+
+
+def _render_row(row: tuple[SheetItem, ...], layout: LayoutParams, row_index: int = 0) -> str:
+    """一行题：**块级外层** `.q-row`（负责「不跨页」）+ 内层 grid（负责每行题数）。
+
+    见 `app.layout.styles` 里对这两层的说明——grid 容器上的 `break-inside: avoid`
+    在本机 Chromium 上不生效，实测证据写在那边。
+
+    `data-row-index` 是给**分页标定**用的锚点（`app.export.measure_page_box` 会在
+    某一行前插入 `break-before: page` 再比较页数来定位真实分页线）。
+    它只是行序号，不含题目内容，不影响题目版的安全边界。
+    """
+    cells = "".join(_render_item(item, layout) for item in row)
+    return (
+        f'<div class="q-row" data-row-index="{int(row_index)}">'
+        f'<div class="q-row-grid">{cells}</div></div>\n'
+    )
+
+
+def _render_item(item: SheetItem, layout: LayoutParams) -> str:
+    """单个题块。
+
+    这里**不读** `answer` / `steps` / `difficulty` / `tags`——答案只走
+    `_render_answer_section()`，而那条分支只在 `mode=ANSWER` 时才会被调用。
+    把「答案字段只出现在一个函数里」当结构约束，比事后过滤字符串更可靠
+    （契约第 3 条 / 契约 §9 安全边界）。
+    """
+    display = escape(item.display)
+    parts = [
+        f'<div class="q-item" data-seq="{int(item.seq)}"',
+        f' data-answer-line="{"1" if layout.answer_line else "0"}">',
+        f'<span class="q-seq">{int(item.seq)}.</span>',
+        f'<span class="q-display">{display}</span>',
+        _render_blank(layout),
+        "</div>",
+    ]
+    return "".join(parts)
+
+
+def _render_blank(layout: LayoutParams) -> str:
+    """答题空位 / 横线。
+
+    开关有两条路径，**数值同源**（都来自 `layout.answer_line`）：
+      * DOM 侧：`answer_line=False` 时不输出该元素；
+      * CSS 侧：`.q-item[data-answer-line="0"] .q-blank { display: none }`。
+    双保险是为了让「前端预览区只换 CSS 变量也能实时生效」与「导出的 HTML 本身干净」两件事同时成立。
+    """
+    if not layout.answer_line:
+        return ""
+    return '<span class="q-blank" aria-hidden="true"></span>'
+
+
+# ---------------------------------------------------------------------------
+# 答案区（D20）
+# ---------------------------------------------------------------------------
+
+
+def _render_answer_section(ctx: SheetContext, items: tuple[SheetItem, ...]) -> str:
+    """答案区：最终答案 + 难度 + 考点标签 + 脱式逐步过程。
+
+    `.answer-section` 带 `break-before: page`，所以**默认单独成页**（D20）。
+    """
+    blocks = "".join(_render_answer_item(item) for item in items)
+    heading = "答案与解析" if items else "答案与解析（本卷无题目）"
+    return (
+        '<section class="answer-section" '
+        'data-break-before="page">\n'
+        f'<h2 class="answer-heading">{escape(heading)}</h2>\n'
+        f"{blocks}"
+        "</section>\n"
+    )
+
+
+def _render_answer_item(item: SheetItem) -> str:
+    parts = [
+        f'<div class="a-item" data-seq="{int(item.seq)}">',
+        '<div class="a-head">',
+        f'<span class="a-seq">{int(item.seq)}.</span>',
+        f'<span class="a-answer">{escape(item.answer)}</span>',
+        "</div>",
+        _render_answer_meta(item),
+        _render_answer_steps(item),
+        "</div>",
+    ]
+    return "".join(parts)
+
+
+def _render_answer_meta(item: SheetItem) -> str:
+    """难度等级 + 知识点标签（D20 的第 ②③ 项）。"""
+    parts: list[str] = []
+    if item.difficulty:
+        parts.append(f'<span class="a-difficulty">难度 {int(item.difficulty)}/5</span>')
+    for tag in item.tags:
+        parts.append(f'<span class="a-tag">{escape(tag)}</span>')
+    if not parts:
+        return ""
+    return '<div class="a-meta">' + "".join(parts) + "</div>"
+
+
+def _render_answer_steps(item: SheetItem) -> str:
+    """脱式 / 混合运算的逐步递等过程（D20 的第 ④ 项）。"""
+    steps = tuple(item.steps)
+    if not steps:
+        return ""
+    lis = "".join(f"<li>{escape(step)}</li>" for step in steps)
+    return f'<ol class="a-steps">{lis}</ol>'
+
+
+# ---------------------------------------------------------------------------
+# 供 external 调用方使用的稳定小工具
+# ---------------------------------------------------------------------------
+
+
+def chunk_rows(items: tuple[SheetItem, ...], cols_per_row: int) -> list[tuple[SheetItem, ...]]:
+    """公开的行切分（测试与前端预览共用同一逻辑）。"""
+    return _chunk(items, cols_per_row)

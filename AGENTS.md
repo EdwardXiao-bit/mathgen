@@ -133,15 +133,23 @@ LibreOffice Kit 的 `render`（**docx → PNG**）在本机会把整个版心**�
 
 ### 坑 2 · Playwright 启动（PDF 导出依赖它）
 
-`BrowserType.launch()` 在本机会连续撞两个问题，**都要解决才能出 PDF**：
+`BrowserType.launch()` 在本机会连续撞两个**成因不同**的问题，**两个都要解决**才能出 PDF：
 
-| # | 现象 | 原因与绕过 |
+| # | 现象 | 绕过（实测有效） |
 | --- | --- | --- |
-| 1 | `EPERM: operation not permitted, mkdtemp '...\Temp\playwright-artifacts-XXXXXX'` | 沙箱下无法在系统 TEMP 建临时目录。**把 `TEMP` / `TMP` 指向工作区内目录**（如 `.tmp-pw`），或给 `launch(env=...)` 传覆盖后的环境。实测这步过后该错误消失 |
-| 2 | `Executable doesn't exist at ...\chromium_headless_shell-XXXX\...` | 浏览器 revision 与 Python 包版本不匹配。跑 `python -m playwright install chromium` 重新下匹配版本；下载需走代理 `$env:HTTPS_PROXY='http://127.0.0.1:7890'` |
+| 1 | `EPERM: not permitted, mkdir '...\AppData\Local\ms-playwright\__dirlock'` | 把浏览器装到工作区：`$env:PLAYWRIGHT_BROWSERS_PATH="<repo>\.playwright"` 后再 `playwright install chromium`（`.playwright/` 已 gitignore） |
+| 2 | `EPERM: not permitted, mkdtemp '...\Temp\playwright-artifacts-XXXXXX'` | 把 `TEMP` 与 `TMP` 指向工作区目录：`$env:TEMP=$env:TMP="<repo>\.tmp-pw"` |
+
+**两个都设好后的实测结果**：Chromium 156.0.8078.4 可正常启动并渲染页面。
+
+```powershell
+$env:PLAYWRIGHT_BROWSERS_PATH = "$REPO\.playwright"
+$env:TEMP = "$REPO\.tmp-pw"; $env:TMP = "$REPO\.tmp-pw"
+```
 
 **实现口径**：`export_pdf` 里用 `MATHGEN_PW_TMP` 环境变量读取可写临时目录并传给 `launch(env=...)`，
-未设置时用系统默认——这样本机能跑、其他机器不受影响，也不把本机路径硬编进生产代码。
+未设置时用系统默认——本机能跑、其他机器不受影响，也不把本机路径硬编进生产代码。
+`PLAYWRIGHT_BROWSERS_PATH` 由 Playwright 自行读取，代码里无需处理。
 
 ## 本项目的规矩
 
