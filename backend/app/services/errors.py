@@ -11,10 +11,11 @@ from __future__ import annotations
 
 from typing import Final
 
-__all__ = ["ApiError", "ERROR_HTTP_STATUS", "http_status_for"]
+__all__ = [
+    "ApiError", "ERROR_HTTP_STATUS", "STATUS_TO_CODE", "http_status_for", "code_for_status",
+]
 
-#: 错误码 → HTTP 状态码（契约 §9；带 ★ 的是本任务为实现改题/删题语义做的必要扩展，
-#: 已在交接报告中登记，等待 Lead 决定是否写入契约 §9）
+#: 错误码 → HTTP 状态码（契约 §9；带 ★ 的是 D53 收录或本任务的必要扩展）
 ERROR_HTTP_STATUS: Final[dict[str, int]] = {
     "CONFIG_INVALID": 400,
     "INSUFFICIENT_QUESTIONS": 422,
@@ -24,10 +25,21 @@ ERROR_HTTP_STATUS: Final[dict[str, int]] = {
     "CODE_NOT_FOUND": 404,
     "ATTEMPT_DUPLICATE": 200,
     "VALIDATION_ERROR": 422,
-    # ★ 扩展：题目序号不存在 / 越界
-    "ITEM_NOT_FOUND": 404,
-    # ★ 扩展：渲染模块尚未就绪（task-6 并行实现中）
-    "RENDER_NOT_READY": 503,
+    "ITEM_NOT_FOUND": 404,          # 契约 §9（D53）
+    "RENDER_NOT_READY": 503,        # 契约 §9（D53）
+    # ★ 扩展（D57）：Word 导出尚未实现 / 未匹配路由 / 导出通道不可用
+    "NOT_IMPLEMENTED": 501,
+    "NOT_FOUND": 404,
+    "METHOD_NOT_ALLOWED": 405,
+    "EXPORT_NOT_READY": 503,
+}
+
+#: HTTP 状态码 → 错误码（用于把 Starlette 的 404/405 等翻成统一结构，D57）
+STATUS_TO_CODE: Final[dict[int, str]] = {
+    404: "NOT_FOUND",
+    405: "METHOD_NOT_ALLOWED",
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
 }
 
 DEFAULT_STATUS: Final[int] = 500
@@ -35,6 +47,10 @@ DEFAULT_STATUS: Final[int] = 500
 
 def http_status_for(code: str) -> int:
     return ERROR_HTTP_STATUS.get(code, DEFAULT_STATUS)
+
+
+def code_for_status(status: int) -> str:
+    return STATUS_TO_CODE.get(status, "HTTP_ERROR")
 
 
 class ApiError(Exception):

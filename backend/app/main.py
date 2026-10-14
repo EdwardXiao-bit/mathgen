@@ -2,9 +2,10 @@
 
 启动：`& $VPY -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend`
 
-统一错误结构（契约 §5.3）：所有异常出口都是
+统一错误结构（契约 §5.4）：所有异常出口都是
 `{"error": {"code": ..., "message": ...}}`，由本模块的异常处理器兜底，
-绝不让 FastAPI 默认的 `{"detail": ...}` 漏出去。
+绝不让 FastAPI / Starlette 默认的 `{"detail": ...}` 漏出去——
+**包括未匹配路由**（`/api/nonexistent` → 404 `NOT_FOUND`，D57）。
 
 `create_app(engine=...)` 支持注入引擎：测试用内存 SQLite，生产用 `data/mathgen.db`。
 """
@@ -18,12 +19,14 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.engine import Engine
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import db as db_module
 from app.engine.types import ConfigError, InsufficientQuestions
+from app.routers import exports as exports_router
 from app.routers import papers as papers_router
 from app.routers import sheet as sheet_router
-from app.services.errors import ApiError, http_status_for
+from app.services.errors import ApiError, code_for_status, http_status_for
 
 __all__ = ["app", "create_app"]
 
@@ -78,6 +81,30 @@ def _register_error_handlers(application: FastAPI) -> None:
             content=_error("VALIDATION_ERROR", str(exc) or "参数非法"),
         )
 
+    @application.exception_handler(StarletteHTTPException)
+    async def _handle_http_exception(
+        request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
+        """未匹配路由 / 方法不允许等 Starlette 内建异常 → 统一结构（D57）。
+
+        修复前：`GET /api/nonexistent` → `{"detail":"Not Found"}`，
+        绕过了上方所有处理器，与本模块「绝不让 detail 漏出去」的声明矛盾。
+        """
+        code = code_for_status(exc.status_code)
+        if code == "NOT_FOUND":
+            # 不采用 Starlette 的英文默认 detail（"Not Found"），保持全站中文提示
+            message = f"接口不存在：{request.method} {request.url.path}"
+        elif code == "METHOD_NOT_ALLOWED":
+            message = f"该接口不支持 {request.method} 方法：{request.url.path}"
+        else:
+            detail = exc.detail if isinstance(exc.detail, str) and exc.detail else ""
+            message = detail or f"HTTP {exc.status_code}"
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=_error(code, message),
+            headers=getattr(exc, "headers", None),
+        )
+
 
 def create_app(engine: Engine | None = None) -> FastAPI:
     """装配应用。
@@ -105,6 +132,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     _register_error_handlers(application)
     application.include_router(papers_router.router)
     application.include_router(sheet_router.router)
+    application.include_router(exports_router.router)
     return application
 
 

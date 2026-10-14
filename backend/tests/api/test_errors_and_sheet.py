@@ -10,60 +10,17 @@
 """
 from __future__ import annotations
 
-import builtins
-import contextlib
-import sys
-import types
 import unittest
-from collections.abc import Iterator
 
 from app.contracts.sheet import SheetContext, SheetMode
 from app.services.errors import ERROR_HTTP_STATUS, ApiError, http_status_for
-from tests.api._support import CONFIG_ADD_SUB, ApiTestCase, url_of
-
-
-@contextlib.contextmanager
-def render_unavailable() -> Iterator[None]:
-    """让 `from app.render.sheet import render_sheet` 必定 ImportError（与真实实现是否存在无关）。"""
-    saved_module = sys.modules.pop("app.render.sheet", None)
-    saved_package = sys.modules.pop("app.render", None)
-    real_import = builtins.__import__
-
-    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "app.render.sheet" or (name == "app.render" and fromlist):
-            raise ImportError(f"模拟渲染模块缺失：{name}")
-        return real_import(name, globals, locals, fromlist, level)
-
-    builtins.__import__ = fake_import
-    try:
-        yield
-    finally:
-        builtins.__import__ = real_import
-        if saved_package is not None:
-            sys.modules["app.render"] = saved_package
-        if saved_module is not None:
-            sys.modules["app.render.sheet"] = saved_module
-
-
-@contextlib.contextmanager
-def render_with(render_sheet) -> Iterator[None]:
-    """注入一个假渲染器（记录收到的 `SheetContext`）。"""
-    module = types.ModuleType("app.render.sheet")
-    module.render_sheet = render_sheet
-    package = types.ModuleType("app.render")
-    package.sheet = module
-    saved_package = sys.modules.get("app.render")
-    saved_module = sys.modules.get("app.render.sheet")
-    sys.modules["app.render"] = package
-    sys.modules["app.render.sheet"] = module
-    try:
-        yield
-    finally:
-        for key, value in (("app.render", saved_package), ("app.render.sheet", saved_module)):
-            if value is None:
-                sys.modules.pop(key, None)
-            else:
-                sys.modules[key] = value
+from tests.api._support import (
+    CONFIG_ADD_SUB,
+    ApiTestCase,
+    render_unavailable,
+    render_with,
+    url_of,
+)
 
 
 class TestErrorShape(ApiTestCase):

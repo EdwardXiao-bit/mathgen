@@ -5,13 +5,17 @@
 - 用 FastAPI 官方的 `dependency_overrides[get_db]` 注入测试会话；
 - `create_app(engine=...)` 的 lifespan 会在 TestClient 启动时建表。
 
-同时是「快照不重算」实验台：`patch_engine` 上下文管理器替换 `app.engine.generate`，
-用来验证已存卷的读取路径**不会**回头调用引擎。
+同时是两个实验台：
+- `patch_engine`：替换 `app.engine.generate`，验证已存卷的读取路径**不重跑引擎**；
+- `render_with` / `render_unavailable`：注入假渲染器 / 模拟渲染模块缺失，
+  验证 `/sheet` 与 `/export` 的同源与 503 兜底（`/export` 也在这里取用）。
 """
 from __future__ import annotations
 
+import builtins
 import contextlib
 import sys
+import types
 import unittest
 from collections.abc import Iterator
 from pathlib import Path
@@ -31,7 +35,7 @@ from app.main import create_app  # noqa: E402
 
 __all__ = [
     "ApiTestCase", "make_client", "cli", "fresh_engine", "session_of", "patch_engine",
-    "CONFIG_ADD_SUB", "CONFIG_ORAL", "url_of",
+    "render_unavailable", "render_with", "CONFIG_ADD_SUB", "CONFIG_ORAL", "url_of",
 ]
 
 #: 最小合法出题配置：20 以内加减、口算、6 题（生成快、约束好满足）
@@ -149,6 +153,53 @@ def patch_engine(**patches) -> Iterator[None]:
     finally:
         for name, value in saved.items():
             setattr(engine_module, name, value)
+
+
+@contextlib.contextmanager
+def render_unavailable() -> Iterator[None]:
+    """让 `from app.render.sheet import render_sheet` 必定 ImportError。
+
+    与真实渲染模块是否存在无关（因此「渲染未就绪 → 503」这条用例永远有效）。
+    """
+    saved_module = sys.modules.pop("app.render.sheet", None)
+    saved_package = sys.modules.pop("app.render", None)
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "app.render.sheet" or (name == "app.render" and fromlist):
+            raise ImportError(f"模拟渲染模块缺失：{name}")
+        return real_import(name, globals, locals, fromlist, level)
+
+    builtins.__import__ = fake_import
+    try:
+        yield
+    finally:
+        builtins.__import__ = real_import
+        if saved_package is not None:
+            sys.modules["app.render"] = saved_package
+        if saved_module is not None:
+            sys.modules["app.render.sheet"] = saved_module
+
+
+@contextlib.contextmanager
+def render_with(render_sheet) -> Iterator[None]:
+    """注入一个假渲染器（通常用来记录收到的 `SheetContext`）。"""
+    module = types.ModuleType("app.render.sheet")
+    module.render_sheet = render_sheet
+    package = types.ModuleType("app.render")
+    package.sheet = module
+    saved_package = sys.modules.get("app.render")
+    saved_module = sys.modules.get("app.render.sheet")
+    sys.modules["app.render"] = package
+    sys.modules["app.render.sheet"] = module
+    try:
+        yield
+    finally:
+        for key, value in (("app.render", saved_package), ("app.render.sheet", saved_module)):
+            if value is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = value
 
 
 def url_of(name: str, **params) -> str:
