@@ -641,7 +641,8 @@ class TestPdfGeometryIndependent(M2Case):
         cls.client.post("/api/papers", params={"seed": 7, "title": "几何卷"}, json=CFG)
 
     def _draft_id(self) -> int:
-        # D64：列表查询参数已改为 limit / offset（page/size 是 M4 起移除的 deprecated 别名）
+        # M3 起列表查询参数为 limit / offset；`page` / `size` 别名**已删除**，
+        # 但保留为**拒绝式护栏**（显式传会 422，而不是被静默忽略）。
         papers = self.client.get("/api/papers",
                                  params={"limit": 100, "offset": 0}).json()["papers"]
         drafts = [p for p in papers if p["status"] == "draft"]
