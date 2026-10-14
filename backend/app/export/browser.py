@@ -27,6 +27,7 @@ __all__ = [
     "chromium_executable",
     "playwright_tmp",
     "browser_session",
+    "is_available",
 ]
 
 
@@ -37,6 +38,11 @@ class BrowserError(RuntimeError):
 def _repo_backend_dir() -> str:
     # .../backend/app/export/browser.py -> .../backend
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _fallback_tmp_dir() -> str:
+    """系统临时目录不可用时的回退目录（仓库内，`.gitignore` 已忽略 `.tmp-*`）。"""
+    return os.path.join(_repo_backend_dir(), ".tmp-playwright")
 
 
 def playwright_tmp() -> str:
@@ -145,22 +151,53 @@ class _BrowserSession:
             ) from exc
 
         executable = chromium_executable()
-        try:
-            self._playwright = sync_playwright().start()
+
+        def launch(env_override: str | None):
+            if env_override:
+                os.makedirs(env_override, exist_ok=True)
+                for name in ("TMP", "TEMP", "TMPDIR"):
+                    os.environ[name] = env_override
+            manager = sync_playwright().start()
+            self._playwright = manager
             kwargs = {}
             if executable:
                 kwargs["executable_path"] = executable
-            self._browser = self._playwright.chromium.launch(**kwargs)
-        except Exception as exc:
-            raise BrowserError(
-                "Chromium 启动失败（这是环境问题，不是排版问题）："
-                f"{type(exc).__name__}: {exc}\n"
-                f"  TMP={os.environ.get('TMP')!r}\n"
-                f"  MATHGEN_CHROMIUM={os.environ.get('MATHGEN_CHROMIUM')!r}\n"
-                f"  探测到的可执行文件={executable!r}\n"
-                "  修法：`& $VPY -m playwright install chromium`，"
-                "或设置 MATHGEN_CHROMIUM 指向已有的 chrome.exe。"
-            ) from exc
+            return manager.chromium.launch(**kwargs)
+
+        try:
+            self._browser = launch(None)
+        except Exception as first:
+            # 常见环境坑：系统 TEMP 下无法 `mkdtemp`（EPERM）。
+            # 这是**环境**问题，不是排版问题，所以自动退到仓库内可写目录，
+            # 而不是把失败抛给调用方。目录名以 `.tmp-` 开头，`.gitignore` 已忽略。
+            #
+            # 注意：失败的 `sync_playwright().start()` 必须 `stop()` 掉，
+            # 否则 Playwright 的全局 dispatcher 还挂在事件循环上，
+            # 重试会报「Sync API inside the asyncio loop」（实测踩到过）。
+            try:
+                if self._playwright is not None:
+                    self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = None
+
+            fallback = _fallback_tmp_dir()
+            try:
+                self._browser = launch(fallback)
+                self._tmp = fallback
+            except Exception as exc:
+                raise BrowserError(
+                    "Chromium 启动失败（这是环境问题，不是排版问题）："
+                    f"{type(exc).__name__}: {exc}\n"
+                    f"  首次失败：{type(first).__name__}: {first}\n"
+                    f"  TMP={os.environ.get('TMP')!r}\n"
+                    f"  回退目录={fallback!r}\n"
+                    f"  MATHGEN_CHROMIUM={os.environ.get('MATHGEN_CHROMIUM')!r}\n"
+                    f"  探测到的可执行文件={executable!r}\n"
+                    "  修法：设 MATHGEN_PW_TMP 指向可写目录、"
+                    "`& $VPY -m playwright install chromium`，"
+                    "或设 MATHGEN_CHROMIUM 指向已有的 chrome.exe。"
+                ) from exc
         return self._browser
 
     def close(self) -> None:
