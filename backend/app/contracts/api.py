@@ -30,6 +30,7 @@ ROUTES = {
     "regenerate_item": "/api/papers/{paper_id}/items/{seq}/regenerate",
     "update_layout": "/api/papers/{paper_id}/layout",
     "publish_paper": "/api/papers/{paper_id}/publish",
+    "copy_paper": "/api/papers/{paper_id}/copy",
     "sheet": "/api/papers/{paper_id}/sheet",
     "export": "/api/papers/{paper_id}/export",
     "qr": "/api/papers/{paper_id}/qr",

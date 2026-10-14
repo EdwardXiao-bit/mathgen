@@ -115,7 +115,9 @@ $VPY = 'C:\Users\Ed\dsh_workspace\mathgen\backend\.venv\Scripts\python.exe'
 > 命令看起来是 `exit code 1`。**判门禁必须以 `$LASTEXITCODE` 为准**（Python 自身返回 0）。
 > 取证写法：`& $PY -m unittest ...; "exit=$LASTEXITCODE"`
 
-## 验收必读：LibreOffice 光栅渲染有一个已实测的坑
+## 验收必读：本机两个已实测的环境坑
+
+### 坑 1 · LibreOffice 光栅渲染
 
 LibreOffice Kit 的 `render`（**docx → PNG**）在本机会把整个版心**右移 1.53cm**，看上去像内容溢出页面、被右边界裁掉。
 
@@ -127,7 +129,19 @@ LibreOffice Kit 的 `render`（**docx → PNG**）在本机会把整个版心**�
 | docx → PDF → PNG（pdfium） | **3.01cm** ✅ |
 
 **版式验收一律走 `convert` 成 PDF 再渲染**，不要用 docx → PNG 判断版式。
-（已用 docGrid 与边距对照实验排除文档侧原因。另一条真实缺陷记录见 `docs/word` 的渲染校验过程。）
+（已用 docGrid 与边距对照实验排除文档侧原因。）
+
+### 坑 2 · Playwright 启动（PDF 导出依赖它）
+
+`BrowserType.launch()` 在本机会连续撞两个问题，**都要解决才能出 PDF**：
+
+| # | 现象 | 原因与绕过 |
+| --- | --- | --- |
+| 1 | `EPERM: operation not permitted, mkdtemp '...\Temp\playwright-artifacts-XXXXXX'` | 沙箱下无法在系统 TEMP 建临时目录。**把 `TEMP` / `TMP` 指向工作区内目录**（如 `.tmp-pw`），或给 `launch(env=...)` 传覆盖后的环境。实测这步过后该错误消失 |
+| 2 | `Executable doesn't exist at ...\chromium_headless_shell-XXXX\...` | 浏览器 revision 与 Python 包版本不匹配。跑 `python -m playwright install chromium` 重新下匹配版本；下载需走代理 `$env:HTTPS_PROXY='http://127.0.0.1:7890'` |
+
+**实现口径**：`export_pdf` 里用 `MATHGEN_PW_TMP` 环境变量读取可写临时目录并传给 `launch(env=...)`，
+未设置时用系统默认——这样本机能跑、其他机器不受影响，也不把本机路径硬编进生产代码。
 
 ## 本项目的规矩
 
