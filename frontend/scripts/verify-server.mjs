@@ -123,9 +123,11 @@ const apiLog = [];
  * 验收脚本要断言「面板改 → iframe 文档里的 CSS 变量变」，就必须有一份卷面 HTML。
  * 这里刻意复刻真实渲染产物的关键结构（不是造型）：
  *   - `:root` 内联六个 CSS 变量（变量名取自冻结的 `CSS_VAR_NAMES`）
+ *   - **D59**：`answer_line` / `header_bar` 输出 `display` 关键字，且样式表用
+ *     `display: var(…, 默认值)` 真正消费它们 → 面板覆盖即生效（这是本次 bug 的修复方式）
  *   - `.sheet[data-mode]`、`.q-item[data-seq]`、`.q-blank`、`.answer-section`
  *   - `@page { size: A4; margin: <具体长度>cm }`（真实实现写具体长度，不用 var()）
- * 真实产物另由 `verify-real-sheet.mjs` 直接向真后端取样校验。
+ * 真实产物另由真后端验收脚本直接取样校验（断言 `meta generator=mathgen render_sheet`）。
  */
 function sheetHtml(paper, mode) {
   const layout = paper.layout;
@@ -134,13 +136,13 @@ function sheetHtml(paper, mode) {
     `--row-gap: ${layout.row_gap}`,
     `--font-size: ${layout.font_size}pt`,
     `--page-margin: ${layout.page_margin}cm`,
-    `--answer-line: ${layout.answer_line ? 1 : 0}`,
-    `--header-bar: ${layout.header_bar ? 1 : 0}`,
+    `--answer-line-display: ${layout.answer_line ? 'block' : 'none'}`,
+    `--header-bar-display: ${layout.header_bar ? 'grid' : 'none'}`,
   ].join('; ');
   const items = paper.items
     .map(
       (item) =>
-        `<div class="q-item" data-seq="${item.seq}" data-answer-line="${layout.answer_line ? 1 : 0}">` +
+        `<div class="q-item" data-seq="${item.seq}">` +
         `<span class="q-seq">${item.seq}.</span>` +
         `<span class="q-display">${item.display}</span>` +
         `<span class="q-blank" aria-hidden="true"></span></div>`,
@@ -161,6 +163,7 @@ function sheetHtml(paper, mode) {
     '<html lang="zh-CN">',
     '<head>',
     '<meta charset="utf-8">',
+    `<meta name="generator" content="mathgen render_sheet (verify mock)">`,
     `<title>${paper.title}</title>`,
     '<style>',
     `:root { ${vars}; }`,
@@ -169,17 +172,22 @@ function sheetHtml(paper, mode) {
     '.q-row { display: grid; grid-template-columns: repeat(var(--cols-per-row), 1fr);',
     '  row-gap: calc(var(--row-gap) * 1em); }',
     '.q-item { font-size: var(--font-size); }',
-    '.q-item[data-answer-line="0"] .q-blank { display: none; }',
-    '.q-blank { display: inline-block; width: 4em; border-bottom: 1px solid #999; }',
+    /* D59：开关走 display 变量，服务端渲染与面板实时覆盖同一条通路 */
+    '.q-blank { display: var(--answer-line-display, inline-block); width: 4em;',
+    '  border-bottom: 1px solid #999; }',
+    '.header-bar { display: var(--header-bar-display, grid); grid-template-columns: repeat(3, 1fr);',
+    '  gap: 1em; border-top: 1px solid #000; border-bottom: 1px solid #000; }',
     '.answer-section { break-before: page; page-break-before: always; }',
     `@page { size: A4; margin: ${layout.page_margin}cm; }`,
+    /* 屏幕上的 A4 纸面 + 页边距（与 render-export 的 @media screen 做法一致），
+       让「页边距」这一项在预览里也看得见 */
+    '@media screen { .sheet { width: 210mm; max-width: 100%; margin: 0 auto;',
+    '  padding: var(--page-margin); background: #fff; box-shadow: 0 0 4px rgba(0,0,0,.25); } }',
     '</style>',
     '</head>',
     `<body class="mode-${mode}">`,
-    `<main class="sheet" data-mode="${mode}" data-header-bar="${layout.header_bar ? 1 : 0}" data-answer-line="${layout.answer_line ? 1 : 0}">`,
-    layout.header_bar
-      ? '<div class="header-bar"><span>班级：</span><span>姓名：</span><span>得分：</span></div>'
-      : '',
+    `<main class="sheet" data-mode="${mode}">`,
+    '<div class="header-bar"><span>班级：</span><span>姓名：</span><span>得分：</span></div>',
     `<h1 class="sheet-title">${paper.title}</h1>`,
     `<div class="q-row">${items}</div>`,
     answers,

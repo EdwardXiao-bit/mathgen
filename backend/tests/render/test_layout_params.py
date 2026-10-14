@@ -228,27 +228,89 @@ class TestAllLayoutParamsTakeEffect(unittest.TestCase):
         self.assertAlmostEqual(steps[2.0] - steps[0.8], 1.2 * 18.6667, delta=5.0)
 
     def test_answer_line_switch_removes_writing_space(self):
+        """元素始终在 DOM 里，但**浏览器算出的 display** 必须随变量变。"""
         with_line = measure_print_geometry(LayoutParams(answer_line=True, page_margin=2.0))
         without_line = measure_print_geometry(LayoutParams(answer_line=False, page_margin=2.0))
-        self.assertIsNotNone(with_line["blank"], "留横线时应当有 .q-blank 元素")
+        self.assertIsNotNone(with_line["blank"], ".q-blank 应当始终输出（面板靠它实时预览）")
+        self.assertIsNotNone(without_line["blank"], ".q-blank 应当始终输出（面板靠它实时预览）")
         self.assertEqual(with_line["blank"]["display"], "block")
-        self.assertIsNone(without_line["blank"], "关掉横线时不应输出 .q-blank")
+        self.assertEqual(without_line["blank"]["display"], "none", "关掉横线后计算样式必须变成 none")
         self.assertLess(without_line["firstItem"]["height"], with_line["firstItem"]["height"])
 
     def test_header_bar_switch_hides_band_and_moves_content_up(self):
         with_bar = measure_print_geometry(LayoutParams(header_bar=True, page_margin=2.0))
         without_bar = measure_print_geometry(LayoutParams(header_bar=False, page_margin=2.0))
+        self.assertIsNotNone(without_bar["headerBar"], ".header-bar 应当始终输出（面板靠它实时预览）")
         self.assertEqual(with_bar["headerBar"]["display"], "grid")
         self.assertEqual(without_bar["headerBar"]["display"], "none")
         self.assertLess(without_bar["firstRow"]["top"], with_bar["firstRow"]["top"])
+
+    def test_switches_react_to_a_css_variable_override_alone(self):
+        """**D59 的原始故障现场**：只覆盖 CSS 变量（不动 HTML）也必须看到变化。
+
+        老师端面板做的事情就是「往预览 iframe 里覆盖 `:root` 变量」。
+        第一版样式表根本不读这两个变量，所以覆盖后毫无效果。
+        这里在渲染好的 HTML 里追加一条覆盖规则，再量计算样式——
+        模拟面板行为，确保这条路真的通。
+        """
+        html = render_sheet(build_ctx(count=4, layout=LayoutParams(answer_line=True, header_bar=True)))
+        self.assertIn("display: var(--answer-line-display", html)
+        self.assertIn("display: var(--header-bar-display", html)
+
+        override = (
+            "<style>:root { --answer-line-display: none; --header-bar-display: none; }</style>"
+        )
+        patched = html.replace("</head>", override + "</head>", 1)
+
+        page = browser_session().browser().new_page(viewport={"width": 794, "height": 2000})
+        try:
+            page.set_content(patched, wait_until="load")
+            page.emulate_media(media="print")
+            displays = page.evaluate(
+                """() => ({
+                  blank: getComputedStyle(document.querySelector('.q-blank')).display,
+                  header: getComputedStyle(document.querySelector('.header-bar')).display,
+                })"""
+            )
+        finally:
+            page.close()
+        self.assertEqual(displays["blank"], "none", "面板只覆盖变量时答题横线必须消失")
+        self.assertEqual(displays["header"], "none", "面板只覆盖变量时卷头栏必须消失")
 
     def test_header_bar_switch_is_visible_in_css_only(self):
         """同一份 HTML + 只改 CSS 变量也能切卷头栏（前端实时预览依赖这条）。"""
         from app.layout.styles import style_text
 
         style = style_text(LayoutParams(header_bar=False))
-        self.assertIn('.sheet[data-header-bar="0"] .header-bar', style)
-        self.assertIn("--header-bar: 0", style)
+        self.assertIn("--header-bar-display: none", style)
+        self.assertIn("display: var(--header-bar-display, grid)", style)
+
+    def test_page_margin_has_a_screen_preview_box(self):
+        """`--page-margin` 在屏幕上经 `@media screen` 的 A4 纸面消费（D59）。"""
+        from app.layout.styles import style_text
+
+        style = style_text(LayoutParams(page_margin=2.0))
+        self.assertIn("@media screen", style)
+        self.assertRegex(style, r"padding:\s*var\(--page-margin\)")
+        # 屏幕预览下纸张应是 A4 宽
+        html = render_sheet(build_ctx(count=4, layout=LayoutParams(page_margin=2.0)))
+        page = browser_session().browser().new_page(viewport={"width": 1400, "height": 1200})
+        try:
+            page.set_content(html, wait_until="load")
+            # 故意**不**切打印媒体：模拟老师端预览（screen）
+            data = page.evaluate(
+                """() => {
+                  const sheet = document.querySelector('.sheet');
+                  const cs = getComputedStyle(sheet);
+                  return { width: cs.width, padding: cs.padding, rect: sheet.getBoundingClientRect().width };
+                }"""
+            )
+        finally:
+            page.close()
+        # 210mm @96dpi = 793.7px
+        self.assertAlmostEqual(data["rect"], 793.7, delta=2.0, msg=f"屏幕预览纸张应为 A4 宽，实测 {data['rect']}")
+        self.assertAlmostEqual(float(data["padding"].replace("px", "")), 75.6, delta=2.0,
+                               msg=f"屏幕预览内边距应等于页边距 2cm=75.6px，实测 {data['padding']}")
 
     def test_page_margin_changes_print_viewport_and_available_width(self):
         widths = {}

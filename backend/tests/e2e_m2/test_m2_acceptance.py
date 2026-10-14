@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -77,6 +78,15 @@ class M2Case(unittest.TestCase):
                                 json=config)
         self.assertEqual(resp.status_code, 201, resp.text)
         return resp.json()
+
+    def _sheet(self, pid: int, **layout) -> str:
+        """PATCH 排版后取卷面 HTML（六个参数默认值见下）。"""
+        base = {"cols_per_row": 3, "row_gap": 1.0, "font_size": 14,
+                "page_margin": 2.0, "answer_line": True, "header_bar": True}
+        resp = self.client.patch(f"/api/papers/{pid}/layout", json={**base, **layout})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        return self.client.get(f"/api/papers/{pid}/sheet",
+                               params={"mode": "question"}).text
 
 
 class TestEndToEndFlow(M2Case):
@@ -198,14 +208,6 @@ class TestStateMachineIndependent(M2Case):
 class TestLayoutToggles(M2Case):
     """六个排版开关在**卷面 HTML / 导出 PDF** 两个层面的可判定复核。"""
 
-    def _sheet(self, pid, **layout):
-        base = {"cols_per_row": 3, "row_gap": 1.0, "font_size": 14,
-                "page_margin": 2.0, "answer_line": True, "header_bar": True}
-        resp = self.client.patch(f"/api/papers/{pid}/layout", json={**base, **layout})
-        self.assertEqual(resp.status_code, 200, resp.text)
-        return self.client.get(f"/api/papers/{pid}/sheet",
-                               params={"mode": "question"}).text
-
     def test_cols_per_row_matches_items_per_row(self):
         pid = self.make_paper()["id"]
         for cols in (2, 3, 4, 6):
@@ -220,13 +222,66 @@ class TestLayoutToggles(M2Case):
                                  f"每行题数应为 {cols}，各行实际={rows}")
                 self.assertLessEqual(rows[-1], cols)
 
-    def test_answer_line_toggle_changes_markup(self):
+    # ---- D59：两个布尔项输出 CSS `display` 关键字，且元素**始终输出** ----
+
+    @staticmethod
+    def _var_value(html: str, name: str):
+        match = re.search(rf"{name}\s*:\s*([A-Za-z-]+)", html)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _style_block(html: str) -> str:
+        return "\n".join(re.findall(r"<style[^>]*>(.*?)</style>", html, re.S))
+
+    def test_d59_bool_elements_are_always_emitted(self):
+        """D59②：元素**始终输出**，显隐不再由渲染期决定去留。
+
+        （task-8 首轮我按旧契约断言「关掉时不得输出 `.q-blank`」，
+        D59 之后该断言与契约相反，故重写为现在这条。）
+        """
         pid = self.make_paper()["id"]
-        on = self._sheet(pid, answer_line=True)
-        off = self._sheet(pid, answer_line=False)
-        self.assertIn('class="q-blank"', on, "answer_line=True 应输出答题线元素")
-        self.assertNotIn('class="q-blank"', off, "answer_line=False 不应输出答题线元素")
-        self.assertIn('data-answer-line="0"', off)
+        on = self._sheet(pid, answer_line=True, header_bar=True)
+        off = self._sheet(pid, answer_line=False, header_bar=False)
+        for label, html in (("on", on), ("off", off)):
+            with self.subTest(state=label):
+                self.assertIn('class="q-blank"', html,
+                              f"answer_line={label} 时 .q-blank 仍必须输出（D59②）")
+                self.assertIn('class="header-bar"', html,
+                              f"header_bar={label} 时 .header-bar 仍必须输出（D59②）")
+
+    def test_d59_bool_vars_are_display_keywords(self):
+        """D59①：开 → `block` / `grid`；关 → `none`（不再是 1|0）。"""
+        pid = self.make_paper()["id"]
+        cases = ((True, "--answer-line-display", "block"),
+                 (False, "--answer-line-display", "none"),
+                 (True, "--header-bar-display", "grid"),
+                 (False, "--header-bar-display", "none"))
+        for flag, var, expected in cases:
+            html = self._sheet(pid, answer_line=flag, header_bar=flag)
+            with self.subTest(var=var, flag=flag):
+                self.assertEqual(self._var_value(html, var), expected,
+                                 f"{var} 应为 {expected!r}（D59①）")
+        off = self._sheet(pid, answer_line=False, header_bar=False)
+        self.assertNotIn("--answer-line: 0", off.replace(" ", ""),
+                         "旧语义 `--answer-line: 1|0` 不得残留（D59①）")
+        self.assertNotIn("--header-bar: 0", off.replace(" ", ""),
+                         "旧语义 `--header-bar: 1|0` 不得残留（D59①）")
+
+    def test_d59_stylesheet_actually_consumes_the_variables(self):
+        """D59 根因守卫：三个「死变量」必须被 `var()` 真正消费。
+
+        只在 HTML/样式文本层面断言；「变量真的驱动版式」由浏览器用例
+        `TestD59VariablesDriveLayout` 独立证明。
+        """
+        pid = self.make_paper()["id"]
+        style = self._style_block(self._sheet(pid)).replace("  ", " ")
+        for needle in ("display: var(--answer-line-display, block)",
+                       "display: var(--header-bar-display, grid)",
+                       "var(--page-margin)"):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, style, f"样式表未消费 {needle}（D59 根因）")
+        self.assertRegex(style, r"@media\s+screen",
+                         "`--page-margin` 需要 `@media screen` 页面盒才会被消费（D59③）")
 
     def test_header_bar_visible_in_exported_pdf(self):
         from app.export import export_pdf, is_available
@@ -243,6 +298,130 @@ class TestLayoutToggles(M2Case):
         self.assertTrue(results[True].count("班级") >= 1 and "姓名" in results[True],
                         "header_bar=True 时 PDF 里应能看到卷头信息栏")
         self.assertNotIn("班级", results[False], "header_bar=False 时不应有卷头信息栏")
+
+    def test_d59_pdf_print_path_unaffected_by_screen_media(self):
+        """D59⑤：`@media screen` 不得影响打印/PDF 通道。
+
+        判据：同一份内容，`answer_line` 开/关的页数关系（开 ≥ 关）与开关语义保持不变；
+        且 PDF 的 A4 尺寸不受屏幕纸面盒影响。
+        """
+        import io
+
+        import pypdfium2 as pdfium
+
+        from app.export import export_pdf, is_available
+
+        if not is_available():
+            self.skipTest("本机浏览器不可用")
+        pid = self.make_paper()["id"]
+        pages = {}
+        for flag in (True, False):
+            html = self._sheet(pid, answer_line=flag)
+            path = os.path.join(ARTIFACTS, f"ut-d59-line-{'on' if flag else 'off'}.pdf")
+            export_pdf(html, path)
+            with open(path, "rb") as fh:
+                document = pdfium.PdfDocument(io.BytesIO(fh.read()))
+            try:
+                pages[flag] = len(document)
+                width, height = document[0].get_size()
+            finally:
+                document.close()
+            with self.subTest(answer_line=flag):
+                self.assertAlmostEqual(width, 595.276, delta=1.5,
+                                       msg="打印通道仍是 A4 宽（@media screen 未泄漏进打印）")
+                self.assertAlmostEqual(height, 841.89, delta=1.5)
+        self.assertGreaterEqual(pages[True], pages[False],
+                                "有答题线时每行更高，页数不应少于关掉的情形")
+
+
+class TestD59VariablesDriveLayout(M2Case):
+    """D59 **原始故障现场**复刻：只覆盖 CSS 变量（不动 HTML），真实浏览器里版式必须变化。
+
+    故障现象：老师端面板关掉「答题横线 / 卷头栏」后预览毫无变化 —— 因为那三个变量
+    没有任何规则消费。本用例不采信任何一方自测：拿**后端渲染好的 HTML**，
+    在真实 Chromium 里打开，只追加一段 `:root{--…-display:none}`（模拟面板覆盖变量），
+    再读元素的计算样式。
+
+    浏览器测量跑在**独立进程**（`check_d59_layout.py`）：Playwright 的 sync API
+    与本进程里 `TestClient` 的事件循环不兼容，产品自身也是用子进程隔离的（D58）。
+    """
+
+    #: 1cm = 37.7953 CSS 参考像素
+    CM_TO_PX = 96.0 / 2.54
+
+    def _measure(self) -> dict:
+        """把三种状态的 HTML 落盘，交给独立进程测量，返回 JSON。"""
+        import subprocess
+
+        pid = self.make_paper()["id"]
+        paths = {
+            "base": os.path.join(ARTIFACTS, "d59-on.html"),
+            "off": os.path.join(ARTIFACTS, "d59-off.html"),
+        }
+        for key, layout in (("base", {"answer_line": True, "header_bar": True}),
+                            ("off", {"answer_line": False, "header_bar": False})):
+            with open(paths[key], "w", encoding="utf-8") as fh:
+                fh.write(self._sheet(pid, **layout))
+        margin_files = {}
+        for margin in (1.0, 2.0, 3.0):
+            path = os.path.join(ARTIFACTS, f"d59-margin-{margin:g}.html")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(self._sheet(pid, page_margin=margin))
+            margin_files[margin] = path
+        out_json = os.path.join(ARTIFACTS, "d59-measurements.json")
+        cmd = [sys.executable, os.path.join(HERE, "check_d59_layout.py"),
+               "--base", paths["base"], "--off", paths["off"], "--out", out_json]
+        for margin, path in margin_files.items():
+            cmd += ["--margin", f"{margin:g}={path}"]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        self.assertEqual(proc.returncode, 0,
+                         f"D59 浏览器实测脚本失败：{proc.stderr[-800:]}")
+        with open(out_json, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_overriding_variables_flips_computed_display(self):
+        """只追加变量覆盖 → `.q-blank` block→none、`.header-bar` grid→none。"""
+        data = self._measure()
+        base = data["base"]
+        self.assertTrue(base["blankPresent"] and base["headerPresent"],
+                        "两元素都必须存在（D59②：元素始终输出）")
+        self.assertEqual(base["blankDisplay"], "block",
+                         "开启状态下 .q-blank 的计算 display 应为 block")
+        self.assertEqual(base["headerDisplay"], "grid",
+                         "开启状态下 .header-bar 的计算 display 应为 grid")
+
+        after = data["base_after_variable_override"]
+        self.assertEqual(
+            after["blankDisplay"], "none",
+            "只覆盖 --answer-line-display 后 .q-blank 必须隐藏（D59 根因；"
+            f"注入的 CSS={data['override_css']!r}）")
+        self.assertEqual(
+            after["headerDisplay"], "none",
+            "只覆盖 --header-bar-display 后 .header-bar 必须隐藏（D59 根因）")
+
+    def test_renderer_off_state_is_already_hidden(self):
+        """渲染器直接给出的 off 状态同样隐藏（与面板覆盖走同一条通路）。"""
+        off = self._measure()["off"]
+        self.assertTrue(off["blankPresent"] and off["headerPresent"],
+                        "off 状态元素依然存在（D59②）")
+        self.assertEqual(off["blankDisplay"], "none")
+        self.assertEqual(off["headerDisplay"], "none")
+
+    def test_page_margin_is_consumed_on_screen(self):
+        """D59③：屏幕媒体下纸张宽 ≈210mm=793.70px，内边距 ≈ 设定的 cm。"""
+        data = self._measure()
+        for margin in (1.0, 2.0, 3.0):
+            measured = data[f"margin_{margin:g}"]
+            expected_px = margin * self.CM_TO_PX
+            with self.subTest(page_margin_cm=margin):
+                self.assertAlmostEqual(
+                    measured["sheetWidth"], 793.70, delta=2.0,
+                    msg=f"屏幕纸张宽应≈793.70px，实测 {measured['sheetWidth']:.2f}px")
+                self.assertAlmostEqual(
+                    measured["paddingLeft"], expected_px, delta=0.6,
+                    msg=f"左内边距应≈{expected_px:.2f}px（{margin}cm），"
+                        f"实测 {measured['paddingLeft']:.2f}px")
+                self.assertAlmostEqual(measured["paddingRight"], expected_px, delta=0.6)
 
 
 class TestExportPdfRoute(M2Case):

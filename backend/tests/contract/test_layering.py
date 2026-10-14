@@ -24,7 +24,7 @@ EXPECTED_SHA256 = {
     os.path.join(APP, "contracts", "__init__.py"):
         "b04c3444dae8c3e61720c281ab9b09b5e3c626c3656ce072c65dd6d298885807",
     os.path.join(APP, "contracts", "layout.py"):
-        "693a0b44a1e3add13880553966d0c83bb90139daba6b2819f943bb4db5c5fbbe",
+        "284eeafc8029e5d10f3522692bab9f4d758024043885e4b01aea43cf561f4dde",
     os.path.join(APP, "contracts", "sheet.py"):
         "befc52262a77799e6b84b59d480baf68b6d9e20a74f304a47cfa5bdb515100ed",
     os.path.join(APP, "contracts", "api.py"):

@@ -151,12 +151,13 @@ with sync_playwright() as p:
     page.wait_for_timeout(400)
 
     def read_vars():
-        # 关键：读的是 **iframe 内部文档**（后端渲染的卷面）根元素上的变量，
+        # 关键：读的是 **iframe 内部文档**（后端渲染的卷面）根元素上的变量与真实 display 值，
         # 不是 React 自己画的 DOM —— D56 之后前端不再有卷面 DOM。
         return page.evaluate("""() => {
             const frame = document.getElementById('sheet-frame');
             const doc = frame && frame.contentDocument;
-            const names = ['--cols-per-row','--row-gap','--font-size','--page-margin','--answer-line','--header-bar'];
+            const names = ['--cols-per-row','--row-gap','--font-size','--page-margin',
+                           '--answer-line-display','--header-bar-display'];
             if (!doc || !doc.documentElement) {
                 return { error: 'iframe 文档不可读' };
             }
@@ -169,21 +170,26 @@ with sync_playwright() as p:
             }
             const sheet = doc.querySelector('.sheet');
             const grid = doc.querySelector('.q-row');
+            const blank = doc.querySelector('.q-blank');
+            const headerBar = doc.querySelector('.header-bar');
             return {
                 inline, computed,
                 src: frame.getAttribute('src'),
                 frameDocTitle: doc.title,
                 hasSheet: Boolean(sheet),
                 sheetMode: sheet ? sheet.getAttribute('data-mode') : null,
-                answerLineAttr: sheet ? sheet.getAttribute('data-answer-line') : null,
-                headerBarAttr: sheet ? sheet.getAttribute('data-header-bar') : null,
                 gridColumns: grid ? getComputedStyle(grid).gridTemplateColumns : null,
                 gridRowGap: grid ? getComputedStyle(grid).rowGap : null,
                 itemCount: doc.querySelectorAll('.q-item').length,
                 answerItems: doc.querySelectorAll('.a-item').length,
+                // D59 的核心：开关是否真的作用到卷面元素上
+                blankDisplay: blank ? getComputedStyle(blank).display : null,
+                headerBarDisplay: headerBar ? getComputedStyle(headerBar).display : null,
+                headerBarCount: doc.querySelectorAll('.header-bar').length,
                 // 浏览器真正解析后的字号（用来证明 --font-size 生效到卷面上）
                 itemFontSize: doc.querySelector('.q-item')
                     ? getComputedStyle(doc.querySelector('.q-item')).fontSize : null,
+                sheetPadding: sheet ? getComputedStyle(sheet).paddingLeft : null,
                 dump: (document.querySelector('[data-testid="css-var-dump"]') || {}).textContent || '',
             };
         }""")
@@ -213,13 +219,48 @@ with sync_playwright() as p:
     set_range("layout-page_margin", 3.0)
     result["after_margin"] = read_vars()
 
+    # ---- D59 回归：两个开关（本次真 bug 的现场）----
+    #
+    # 防的是什么：面板写的 CSS 变量在渲染器样式表里**从来没被任何规则读取**时，
+    # 「拖动时实时覆盖」看起来一切正常（变量确实改了），但后端 HTML 是加载时定格的，
+    # 所以预览完全不动，而界面还显示「已保存」——比报错更糟。
+    # 两个层次分别断言：
+    #   ① 拖动瞬间：实时覆盖让卷面元素立刻变（手感，0 请求）
+    #   ② 保存 + 重载之后：后端**重新渲染**出来的卷面里开关仍然生效
+    #     （② 才是真正抓到 bug 的那条：只有渲染器真消费变量才会过）
+    def wait_persist_done(timeout_ms=8000):
+        page.wait_for_function(
+            "() => { const el = document.querySelector('.layout-panel-status');"
+            " return el && (el.getAttribute('data-persist-state') === 'refreshed'"
+            " || el.getAttribute('data-persist-state') === 'error'); }",
+            timeout=timeout_ms,
+        )
+        return page.get_attribute('.layout-panel-status', 'data-persist-state')
+
     page.click('[data-control="answer_line"] .switch')
     page.wait_for_timeout(130)
+    result["after_line_instant"] = read_vars()
+    result["persist_after_line"] = wait_persist_done()
     result["after_line"] = read_vars()
 
     page.click('[data-control="header_bar"] .switch')
     page.wait_for_timeout(130)
+    result["after_header_instant"] = read_vars()
+    result["persist_after_header"] = wait_persist_done()
     result["after_header"] = read_vars()
+
+    # 关闭之后再打开一次，验证反向（这条防的是「只能关不能开」的假修复）
+    page.click('[data-control="answer_line"] .switch')
+    page.wait_for_timeout(130)
+    result["after_line_on_instant"] = read_vars()
+    result["persist_after_line_on"] = wait_persist_done()
+    result["after_line_on"] = read_vars()
+
+    page.click('[data-control="header_bar"] .switch')
+    page.wait_for_timeout(130)
+    result["after_header_on_instant"] = read_vars()
+    result["persist_after_header_on"] = wait_persist_done()
+    result["after_header_on"] = read_vars()
 
     # 调参窗口内的后端请求（等过 debounce 400ms，让排版 PATCH 落下去）
     page.wait_for_timeout(900)
@@ -228,7 +269,8 @@ with sync_playwright() as p:
     result["panel_preview_reads"] = len(
         [r for r in window if r["method"] == "GET" and r["path"] == "/api/papers/1"]
     )
-    # 卷面 HTML 的读取单独计数：调参期间也不应该重新拉卷面
+    # D59 兜底会重载卷面，所以这里期望 **恰好等于保存次数**，而不是 0：
+    # 拖动过程中 0 次；每次保存成功后 1 次。
     result["panel_sheet_reads"] = len(
         [r for r in window if r["method"] == "GET" and r["path"] == "/api/papers/1/sheet"]
     )
@@ -278,7 +320,7 @@ with sync_playwright() as p:
                             cols: d.documentElement.style.getPropertyValue('--cols-per-row'),
                             rowGap: d.documentElement.style.getPropertyValue('--row-gap'),
                             fontSize: d.documentElement.style.getPropertyValue('--font-size'),
-                            answerLine: d.documentElement.style.getPropertyValue('--answer-line'),
+                            answerLineDisplay: d.documentElement.style.getPropertyValue('--answer-line-display'),
                         },
                     });
                 };
@@ -376,13 +418,13 @@ async function main() {
 
   check('卷面 iframe 加载出后端渲染的卷面（.sheet）', b?.hasSheet === true, `src=${b?.src} 标题=${b?.frameDocTitle} 题目数=${b?.itemCount}`);
   check('iframe src 指向 /api/papers/1/sheet?mode=question', (b?.src ?? '').includes('/api/papers/1/sheet?mode=question'), b?.src);
-  check('iframe 文档根元素上已是初始六个变量', b.inline['--cols-per-row'] === '4' && b.inline['--answer-line'] === '1', JSON.stringify(b.inline));
+  check('iframe 文档根元素上已是初始六个变量', b.inline['--cols-per-row'] === '4' && b.inline['--answer-line-display'] === 'block', JSON.stringify(b.inline));
   check('初始 --cols-per-row = 4', b.inline['--cols-per-row'] === '4');
   check('初始 --row-gap = 1', b.inline['--row-gap'] === '1');
   check('初始 --font-size = 14pt', b.inline['--font-size'] === '14pt');
   check('初始 --page-margin = 2cm', b.inline['--page-margin'] === '2cm');
-  check('初始 --answer-line = 1', b.inline['--answer-line'] === '1');
-  check('初始 --header-bar = 1', b.inline['--header-bar'] === '1');
+  check('初始 --answer-line-display = block（D59：display 关键字）', b.inline['--answer-line-display'] === 'block', b.inline['--answer-line-display']);
+  check('初始 --header-bar-display = grid（D59：display 关键字）', b.inline['--header-bar-display'] === 'grid', b.inline['--header-bar-display']);
 
   check('① 每行题数 4→3 改 iframe 里的 --cols-per-row', a.cols.inline['--cols-per-row'] === '3', `computed=${a.cols.computed['--cols-per-row']}`);
   check('   卷面网格真的变成 3 列', (a.cols.gridColumns || '').trim().split(/\s+/).length === 3, `gridTemplateColumns=${a.cols.gridColumns}`);
@@ -395,31 +437,97 @@ async function main() {
   check('③ 字号 14→20 改 iframe 里的 --font-size', a.font.inline['--font-size'] === '20pt');
   check('   卷面题目的实际字号 = 20pt', (a.font.itemFontSize || '').startsWith('26.6'), `computed fontSize=${a.font.itemFontSize}`);
   check('④ 页边距 2→3 改 iframe 里的 --page-margin', a.margin.inline['--page-margin'] === '3cm');
-  check('⑤ 答题横线开关改 iframe 里的 --answer-line = 0', a.line.inline['--answer-line'] === '0', `computed=${a.line.computed['--answer-line']}`);
+  // 渲染器给了 @media screen 的纸面 box 后，页边距在**预览**里也应该看得见：
+  // 卷面纸面必须真的有非零内边距（= 那段 @media screen 消费了 --page-margin）。
+  // 若哪天后端去掉那段，这条会红 —— 那时面板上必须重新挂「屏幕上看不出」的说明。
   check(
-    '   卷面 CSS 里 --answer-line 生效（驱动 .q-blank 的显隐）',
-    a.line.computed['--answer-line'] === '0',
-    `getComputedStyle(documentElement).getPropertyValue('--answer-line')=${a.line.computed['--answer-line']}`,
+    '   卷面纸面有非零内边距（屏幕预览能吃 --page-margin，而非只影响打印）',
+    Number.parseFloat(a.margin.sheetPadding) > 0,
+    `.sheet padding-left=${a.margin.sheetPadding}（期望 3cm≈113.4px）`,
   );
-  check('⑥ 卷头栏开关改 iframe 里的 --header-bar = 0', a.header.inline['--header-bar'] === '0');
+
+  console.log('\n—— D59 回归：两个开关（本次真 bug 的防线）——');
+  const inst = {
+    line: result.after_line_instant ?? {},
+    header: result.after_header_instant ?? {},
+    lineOn: result.after_line_on_instant ?? {},
+    headerOn: result.after_header_on_instant ?? {},
+  };
+  const reloaded = {
+    line: result.after_line ?? {},
+    header: result.after_header ?? {},
+    lineOn: result.after_line_on ?? {},
+    headerOn: result.after_header_on ?? {},
+  };
+
+  // 层次 ①：拖动瞬间的实时覆盖（手感，0 请求）
   check(
-    '   卷面 CSS 里 --header-bar 生效（驱动卷头栏显隐）',
-    a.header.computed['--header-bar'] === '0',
-    `getComputedStyle(documentElement).getPropertyValue('--header-bar')=${a.header.computed['--header-bar']}`,
+    '⑤-a 关掉答题横线：拖动瞬间 --answer-line-display = none',
+    inst.line.inline['--answer-line-display'] === 'none',
+    `inline=${inst.line.inline['--answer-line-display']}`,
   );
-  // 说明：iframe 里 `.sheet` 的 data-answer-line / data-header-bar 是**服务端渲染时**写下的属性，
-  // 面板的实时覆盖只作用于六个 CSS 变量（冻结契约 css_variables 的产物）。
-  // 打印 / PDF 走服务端重新渲染，属性自然是最新的 —— 这一点由打印断言覆盖。
+  check(
+    '   且卷面 .q-blank 立刻变 none（变量真的被样式表消费）',
+    inst.line.blankDisplay === 'none',
+    `.q-blank display=${inst.line.blankDisplay}`,
+  );
+  check(
+    '⑤-b 关掉卷头栏：拖动瞬间 --header-bar-display = none',
+    inst.header.inline['--header-bar-display'] === 'none',
+    `inline=${inst.header.inline['--header-bar-display']}`,
+  );
+  check(
+    '   且卷面 .header-bar 立刻变 none',
+    inst.header.headerBarDisplay === 'none',
+    `.header-bar display=${inst.header.headerBarDisplay}`,
+  );
+
+  // 层次 ②：保存 + **重载后端渲染的卷面**之后仍然生效 —— 这条才是抓到本次 bug 的那条。
+  // 说明：本断言在渲染器样式表真正消费变量时通过；若 render-export 尚未改完（D59 未落地），
+  // 它会红 —— 那是实现未完成，不是前端问题（渲染器的写域不属于 frontend）。
+  check('保存后状态推进到「已保存，预览已刷新」', result.persist_after_line === 'refreshed', `data-persist-state=${result.persist_after_line}`);
+  check(
+    '⑤-c 重载后（后端重新渲染）答题横线仍为关：class="q-blank" 实际 display = none',
+    reloaded.line.blankDisplay === 'none',
+    `重载后 .q-blank display=${reloaded.line.blankDisplay}；--answer-line-display=${reloaded.line.inline['--answer-line-display']}`,
+  );
+  check(
+    '⑥-a 保存后重载，卷头栏仍为关：.header-bar 实际 display = none',
+    reloaded.header.headerBarDisplay === 'none',
+    `重载后 .header-bar display=${reloaded.header.headerBarDisplay}`,
+  );
+  check(
+    '   元素仍在 DOM 里（不是渲染器干脆不输出，而是用 display 控制）',
+    (reloaded.header.headerBarCount ?? 0) > 0 && (reloaded.line.itemCount ?? 0) > 0,
+    `header-bar 数=${reloaded.header.headerBarCount} 题目数=${reloaded.line.itemCount}`,
+  );
+
+  // 层次 ③：反向也要成立（防「只能关不能开」的假修复）
+  check(
+    '⑤-d 重新打开答题横线：重载后 .q-blank display = block',
+    reloaded.lineOn.blankDisplay === 'block',
+    `重载后 .q-blank display=${reloaded.lineOn.blankDisplay}；--answer-line-display=${reloaded.lineOn.inline['--answer-line-display']}`,
+  );
+  check(
+    '⑥-b 重新打开卷头栏：重载后 .header-bar display = grid',
+    reloaded.headerOn.headerBarDisplay === 'grid',
+    `重载后 .header-bar display=${reloaded.headerOn.headerBarDisplay}；--header-bar-display=${reloaded.headerOn.inline['--header-bar-display']}`,
+  );
 
   check(
-    '调参期间没有重新请求卷面 / 卷数据（预览不靠服务器往返）',
-    result.panel_preview_reads === 0 && (result.panel_sheet_reads ?? 0) === 0,
-    `GET /api/papers/1 次数=${result.panel_preview_reads}；GET /sheet 次数=${result.panel_sheet_reads}`,
+    '调参期间没有重新读取卷数据（预览不靠服务器往返）',
+    result.panel_preview_reads === 0,
+    `GET /api/papers/1 次数=${result.panel_preview_reads}`,
   );
   check(
     '调参期间发生排版持久化 PATCH /api/papers/1/layout',
     (result.panel_layout_patches ?? 0) >= 1,
-    `PATCH 次数=${result.panel_layout_patches}；窗口内请求=${JSON.stringify(result.panel_window_requests)}`,
+    `PATCH 次数=${result.panel_layout_patches}`,
+  );
+  check(
+    'D59 兜底：每次保存成功后重载一次卷面（拖动过程中不重载）',
+    (result.panel_sheet_reads ?? 0) === (result.panel_layout_patches ?? 0),
+    `GET /sheet 次数=${result.panel_sheet_reads}；PATCH 次数=${result.panel_layout_patches}（两者应相等）`,
   );
 
   const muts = result.mutation_requests ?? [];
@@ -430,7 +538,7 @@ async function main() {
   check('打印题目版：调用了打印 iframe 的 print（不是打主文档）', prints.length >= 1, `打印调用=${prints.length}`);
   check('  打印题目版用的是 mode=question 的卷面', prints[0]?.mode === 'question', `${JSON.stringify(prints[0])}`);
   check('  题目版打印内容不含答案区（不泄题）', prints[0]?.hasAnswerSection === false, `hasAnswerSection=${prints[0]?.hasAnswerSection} 答案条数=${prints[0]?.answerItems}`);
-  check('  打印题目版时卷面带着当前排版（--cols-per-row=3 / --answer-line=0）', prints[0]?.vars?.cols === '3' && prints[0]?.vars?.answerLine === '0', JSON.stringify(prints[0]?.vars));
+  check('  打印题目版时卷面带着当前排版（--cols-per-row=3）', prints[0]?.vars?.cols === '3', JSON.stringify(prints[0]?.vars));
   check('打印答案版：第二次打印用的是 mode=answer 的卷面', prints[1]?.mode === 'answer', `${JSON.stringify(prints[1])}`);
   check('  答案版打印内容含答案区', prints[1]?.hasAnswerSection === true && (prints[1]?.answerItems ?? 0) > 0, `hasAnswerSection=${prints[1]?.hasAnswerSection} 答案条数=${prints[1]?.answerItems}`);
   check('  打印用的是同一份后端卷面 HTML（题目版 6 题 / 答案版 6 题）', prints[0]?.qItems === 6 && prints[1]?.qItems === 6, `qItems=${prints[0]?.qItems} / ${prints[1]?.qItems}`);

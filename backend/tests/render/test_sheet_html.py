@@ -116,8 +116,9 @@ class TestLayoutVariables(unittest.TestCase):
             "row_gap": (1.8, "--row-gap: 1.8"),
             "font_size": (18, "--font-size: 18pt"),
             "page_margin": (2.5, "--page-margin: 2.5cm"),
-            "answer_line": (False, "--answer-line: 0"),
-            "header_bar": (False, "--header-bar: 0"),
+            # D59：布尔项输出 CSS 可直接当 display 用的关键字
+            "answer_line": (False, "--answer-line-display: none"),
+            "header_bar": (False, "--header-bar-display: none"),
         }
         for name, (value, expected) in cases.items():
             with self.subTest(parameter=name):
@@ -126,6 +127,41 @@ class TestLayoutVariables(unittest.TestCase):
                 self.assertIn(expected, style)
                 baseline = style_block(render_sheet(build_ctx(layout=base)))
                 self.assertNotEqual(style, baseline, f"{name} 改了但样式没变")
+
+    def test_boolean_switches_are_consumed_as_display_values(self):
+        """D59：两个布尔项必须被 `display: var(...)` 真正消费。
+
+        第一版把它们写成 `--answer-line: 1|0`，样式表里**一条规则都没读**，
+        隐藏改走渲染期烘死的 `data-*` 属性 —— 老师端面板改开关时预览无反应，
+        而面板仍显示「已保存」。这条用例把「变量必须被消费」钉住。
+        """
+        for on, off in ((True, "--answer-line-display: block"), (False, "--answer-line-display: none")):
+            with self.subTest(answer_line=on):
+                style = style_block(render_sheet(build_ctx(layout=LayoutParams(answer_line=on))))
+                self.assertIn("display: var(--answer-line-display, block)", style)
+                self.assertIn(off, style)
+        for on, off in ((True, "--header-bar-display: grid"), (False, "--header-bar-display: none")):
+            with self.subTest(header_bar=on):
+                style = style_block(render_sheet(build_ctx(layout=LayoutParams(header_bar=on))))
+                self.assertIn("display: var(--header-bar-display, grid)", style)
+                self.assertIn(off, style)
+
+    def test_no_rendered_attribute_selectors_take_over_hiding(self):
+        """隐藏职责必须只在 CSS 变量这一条通路上，不能再有 `data-*` 属性选择器。"""
+        style = style_block(render_sheet(build_ctx(layout=LayoutParams(answer_line=False, header_bar=False))))
+        self.assertNotIn('data-answer-line="0"', style)
+        self.assertNotIn('data-header-bar="0"', style)
+
+    def test_page_margin_is_consumed_by_screen_preview_box(self):
+        """`--page-margin` 在屏幕上也要有可见效果（A4 纸面 + 内边距）。
+
+        `@page` 只对打印生效，所以第一版里 `--page-margin` 在预览中是死变量（D59）。
+        """
+        style = style_block(render_sheet(build_ctx(layout=LayoutParams(page_margin=2.5))))
+        self.assertIn("@media screen", style)
+        preview = css_rule(style, ".sheet")
+        self.assertIn("width: 210mm", style)
+        self.assertRegex(style, r"padding:\s*var\(--page-margin\)")
 
     def test_page_rule_is_a4_with_margin(self):
         """A4 页面几何（NFR-5）。"""
@@ -159,12 +195,35 @@ class TestLayoutVariables(unittest.TestCase):
         self.assertIn("page-break-before: always", rule)
 
     def test_header_bar_switch_is_in_css(self):
+        """卷头栏显隐由 `.header-bar` 自己的 `display` 读变量（D59）。"""
         style = style_block(render_sheet(build_ctx()))
-        self.assertRegex(style, r'\.sheet\[data-header-bar="0"\]\s*\.header-bar\s*\{[^}]*display:\s*none')
+        rule = css_rule(style, ".header-bar")
+        self.assertIn("display: var(--header-bar-display, grid)", rule)
 
     def test_answer_line_switch_is_in_css(self):
+        """答题横线显隐由 `.q-blank` 自己的 `display` 读变量（D59）。"""
         style = style_block(render_sheet(build_ctx()))
-        self.assertRegex(style, r'\.q-item\[data-answer-line="0"\]\s*\.q-blank\s*\{[^}]*display:\s*none')
+        rule = css_rule(style, ".q-blank")
+        self.assertIn("display: var(--answer-line-display, block)", rule)
+
+    def test_switched_off_elements_are_still_rendered(self):
+        """元素**始终输出** —— 面板只覆盖 CSS 变量才能实时生效。
+
+        第一版在 `answer_line=False` / `header_bar=False` 时干脆不输出元素，
+        于是面板改变量永远看不到变化（那正是 D59 修的那个 bug）。
+        """
+        for layout, selectors in (
+            (LayoutParams(answer_line=False), ("q-blank",)),
+            (LayoutParams(header_bar=False), ("header-bar",)),
+            (
+                LayoutParams(answer_line=False, header_bar=False),
+                ("q-blank", "header-bar"),
+            ),
+        ):
+            root = parse_html(render_sheet(build_ctx(layout=layout)))
+            for cls in selectors:
+                with self.subTest(layout=layout, cls=cls):
+                    self.assertTrue(root.find_all(cls=cls), f"{cls} 应当始终输出")
 
 
 class TestQuestionModeSafety(unittest.TestCase):

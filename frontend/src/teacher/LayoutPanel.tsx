@@ -10,6 +10,7 @@
  */
 
 import {
+  CSS_DISPLAY_VALUES,
   CSS_VAR_NAMES,
   LAYOUT_BOUNDS,
   type LayoutBoolField,
@@ -25,6 +26,14 @@ interface NumberControl {
   step: number;
   decimals: number;
   hint: string;
+  /**
+   * 一项参数在屏幕与打印上表现不同时的提醒。
+   *
+   * 目前 `--page-margin` 会在 `@page { margin }`（打印 / PDF）和
+   * `@media screen` 的纸面 box（预览）两处生效，所以这里说明它一定影响打印 / PDF；
+   * 如果哪一天渲染器去掉了屏幕纸面，老师会觉得「拖了没反应」，这条说明就不该删。
+   */
+  screenNote?: string;
 }
 
 interface BoolControl {
@@ -34,6 +43,9 @@ interface BoolControl {
   onLabel: string;
   offLabel: string;
   hint: string;
+  /** 该布尔项在 CSS 里的实际取值（D59：display 关键字），只用于小字展示与核对。 */
+  cssOn: string;
+  cssOff: string;
 }
 
 type Control = NumberControl | BoolControl;
@@ -47,7 +59,7 @@ export const LAYOUT_CONTROLS: readonly Control[] = [
     unit: '题/行',
     step: 1,
     decimals: 0,
-    hint: 'CSS Grid 的列数',
+    hint: '每行排几道题',
   },
   {
     kind: 'number',
@@ -56,7 +68,7 @@ export const LAYOUT_CONTROLS: readonly Control[] = [
     unit: '倍',
     step: 0.1,
     decimals: 1,
-    hint: '按 calc(var(--row-gap) * 1em) 作用于题块间距',
+    hint: '题与题之间的疏密',
   },
   {
     kind: 'number',
@@ -65,7 +77,7 @@ export const LAYOUT_CONTROLS: readonly Control[] = [
     unit: 'pt',
     step: 1,
     decimals: 0,
-    hint: '题目文本字号',
+    hint: '题目文字大小',
   },
   {
     kind: 'number',
@@ -74,15 +86,18 @@ export const LAYOUT_CONTROLS: readonly Control[] = [
     unit: 'cm',
     step: 0.5,
     decimals: 1,
-    hint: '同时映射到 @page { margin }',
+    hint: '纸张四周留白：预览的纸面与打印 / PDF 同时生效',
+    screenNote: '打印 / PDF 一定生效',
   },
   {
     kind: 'bool',
     field: 'answer_line',
     label: '答题横线',
-    onLabel: '留空位',
+    onLabel: '保留',
     offLabel: '不留',
-    hint: '是否留答题横线 / 书写空位',
+    hint: '题目下方是否留书写空位',
+    cssOn: CSS_DISPLAY_VALUES.answer_line.on,
+    cssOff: CSS_DISPLAY_VALUES.answer_line.off,
   },
   {
     kind: 'bool',
@@ -91,6 +106,8 @@ export const LAYOUT_CONTROLS: readonly Control[] = [
     onLabel: '显示',
     offLabel: '隐藏',
     hint: '班级 / 姓名 / 得分信息栏',
+    cssOn: CSS_DISPLAY_VALUES.header_bar.on,
+    cssOff: CSS_DISPLAY_VALUES.header_bar.off,
   },
 ];
 
@@ -98,18 +115,25 @@ export interface LayoutPanelProps {
   layout: LayoutIn;
   onChange: (patch: Partial<LayoutIn>) => void;
   onReset: () => void;
-  /** 「持久化排版」的状态提示：保存中 / 已保存 / 保存失败（失败不影响预览）。 */
-  persistState: 'idle' | 'saving' | 'saved' | 'error';
+  /**
+   * 「持久化排版」的状态：
+   *   saving      正在 PATCH
+   *   refreshing  已保存，正在重新加载卷面（D59 兜底：让预览等于后端当前渲染）
+   *   refreshed   保存并刷新完成 —— 此时才敢说「看到的就是最新的」
+   *   error       保存失败（预览仍然实时生效，只是没落库）
+   */
+  persistState: 'idle' | 'saving' | 'refreshing' | 'refreshed' | 'error';
   persistError: string | null;
   /** 后端不可用时也允许继续调参 —— 明确告诉老师改的只是本地预览。 */
   localOnly: boolean;
 }
 
 const PERSIST_TEXT: Record<LayoutPanelProps['persistState'], string> = {
-  idle: '排版改动会实时生效；松开控件后自动保存到后端',
+  idle: '拖动或拨动开关时预览立刻变化；松开后自动保存到后端',
   saving: '正在保存排版到后端…',
-  saved: '排版已保存到后端',
-  error: '排版保存失败（预览仍然实时生效）',
+  refreshing: '已保存，正在按后端渲染结果刷新预览…',
+  refreshed: '已保存，预览已刷新（当前显示 = 后端渲染结果）',
+  error: '排版保存失败（预览仍然实时生效，但没有落库）',
 };
 
 export function LayoutPanel({
@@ -130,6 +154,7 @@ export function LayoutPanel({
       </div>
       <p className="layout-panel-note">
         六项参数直接驱动预览区的 CSS 变量，不往返服务器；拖动或拨动开关时右侧版式立刻变化。
+        保存成功后会自动重新加载卷面，确保预览与后端渲染结果一致。
       </p>
 
       <div className="layout-controls">
@@ -154,7 +179,12 @@ export function LayoutPanel({
                   <span className="switch-track" aria-hidden="true" />
                 </label>
                 <p className="layout-control-hint">
-                  <code>{cssVar}</code> = {checked ? '1' : '0'} · {control.hint}
+                  {/* 不要把 CSS 关键字（none/block/grid）怼给老师看：先给人类可读的状态，
+                      变量名与取值放在小字里，供老师端排查 / 与后端核对（D59） */}
+                  {control.hint} · <code className="var-chip">{cssVar}</code>
+                  <code className="var-chip">
+                    {checked ? control.cssOn : control.cssOff}
+                  </code>
                 </p>
               </div>
             );
@@ -188,7 +218,13 @@ export function LayoutPanel({
                 <span>{max}</span>
               </div>
               <p className="layout-control-hint">
-                <code>{cssVar}</code> · {control.hint}
+                {control.hint}
+                {control.screenNote ? (
+                  <span className="screen-note" data-testid={`screen-note-${control.field}`}>
+                    {control.screenNote}
+                  </span>
+                ) : null}{' '}
+                <code className="var-chip">{cssVar}</code>
               </p>
             </div>
           );

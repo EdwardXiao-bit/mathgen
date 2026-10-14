@@ -27,6 +27,10 @@ test-results/
 # verify 自装的独立库（如 pypdfium2）：只在本地目录，不入库
 .pylibs/
 
+# 验收脚本的产物（PDF / PNG / HTML / 几何报告）：每次跑测重新生成，
+# 入库会导致「跑一次测试就脏一大片」。需要 M7 配图时当场由脚本生成。
+backend/tests/e2e_m2/artifacts/
+
 # ---------- 编辑器 / 操作系统 ----------
 .vscode/
 .idea/

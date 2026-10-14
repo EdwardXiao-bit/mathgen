@@ -54,8 +54,8 @@ class TestLayoutParamsContract(unittest.TestCase):
             "row_gap": "--row-gap",
             "font_size": "--font-size",
             "page_margin": "--page-margin",
-            "answer_line": "--answer-line",
-            "header_bar": "--header-bar",
+            "answer_line": "--answer-line-display",
+            "header_bar": "--header-bar-display",
         })
 
     def test_bounds(self):
@@ -85,9 +85,24 @@ class TestLayoutParamsContract(unittest.TestCase):
         self.assertEqual(css["--font-size"], "16pt")
         self.assertEqual(css["--page-margin"], "1.5cm")
         self.assertEqual(css["--cols-per-row"], "4")
-        self.assertEqual(css["--answer-line"], "0")
-        self.assertEqual(css["--header-bar"], "1")
         self.assertEqual(len(css), 6)
+
+    def test_boolean_variables_carry_display_keywords(self):
+        """D59：布尔项必须输出 CSS **可直接用作 display 的关键字**。
+
+        原先输出 `1`/`0`，而样式表没有任何规则读取它们（隐藏走的是渲染期烘死的
+        `data-*` 属性），导致老师端面板改这两个开关时预览毫无反应。
+        """
+        on = css_variables(LayoutParams(answer_line=True, header_bar=True))
+        off = css_variables(LayoutParams(answer_line=False, header_bar=False))
+        self.assertEqual(on["--answer-line-display"], "block")
+        self.assertEqual(off["--answer-line-display"], "none")
+        self.assertEqual(on["--header-bar-display"], "grid")
+        self.assertEqual(off["--header-bar-display"], "none")
+        for name, value in list(on.items()) + list(off.items()):
+            if name.endswith("-display"):
+                self.assertIn(value, ("block", "none", "grid", "flex"),
+                              msg=f"{name} 的值必须是 display 关键字，实际 {value!r}")
 
 
 class TestSheetContract(unittest.TestCase):

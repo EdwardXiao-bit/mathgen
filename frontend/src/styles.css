@@ -805,12 +805,36 @@ code {
   color: var(--ui-text-soft);
 }
 
-.layout-panel-status[data-persist-state="saved"] {
+.layout-panel-status[data-persist-state="refreshed"] {
   color: var(--ui-ok);
+}
+
+.layout-panel-status[data-persist-state="refreshing"] {
+  color: var(--ui-accent);
 }
 
 .layout-panel-status[data-persist-state="error"] {
   color: var(--ui-danger);
+}
+
+/* 变量名 / CSS 取值的调试小字：机器可读信息，不与给老师看的文案抢注意力 */
+.var-chip {
+  font-size: 10px;
+  color: #6b7280;
+  background: #f2f3f6;
+}
+
+/* 「屏幕上看不出效果」的提醒（例如 --page-margin 只影响打印 / PDF） */
+.screen-note {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ui-warn-bg);
+  border: 1px solid var(--ui-warn-border);
+  color: #6b4a00;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .layout-panel-error {

@@ -83,6 +83,7 @@ def style_text(layout: LayoutParams) -> str:
     var_cols = CSS_VAR_NAMES["cols_per_row"]
     var_gap = CSS_VAR_NAMES["row_gap"]
     var_font = CSS_VAR_NAMES["font_size"]
+    var_margin = CSS_VAR_NAMES["page_margin"]
     var_line = CSS_VAR_NAMES["answer_line"]
     var_header = CSS_VAR_NAMES["header_bar"]
 
@@ -102,7 +103,7 @@ def style_text(layout: LayoutParams) -> str:
       color: #000;
       /* 只用系统自带字体，不引外部字体（NFR-9 离线） */
       font-family: "SimSun", "Songti SC", "Times New Roman", serif;
-      font-size: var(--font-size);
+      font-size: var({var_font});
       line-height: 1.4;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -112,10 +113,32 @@ def style_text(layout: LayoutParams) -> str:
       width: 100%;
     }}
 
+    /* ---- 屏幕预览：让卷面真的像一张 A4 纸，且页边距可见 ----
+       `@page` 只对打印/PDF 生效，屏幕上没有页面盒，所以 `--page-margin` 在预览里
+       原本毫无视觉效果（D59 修的三个「死变量」之一）。
+       这里用 `@media screen` 给预览一个 A4 宽的纸面 + `padding` 当页边距：
+       变量被真正消费，面板改页边距时预览立刻变化。
+       `@media screen` 不影响打印/PDF 通道，NFR-5 不受影响。 */
+    @media screen {{
+      body {{
+        background: #e9e9ec;
+        padding: 12mm 0;
+      }}
+      .sheet {{
+        width: 210mm;
+        max-width: 100%;
+        box-sizing: border-box;
+        padding: var({var_margin});
+        background: #fff;
+        margin: 0 auto;
+        box-shadow: 0 0 4px rgba(0, 0, 0, 0.25);
+      }}
+    }}
+
     /* ---- 卷头 ---- */
     .sheet-title {{
-      margin: 0 0 calc(var(--row-gap) * 0.5em) 0;
-      font-size: calc(var(--font-size) * 1.5);
+      margin: 0 0 calc(var({var_gap}) * 0.5em) 0;
+      font-size: calc(var({var_font}) * 1.5);
       font-weight: 700;
       text-align: center;
       letter-spacing: 0.1em;
@@ -124,22 +147,21 @@ def style_text(layout: LayoutParams) -> str:
       display: flex;
       justify-content: center;
       gap: 1.5em;
-      margin-bottom: calc(var(--row-gap) * 0.5em);
-      font-size: calc(var(--font-size) * 0.85);
+      margin-bottom: calc(var({var_gap}) * 0.5em);
+      font-size: calc(var({var_font}) * 0.85);
     }}
+    /* 卷头信息栏开关：**完全由 CSS 变量驱动**（D59）。
+       元素始终输出，可见性只看 `--header-bar-display`，
+       这样老师端面板覆盖变量即可实时生效，与后端渲染走同一条通路。 */
     .header-bar {{
-      display: grid;
+      display: var({var_header}, grid);
       grid-template-columns: repeat(3, 1fr);
       gap: 1em;
-      padding: calc(var(--row-gap) * 0.4em) 0;
-      margin-bottom: var(--row-gap);
+      padding: calc(var({var_gap}) * 0.4em) 0;
+      margin-bottom: var({var_gap});
       border-top: 1px solid #000;
       border-bottom: 1px solid #000;
-      font-size: calc(var(--font-size) * 0.9);
-    }}
-    /* 卷头信息栏开关：选择器读的是同一个 CSS 变量的值（由 layout.root_style_attr 注入） */
-    .sheet[data-header-bar="0"] .header-bar {{
-      display: none;
+      font-size: calc(var({var_font}) * 0.9);
     }}
     .header-bar span {{ border-bottom: 1px solid #000; display: inline-block; min-width: 5em; }}
 
@@ -176,15 +198,14 @@ def style_text(layout: LayoutParams) -> str:
     /* 填空题的方框排得下就行 */
     .q-display {{ word-break: break-word; }}
 
-    /* 答题空位 / 横线开关：同一个 CSS 变量值驱动的第二处选择器 */
+    /* 答题空位 / 横线开关：**完全由 CSS 变量驱动**（D59）。
+       元素始终输出，可见性只看 `--answer-line-display`——
+       面板覆盖变量即可实时生效，不再依赖渲染期烘死的 `data-*` 属性。 */
     .q-blank {{
-      display: block;
+      display: var({var_line}, block);
       height: calc(var({var_font}) * 1.3);
       margin-top: 0.15em;
       border-bottom: 1px solid #999;
-    }}
-    .q-item[data-answer-line="0"] .q-blank {{
-      display: none;
     }}
 
     /* ---- 答案版 ---- */

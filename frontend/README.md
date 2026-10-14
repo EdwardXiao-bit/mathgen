@@ -51,13 +51,15 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 > 驱动 Playwright 用的 `spawnSync` 会阻塞 Node 事件循环，服务若同进程则连 `connection` 事件都派发不到
 > （实测：Chromium 连接超时，服务端一条请求日志都没有）。
 
-## 两个必须知道的实现约定
+## 几个必须知道的实现约定
 
-### 1. 排版面板：本地状态驱动预览，PATCH 只负责持久化
+### 1. 排版面板：本地状态驱动预览，PATCH 负责持久化 + 重载
 
 ```
-拖动控件 → setLayout(本地 state) → 内联 style 上的 CSS 变量变 → 预览立刻重排（0 次网络请求）
-                                 ↘ debounce 400ms 后 PATCH /api/papers/{id}/layout（失败不影响预览）
+拖动控件 → 覆盖 iframe 文档根元素上的六个 CSS 变量 → 预览立刻变（0 次网络请求）
+         ↘ debounce 400ms → PATCH /api/papers/{id}/layout
+                              → 成功：状态='refreshing' + reloadToken++
+                              → iframe 重新加载后端 HTML → onReloaded → 状态='已保存，预览已刷新'
 ```
 
 ### 2. 卷面只有一套渲染实现：后端 `app/render/`（D56）
@@ -83,10 +85,38 @@ flush 待写入的排版（PATCH，让后端渲染时读到最新值）
 > 打印出来是一张白纸（实测：`contentDocument` 里既无 `.sheet` 也无 `.q-item`）。
 > 改成自己取 HTML 再 `document.write`，时序完全可控。
 
-### 3. 第六维「答案版形式」在 M2 是只读的
+### 3. 保存成功后重新加载卷面（D59 兜底，很重要）
+
+服务端渲染的 HTML 是**加载时定格**的。只要有任何一个参数不是由 CSS 变量驱动，
+「拖动时覆盖变量」这条通路就会让预览与后端不一致 —— 而界面还显示「已保存」，比直接报错更糟。
+（历史上 `answer_line` / `header_bar` 就是这样：面板写的变量在渲染器样式表里没有规则读取。）
+
+所以 `PATCH /layout` **成功返回后**自增 `sheetReloadToken`，让 iframe 重新加载后端最新 HTML；
+完成后状态才推进到「已保存，预览已刷新（当前显示 = 后端渲染结果）」。
+
+- 拖动过程中**不重载**（手感不被破坏）。回归断言：`GET /sheet` 次数 == `PATCH /layout` 次数
+- 对应回归用例在 `verify-layout-css-vars.mjs` 的「D59 回归」段：开关关掉 → 保存 → 重载后
+  卷面里 `.q-blank` / `.header-bar` 的实际 `display` 必须是 `none`；再打开必须是 `block` / `grid`
+
+### 4. 两个开关走 `display` 变量（D59 契约变更）
+
+`--answer-line-display: block|none`、`--header-bar-display: grid|none`（不再是 `1|0`），
+渲染器样式表用 `display: var(--…-display, 默认值)` 真正消费它们 ——
+服务端渲染与面板实时覆盖因此走同一条通路。`verify-contract.py` 会逐字比对前端
+`CSS_DISPLAY_VALUES` 与后端 `css_variables()` 的取值。
+
+面板文案只说人话（「保留 / 不留」「显示 / 隐藏」），变量名与关键字降级为调试小字。
+
+### 5. 第六维「答案版形式」在 M2 是只读的
 
 `PaperConfigIn` 里没有这个字段，`paper.answer_layout` 留到 M3。所以界面上它只有 D20 默认一项、
 标注「M3 起生效」，**不是可点控件**，也不再往 sessionStorage 里存「假装生效」的选择。
+
+### 6. `--page-margin` 在屏幕上的可见性取决于渲染器
+
+该变量只进 `@page { margin }`（打印 / PDF 一定生效）。屏幕预览能否看出变化，
+取决于卷面样式表有没有给一段 `@media screen` 的 A4 纸面留白（render-export 那边在做）。
+面板上为此挂了「主要影响打印与 PDF」的说明 —— 不让这一项显得像坏了。
 
 ## 排版参数的唯一来源
 

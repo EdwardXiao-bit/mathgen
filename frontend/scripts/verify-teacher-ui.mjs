@@ -173,6 +173,20 @@ with sync_playwright() as p:
     result["backend_banner"] = (page.inner_text('[data-testid="backend-banner"]')
                                 if page.locator('[data-testid="backend-banner"]').count() > 0 else None)
 
+    # ---------- 排版面板文案（D59）：给老师看人话，不怼 CSS 关键字 ----------
+    # 仅在卷页面真的渲染出排版面板时采集（后端不可用的场景没有面板）
+    panel_ready = page.locator(".layout-panel").count() > 0
+    result["has_layout_panel"] = panel_ready
+    result["panel_bool_values"] = page.eval_on_selector_all(
+        '[data-control="answer_line"] .layout-control-value, [data-control="header_bar"] .layout-control-value',
+        "els => els.map(e => e.textContent.trim())") if panel_ready else []
+    result["panel_visible_text"] = page.eval_on_selector(
+        ".layout-panel", "el => el.innerText") if panel_ready else ""
+    result["panel_var_chips"] = page.eval_on_selector_all(
+        ".layout-panel .var-chip", "els => els.map(e => e.textContent.trim())") if panel_ready else []
+    result["page_margin_note"] = (page.inner_text('[data-testid="screen-note-page_margin"]')
+                                  if page.locator('[data-testid="screen-note-page_margin"]').count() > 0 else None)
+
     if result["has_preview"]:
         # 打印版式必须在**打印媒体**里断言（屏幕媒体的 display 不能说明打印结果）
         # D56：打印不再是「window.print() 打主文档 + body[data-print-mode] 切版本」，
@@ -206,7 +220,8 @@ with sync_playwright() as p:
                                 answerItems: d.querySelectorAll('.a-item').length,
                                 headerBar: sheet ? sheet.getAttribute('data-header-bar') : null,
                                 cols: d.documentElement.style.getPropertyValue('--cols-per-row'),
-                                answerLine: d.documentElement.style.getPropertyValue('--answer-line'),
+                                answerLineDisplay:
+                                    d.documentElement.style.getPropertyValue('--answer-line-display'),
                                 /* 打印媒体下卷头的显隐（D56：卷面 CSS 由后端提供） */
                                 headerDisplay: sheet
                                     ? getComputedStyle(d.querySelector('.header-bar')).display : null,
@@ -325,6 +340,14 @@ async function main() {
   check('场景 3 错误卡片带错误码（便于排错）', Boolean(apiDown.error_code_text), apiDown.error_code_text);
   check('场景 2/3 都没有 pageerror（不是崩溃）', (proxyDown.page_errors ?? []).length === 0 && (apiDown.page_errors ?? []).length === 0, [...(proxyDown.page_errors ?? []), ...(apiDown.page_errors ?? [])].join(' ; ') || '(无)');
 
+  console.log('\n—— D. 排版面板文案（D59：给老师人话，不怼 CSS 关键字）——');
+  check('后端可用时卷页面渲染出排版面板', online.has_layout_panel === true);
+  const boolValues = online.panel_bool_values ?? [];
+  check('两个开关的状态文案是人类可读的（保留 / 显示…）', boolValues.length === 2 && boolValues.every((v) => /[\u4e00-\u9fa5]/.test(v)) && !boolValues.some((v) => /^(none|block|grid|1|0)$/.test(v)), boolValues.join(' / '));
+  check('面板正文里不出现裸 CSS 关键字（none / block / grid）', !/\bnone\b|\bblock\b|\bgrid\b/.test(online.panel_visible_text ?? ''), `面板文本片段=${(online.panel_visible_text ?? '').slice(0, 120)}`);
+  check('CSS 变量名以调试小字出现（老师要排查时才需要）', (online.panel_var_chips ?? []).some((v) => v.includes('--answer-line-display')) && (online.panel_var_chips ?? []).some((v) => v.includes('--header-bar-display')), (online.panel_var_chips ?? []).join(' / '));
+  check('页边距控件带「屏幕上看不出效果」的说明（不让它显得像坏了）', Boolean(online.page_margin_note) && (online.page_margin_note ?? '').length > 0, online.page_margin_note);
+
   console.log('\n—— C. 打印（D56：打印的是后端卷面 iframe，不是主文档）——');
   check('后端可用时卷页面 iframe 里渲染出后端卷面（.sheet）', online.sheet_in_frame === true, `has_sheet_frame=${online.has_sheet_frame}`);
 
@@ -335,7 +358,7 @@ async function main() {
   check('打印答案版：打印的是 mode=answer 的卷面', pa?.mode === 'answer', JSON.stringify(pa));
   check('  答案版打印内容含答案区', pa?.hasAnswerSection === true && (pa?.answerItems ?? 0) > 0, `hasAnswerSection=${pa?.hasAnswerSection} 答案条数=${pa?.answerItems}`);
   check('  两次打印用的是同一份后端卷面（同样的排版变量）', pq?.cols === '4' && pa?.cols === '4', `题目版 cols=${pq?.cols} / 答案版 cols=${pa?.cols}`);
-  check('  排版恢复默认后答题横线在卷面里可见（--answer-line=1）', pq?.answerLine === '1' && pq?.blankDisplay !== 'none', `answerLine=${pq?.answerLine} q-blank display=${pq?.blankDisplay}`);
+  check('  排版恢复默认后答题横线在卷面里可见（--answer-line-display=block）', pq?.answerLineDisplay === 'block' && pq?.blankDisplay !== 'none', `answerLineDisplay=${pq?.answerLineDisplay} q-blank display=${pq?.blankDisplay}`);
 
   check('在线场景无 pageerror', (online.page_errors ?? []).length === 0, (online.page_errors ?? []).join(' ; ') || '(无)');
 

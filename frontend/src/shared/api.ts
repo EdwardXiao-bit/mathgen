@@ -153,14 +153,27 @@ export type LayoutField = LayoutNumberField | LayoutBoolField;
 /**
  * CSS 变量名 —— 与 `app/contracts/layout.py` 的 `CSS_VAR_NAMES` **逐字相同**（冻结）。
  * 预览区必须用这些变量，才能和浏览器打印、PDF 导出共用一套样式（C3 / NFR-5）。
+ *
+ * **D59 变更**：两个布尔项原来叫 `--answer-line: 1|0` / `--header-bar: 1|0`，
+ * 但渲染器样式表里**没有任何规则读取它们**（隐藏逻辑走渲染期烘死的 `data-*` 属性），
+ * 于是面板改这两个开关时预览毫无反应。现改为输出 **CSS `display` 关键字**：
+ * `--answer-line-display: block|none`、`--header-bar-display: grid|none`，
+ * 样式表用 `display: var(--…-display, 默认值)` 直接消费 ——
+ * 服务端渲染与面板实时覆盖因此走同一条通路。
  */
 export const CSS_VAR_NAMES: Record<LayoutField, string> = {
   cols_per_row: '--cols-per-row',
   row_gap: '--row-gap',
   font_size: '--font-size',
   page_margin: '--page-margin',
-  answer_line: '--answer-line',
-  header_bar: '--header-bar',
+  answer_line: '--answer-line-display',
+  header_bar: '--header-bar-display',
+} as const;
+
+/** 布尔项的 CSS 取值（与后端 `css_variables()` 一致）：**display 关键字**，不是 1/0。 */
+export const CSS_DISPLAY_VALUES = {
+  answer_line: { on: 'block', off: 'none' },
+  header_bar: { on: 'grid', off: 'none' },
 } as const;
 
 /** 取值边界 —— 与 `app/contracts/layout.py` 的 `BOUNDS` 相同（越界后端会 400/422）。 */
@@ -180,15 +193,22 @@ export const LAYOUT_DEFAULTS: LayoutIn = {
   header_bar: true,
 };
 
-/** 把排版参数转成 CSS 变量 —— 与后端 `css_variables()` 的输出格式**逐字相同**。 */
+/** 把排版参数转成 CSS 变量 —— 与后端 `css_variables()` 的输出格式**逐字相同**。
+ *
+ * 数值项带单位（`4` / `1` / `14pt` / `2cm`）；布尔项输出 CSS `display` 关键字（D59）。
+ */
 export function cssVariables(layout: LayoutIn): Record<string, string> {
   return {
     [CSS_VAR_NAMES.cols_per_row]: String(layout.cols_per_row),
     [CSS_VAR_NAMES.row_gap]: String(layout.row_gap),
     [CSS_VAR_NAMES.font_size]: `${layout.font_size}pt`,
     [CSS_VAR_NAMES.page_margin]: `${layout.page_margin}cm`,
-    [CSS_VAR_NAMES.answer_line]: layout.answer_line ? '1' : '0',
-    [CSS_VAR_NAMES.header_bar]: layout.header_bar ? '1' : '0',
+    [CSS_VAR_NAMES.answer_line]: layout.answer_line
+      ? CSS_DISPLAY_VALUES.answer_line.on
+      : CSS_DISPLAY_VALUES.answer_line.off,
+    [CSS_VAR_NAMES.header_bar]: layout.header_bar
+      ? CSS_DISPLAY_VALUES.header_bar.on
+      : CSS_DISPLAY_VALUES.header_bar.off,
   };
 }
 

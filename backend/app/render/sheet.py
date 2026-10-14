@@ -133,8 +133,9 @@ def _render_meta(ctx: SheetContext) -> str:
 def _render_header_bar(ctx: SheetContext) -> str:
     """班级 / 姓名 / 得分 填写栏。
 
-    显示与否由 `.sheet[data-header-bar="0"]` 决定，而该属性的值来自
-    `layout.header_bar`——即冻结的 `--header-bar` CSS 变量。
+    **始终输出**该元素，显隐完全交给 CSS 变量 `--header-bar-display`
+    （`.header-bar { display: var(--header-bar-display, grid) }`）。
+    原因与 `_render_blank()` 相同：让老师端面板「只覆盖 CSS 变量」也能实时生效（D59）。
     """
     return (
         '<div class="header-bar">'
@@ -210,13 +211,16 @@ def _render_item(item: SheetItem, layout: LayoutParams) -> str:
 def _render_blank(layout: LayoutParams) -> str:
     """答题空位 / 横线。
 
-    开关有两条路径，**数值同源**（都来自 `layout.answer_line`）：
-      * DOM 侧：`answer_line=False` 时不输出该元素；
-      * CSS 侧：`.q-item[data-answer-line="0"] .q-blank { display: none }`。
-    双保险是为了让「前端预览区只换 CSS 变量也能实时生效」与「导出的 HTML 本身干净」两件事同时成立。
+    **始终输出**该元素，可见性完全交给 CSS 变量 `--answer-line-display`
+    （`.q-blank { display: var(--answer-line-display, block) }`）。
+
+    为什么不能像第一版那样在 `answer_line=False` 时干脆不输出：
+    那样一来「老师端面板只覆盖 CSS 变量」的实时预览就永远看不到变化——
+    面板写的变量没有任何规则消费，产品就是在骗人（D59 那起 bug 的根因）。
+    现在服务端渲染与面板覆盖走**同一条通路**。
+
+    `data-answer-line` 仍保留在 `.q-item` 上，但只作调试/锚点，**不再承担隐藏职责**。
     """
-    if not layout.answer_line:
-        return ""
     return '<span class="q-blank" aria-hidden="true"></span>'
 
 

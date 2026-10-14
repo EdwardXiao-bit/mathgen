@@ -83,9 +83,20 @@ export function PaperPage() {
     setLayout(initial);
   }, [serverPaper]);
 
-  // ---- ② 持久化：debounce 一次 PATCH，失败只提示不阻塞 ---------------------
-  const [persistState, setPersistState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // ---- ② 持久化：debounce 一次 PATCH，成功后再重载卷面（D59 兜底）-----------
+  const [persistState, setPersistState] = useState<
+    'idle' | 'saving' | 'refreshing' | 'refreshed' | 'error'
+  >('idle');
   const [persistError, setPersistError] = useState<string | null>(null);
+  /**
+   * 自增即让 `SheetFrame` 重新加载卷面。
+   *
+   * 为什么要这一步（D59 的兜底）：iframe 里的 HTML 是**加载时定格**的，
+   * 拖动时的实时覆盖只作用于 CSS 变量。只要有一个参数不由变量驱动（历史上
+   * `answer_line` / `header_bar` 就是），预览就会与后端不一致——而界面还显示「已保存」，
+   * 这比直接报错更糟。所以保存成功后重载一次，让预览永远等于后端当前的渲染结果。
+   */
+  const [sheetReloadToken, setSheetReloadToken] = useState(0);
 
   const persistMutation = useMutation({
     mutationFn: (next: LayoutIn) => teacherApi.updateLayout(paperId as number, next),
@@ -94,10 +105,13 @@ export function PaperPage() {
       setPersistError(null);
     },
     onSuccess: (saved) => {
-      setPersistState('saved');
+      setPersistError(null);
       queryClient.setQueryData<PaperDetail>(queryKeys.paper(paperId as number), (previous) =>
         previous ? { ...previous, layout: saved } : previous,
       );
+      // 保存成功 → 让 iframe 重新拉一次后端渲染结果；刷新完成后才说「已保存，预览已刷新」
+      setPersistState('refreshing');
+      setSheetReloadToken((token) => token + 1);
     },
     onError: (error) => {
       setPersistState('error');
@@ -469,8 +483,10 @@ export function PaperPage() {
             <SheetFrame
               src={sheetSrc}
               layout={layout}
+              reloadToken={sheetReloadToken}
               frameRef={sheetFrameRef}
               onLoaded={() => setSheetError(null)}
+              onReloaded={() => setPersistState('refreshed')}
               onError={handleSheetError}
             />
           </div>

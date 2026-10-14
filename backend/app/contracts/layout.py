@@ -23,13 +23,19 @@ class LayoutParams:
 
 
 #: CSS 变量名（**冻结**）：渲染模板与前端预览必须使用同名变量
+#:
+#: **D59 修正**：两个布尔项原来暴露为 `--answer-line: 1|0` / `--header-bar: 1|0`，
+#: 但样式表里**没有任何规则读取它们**（隐藏逻辑走的是渲染期烘死的 `data-*` 属性），
+#: 导致老师端排版面板改这两个开关时预览毫无反应——面板写的变量是死的。
+#: 现改为输出 **CSS 可直接用作 `display` 的关键字**，样式表 `display: var(...)` 直接消费，
+#: 于是「服务端渲染」与「面板实时覆盖」走的是同一条通路。
 CSS_VAR_NAMES = {
     "cols_per_row": "--cols-per-row",
     "row_gap": "--row-gap",
     "font_size": "--font-size",
     "page_margin": "--page-margin",
-    "answer_line": "--answer-line",
-    "header_bar": "--header-bar",
+    "answer_line": "--answer-line-display",
+    "header_bar": "--header-bar-display",
 }
 
 #: 取值范围（**冻结**）：越界必须被拒绝，前后端用同一组边界
@@ -55,13 +61,14 @@ def validate_layout(layout: LayoutParams) -> None:
 def css_variables(layout: LayoutParams) -> dict[str, str]:
     """把排版参数转成 CSS 变量字典（供模板内联为 `style="..."`）。
 
-    布尔项输出 `1` / `0`，便于 CSS 里用 `calc()` 与选择器判断。
+    数值项带单位，布尔项输出 **`display` 关键字**（`block`/`none`、`grid`/`none`），
+    样式表用 `display: var(--…)` 直接消费——这样面板改开关时预览才真的会变（D59）。
     """
     return {
         CSS_VAR_NAMES["cols_per_row"]: str(layout.cols_per_row),
         CSS_VAR_NAMES["row_gap"]: str(layout.row_gap),
         CSS_VAR_NAMES["font_size"]: f"{layout.font_size}pt",
         CSS_VAR_NAMES["page_margin"]: f"{layout.page_margin}cm",
-        CSS_VAR_NAMES["answer_line"]: "1" if layout.answer_line else "0",
-        CSS_VAR_NAMES["header_bar"]: "1" if layout.header_bar else "0",
+        CSS_VAR_NAMES["answer_line"]: "block" if layout.answer_line else "none",
+        CSS_VAR_NAMES["header_bar"]: "grid" if layout.header_bar else "none",
     }

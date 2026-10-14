@@ -86,23 +86,29 @@ def main() -> int:
         check(f"cols_per_row={cols} 每行题数", set(full_rows) == {cols},
               f"各行题数={list(distribution.values())}（末行可不满）")
 
-    # --- answer_line：HTML **正文标记**里的答题线元素（注意不能数 <style> 里的选择器）---
+    # --- answer_line（D59：元素**始终输出**，显隐由 display 变量决定）---
     page_counts = {}
     for flag in (True, False):
         client.patch(f"/api/papers/{args.draft_id}/layout",
                      json={**base, "cols_per_row": 3, "answer_line": flag})
         html = client.get(f"/api/papers/{args.draft_id}/sheet",
                           params={"mode": "question"}).text
-        has_blank = 'class="q-blank"' in html
-        marker = re.search(r'<main class="sheet"[^>]*data-answer-line="(\d)"', html)
-        check(f"answer_line={flag} 答题线元素", has_blank == flag,
-              f"正文含 class=\"q-blank\"={has_blank} "
-              f"<main> 上 data-answer-line={marker.group(1) if marker else '?'}")
+        var = re.search(r"--answer-line-display:\s*([a-z]+)", html)
+        expected = "block" if flag else "none"
+        check(f"answer_line={flag}（D59）元素始终输出且变量为 {expected}",
+              'class="q-blank"' in html and bool(var) and var.group(1) == expected,
+              f"元素存在={'class=\"q-blank\"' in html} "
+              f"--answer-line-display={var.group(1) if var else None}")
         pdf_path = os.path.join(ARTIFACTS, f"answerline-{'on' if flag else 'off'}.pdf")
         export_pdf(html, pdf_path)
         document = pdfium.PdfDocument(pdf_path)
         page_counts[flag] = len(document)
         document.close()
+    check("D59 根因：三个「死变量」必须被样式表消费",
+          "display: var(--answer-line-display, block)" in html
+          and "display: var(--header-bar-display, grid)" in html
+          and "var(--page-margin)" in html,
+          "样式表含 display:var(--answer-line-display…)/display:var(--header-bar-display…)/var(--page-margin)")
     # 独立交叉验证：有答题线时每行更高 ⇒ 页数不会更少
     check("answer_line 对分页的影响（PDF 页数交叉验证）",
           page_counts[True] >= page_counts[False],

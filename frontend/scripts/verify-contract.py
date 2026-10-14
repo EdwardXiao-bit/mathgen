@@ -122,6 +122,41 @@ def main() -> int:
         pattern = rf"{field}:\s*\[(?:{lo}|{lo}\.0),\s*(?:{hi}|{hi}\.0)\]"
         check(f"BOUNDS['{field}'] = [{lo}, {hi}]", re.search(pattern, ts_source) is not None)
 
+    # ③-b **取值**也要一致（D59 的实质）：前端 `cssVariables()` 的产物必须与后端
+    # `css_variables()` 逐字相同，否则「服务端渲染」与「面板实时覆盖」会写出不同的值。
+    #
+    # 做法：用后端真加载 `LayoutParams` 跑出**开 / 关两种状态**的期望值，
+    # 再断言 frontend 源码里 `CSS_DISPLAY_VALUES` 用了同一批关键字、且不含旧的 1/0 写法。
+    print("\n=== ③-b css_variables() 的布尔取值逐字一致（D59）===")
+    on_vars = layout.css_variables(layout.LayoutParams(answer_line=True, header_bar=True))
+    off_vars = layout.css_variables(layout.LayoutParams(answer_line=False, header_bar=False))
+
+    block_match = re.search(r"CSS_DISPLAY_VALUES\s*=\s*\{(.*?)\n\}\s*as const", ts_source, re.S)
+    display_block = block_match.group(1) if block_match else ""
+    check("前端存在 CSS_DISPLAY_VALUES（布尔项的 CSS 取值表）", bool(display_block))
+
+    def ts_pair(field: str) -> tuple[str, str] | None:
+        m = re.search(
+            rf"{field}:\s*\{{\s*on:\s*'([^']+)',\s*off:\s*'([^']+)'\s*\}}", display_block
+        )
+        return (m.group(1), m.group(2)) if m else None
+
+    for field in ("answer_line", "header_bar"):
+        var = layout.CSS_VAR_NAMES[field]
+        want = (on_vars[var], off_vars[var])
+        got = ts_pair(field)
+        check(
+            f"{field}：前端 (on, off) = 后端 ({want[0]}, {want[1]})",
+            got == want,
+            f"前端={got} 后端={want}",
+        )
+
+    check(
+        "前端不再把布尔项写成 '1'/'0'（D59 之前的错误语义）",
+        not re.search(r"answer_line\]\s*:\s*layout\.answer_line\s*\?\s*'1'\s*:\s*'0'", ts_source),
+        "已改为 display 关键字",
+    )
+
     print("\n=== ④ 前端只用 ROUTES 常量拼 API 路径（不出现裸 /api 字面量）===")
     offenders: list[str] = []
     for ts_file in TEACHER_TS_DIR.rglob("*.ts*"):
