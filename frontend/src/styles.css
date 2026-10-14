@@ -1,0 +1,929 @@
+/* mathgen 老师端样式 —— 原生 CSS + CSS 变量（D18：不引 UI 框架）。
+   卷面相关的变量与规则在 teacher/sheet.css（屏幕预览与打印共用同一套）。 */
+
+:root {
+  color-scheme: light;
+  --ui-bg: #f4f5f7;
+  --ui-surface: #ffffff;
+  --ui-border: #d7dae0;
+  --ui-border-strong: #b3b8c2;
+  --ui-text: #1d2129;
+  --ui-text-soft: #5c6270;
+  --ui-accent: #1f5fd0;
+  --ui-accent-soft: #e8f0fe;
+  --ui-danger: #b3261e;
+  --ui-warn-bg: #fff7e6;
+  --ui-warn-border: #e8b339;
+  --ui-ok: #1a7f43;
+  --ui-radius: 6px;
+  --ui-gap: 16px;
+  font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB",
+    "Source Han Sans SC", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 8px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+code {
+  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-size: 0.92em;
+  background: #f0f1f4;
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+/* ---------------- 外壳 ---------------- */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-gap);
+  padding: 10px 20px;
+  background: var(--ui-surface);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.app-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.app-brand-mark {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.app-brand-sub {
+  color: var(--ui-text-soft);
+  font-size: 12px;
+}
+
+.app-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.app-nav a {
+  padding: 6px 12px;
+  border-radius: var(--ui-radius);
+  color: var(--ui-text);
+  text-decoration: none;
+}
+
+.app-nav a.nav-on {
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
+  font-weight: 600;
+}
+
+.app-health {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ui-text-soft);
+}
+
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ui-border-strong);
+}
+
+.health-online {
+  background: var(--ui-ok);
+}
+
+.health-offline {
+  background: var(--ui-danger);
+}
+
+.offline-banner {
+  display: flex;
+  gap: 10px;
+  padding: 10px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid transparent;
+}
+
+.offline-banner-warn {
+  background: var(--ui-warn-bg);
+  border-bottom-color: var(--ui-warn-border);
+  color: #6b4a00;
+}
+
+.offline-banner-info {
+  background: var(--ui-accent-soft);
+  color: #123a7a;
+}
+
+.app-main {
+  flex: 1 1 auto;
+  padding: 20px;
+  min-width: 0;
+}
+
+/* ---------------- 通用元件 ---------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  color: #ffffff;
+  opacity: 0.92;
+}
+
+.btn-ghost {
+  background: transparent;
+}
+
+.btn-mini {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.btn-danger:hover:not(:disabled) {
+  border-color: var(--ui-danger);
+  color: var(--ui-danger);
+}
+
+.page-intro p {
+  color: var(--ui-text-soft);
+  margin: 0 0 16px;
+  max-width: 70ch;
+}
+
+.page-intro-foot {
+  margin-top: 16px;
+}
+
+.loading-card,
+.error-card,
+.empty-state {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  padding: 20px;
+  max-width: 70ch;
+}
+
+.error-card {
+  border-color: #e6b3ae;
+}
+
+.error-card h1 {
+  color: var(--ui-danger);
+}
+
+.error-code {
+  font-family: Consolas, monospace;
+  color: var(--ui-danger);
+}
+
+.error-hint code {
+  display: block;
+  margin-top: 6px;
+  white-space: pre-wrap;
+}
+
+.error-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fatal-error {
+  margin: 40px auto;
+  max-width: 80ch;
+  padding: 20px;
+  background: var(--ui-surface);
+  border: 1px solid #e6b3ae;
+  border-radius: var(--ui-radius);
+}
+
+.fatal-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f7f7f8;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.notice {
+  border-radius: var(--ui-radius);
+  padding: 10px 14px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.notice-info {
+  background: var(--ui-accent-soft);
+  color: #123a7a;
+}
+
+.notice-error {
+  background: #fdeceb;
+  color: var(--ui-danger);
+}
+
+/* ---------------- ① 出题配置表单 ---------------- */
+
+.config-page {
+  max-width: 900px;
+}
+
+.config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dim-card {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  padding: 14px 16px;
+}
+
+.dim-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dim-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
+  font-size: 12px;
+}
+
+.dim-hint {
+  margin: 8px 0 0;
+  color: var(--ui-text-soft);
+  font-size: 12px;
+}
+
+.dim-ok {
+  color: var(--ui-ok);
+  margin: 0;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 999px;
+  background: var(--ui-surface);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chip input {
+  margin: 0;
+}
+
+.chip-on {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent);
+  font-weight: 600;
+}
+
+/* 只读展示的选项（例如第六维「答案版形式」在 M2 固定为 D20 默认）：
+   看起来是选中态，但明显不是可点控件。 */
+.chip-static {
+  cursor: default;
+  opacity: 0.95;
+}
+
+.chip-pending {
+  align-self: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ui-warn-bg);
+  border: 1px solid var(--ui-warn-border);
+  color: #6b4a00;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.range-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 6px;
+}
+
+.range-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  cursor: pointer;
+}
+
+.range-on {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+}
+
+.range-label {
+  flex: 1 1 auto;
+}
+
+.range-grade {
+  color: var(--ui-text-soft);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.r7-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.r7-input input {
+  width: 120px;
+}
+
+.switch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 6px;
+}
+
+.switch-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "box label" ".  hint";
+  gap: 0 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  cursor: pointer;
+}
+
+.switch-row input {
+  grid-area: box;
+  align-self: center;
+}
+
+.switch-row-label {
+  grid-area: label;
+  font-weight: 600;
+}
+
+.switch-row-hint {
+  grid-area: hint;
+  color: var(--ui-text-soft);
+  font-size: 12px;
+}
+
+.count-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.count-row input[type="number"] {
+  width: 90px;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.meta-field input[type="text"],
+.meta-field input[type="number"],
+.dim-card input[type="number"],
+.dim-card input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.seed-row {
+  display: flex;
+  gap: 8px;
+}
+
+.seed-row input {
+  flex: 1 1 auto;
+}
+
+.submit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.hint-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ui-text-soft);
+  font-size: 13px;
+}
+
+.problem-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ui-danger);
+}
+
+.form-error {
+  color: var(--ui-danger);
+  background: #fdeceb;
+  border-radius: var(--ui-radius);
+  padding: 8px 12px;
+  margin: 0;
+}
+
+/* ---------------- 卷库 ---------------- */
+
+.library-page {
+  max-width: 1000px;
+}
+
+.library-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  overflow: hidden;
+}
+
+.library-table th,
+.library-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ui-border);
+  font-size: 13px;
+}
+
+.library-table th {
+  background: #eef0f4;
+  font-weight: 600;
+}
+
+/* ---------------- 预览改题页 ---------------- */
+
+.paper-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.paper-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 0;
+  color: var(--ui-text-soft);
+  font-size: 13px;
+}
+
+.paper-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.paper-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--ui-gap);
+  align-items: start;
+}
+
+.paper-preview-column {
+  min-width: 0;
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tab {
+  padding: 6px 14px;
+  border: 1px solid var(--ui-border-strong);
+  background: var(--ui-surface);
+  border-radius: var(--ui-radius);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab-on {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.preview-toolbar-note {
+  color: var(--ui-text-soft);
+  font-size: 12px;
+}
+
+.preview-scroll {
+  overflow-x: auto;
+  padding: 8px;
+  background: #e9ebef;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+}
+
+/* 卷面容器：里面是后端渲染的 HTML（D56），前端只给尺寸与边框。
+   A4 宽度 21cm，高度给足以便内层滚动。 */
+.sheet-frame {
+  display: block;
+  width: 100%;
+  min-width: 21cm;
+  height: 78vh;
+  min-height: 520px;
+  border: 1px solid var(--ui-border);
+  background: #ffffff;
+}
+
+/* 打印专用 iframe：不进布局、不可见，但要能被打印（不能用 display:none，
+   否则 Chromium 里 iframe 文档不渲染、打印出来是空白）。 */
+.print-frame {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 21cm;
+  height: 29.7cm;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.css-var-debug {
+  margin-top: 10px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.css-var-debug pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.paper-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-gap);
+  min-width: 0;
+}
+
+/* 排版面板 */
+
+.layout-panel,
+.item-editor {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  padding: 14px;
+}
+
+.layout-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.layout-panel-head h2 {
+  margin: 0;
+}
+
+.layout-panel-note {
+  color: var(--ui-text-soft);
+  font-size: 12px;
+  margin: 8px 0 12px;
+}
+
+.layout-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.layout-control-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.layout-control-head label {
+  font-weight: 600;
+}
+
+.layout-control-value {
+  color: var(--ui-accent);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.layout-control input[type="range"] {
+  width: 100%;
+  margin: 4px 0 0;
+}
+
+.layout-control-range {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ui-text-soft);
+  font-size: 11px;
+}
+
+.layout-control-hint {
+  margin: 4px 0 0;
+  color: var(--ui-text-soft);
+  font-size: 11px;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-track {
+  width: 42px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--ui-border-strong);
+  position: relative;
+  transition: background 0.12s linear;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.12s linear;
+}
+
+.switch input:checked + .switch-track {
+  background: var(--ui-accent);
+}
+
+.switch input:checked + .switch-track::after {
+  transform: translateX(20px);
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+.layout-panel-status {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-border);
+  font-size: 12px;
+  color: var(--ui-text-soft);
+}
+
+.layout-panel-status[data-persist-state="saved"] {
+  color: var(--ui-ok);
+}
+
+.layout-panel-status[data-persist-state="error"] {
+  color: var(--ui-danger);
+}
+
+.layout-panel-error {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+/* 改题列表 */
+
+.item-editor h2 {
+  margin-bottom: 10px;
+}
+
+.item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 460px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+}
+
+.item-seq {
+  color: var(--ui-text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.item-expr {
+  overflow-wrap: anywhere;
+}
+
+.item-answer {
+  color: var(--ui-accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.item-editor-empty {
+  color: var(--ui-text-soft);
+}
+
+/* ---------------- 发卷页 ---------------- */
+
+.publish-page {
+  max-width: 760px;
+}
+
+.publish-body {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.publish-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 16px;
+  border: 1px dashed var(--ui-border-strong);
+  border-radius: var(--ui-radius);
+  width: 100%;
+}
+
+.publish-code {
+  font-size: 20px;
+}
+
+.publish-code strong {
+  font-family: Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.publish-qr {
+  width: 220px;
+  height: 220px;
+  image-rendering: pixelated;
+  border: 1px solid var(--ui-border);
+}
+
+@media (max-width: 1080px) {
+  .paper-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------- 打印 ---------------- */
+
+/* 卷面在 iframe 里打印（iframe.contentWindow.print()），所以主文档打印规则只需
+   隐藏整个老师端界面，避免打印主文档时带上一堆控件。 */
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  body > * {
+    display: none !important;
+  }
+}

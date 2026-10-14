@@ -1,0 +1,10 @@
+# 前端本地产物（不入库）
+node_modules/
+dist/
+.vite/
+
+# TypeScript 增量编译信息（tsc -b 生成）
+*.tsbuildinfo
+
+# 验收脚本的工作目录：Playwright 临时文件 + 服务请求日志
+.tmp-playwright/

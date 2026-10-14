@@ -1,0 +1,9 @@
+# pnpm 配置（pnpm 11 起从本文件读取 workspace 设置）。
+#
+# 为什么要写这个文件：pnpm 11 默认**不会执行依赖的安装脚本**（供应链防护），
+# 并在下一次 install / build 前用 `[ERR_PNPM_IGNORED_BUILDS]` 直接拒绝运行：
+#   Ignored build scripts: esbuild@0.21.5
+# 而 vite 依赖的 esbuild 需要在安装脚本里校验并落地平台二进制。
+# 这里只放行 esbuild 一个包，其余依赖的脚本仍然被拒绝。
+allowBuilds:
+  esbuild: true
