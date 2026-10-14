@@ -20,6 +20,15 @@ APP = os.path.join(BACKEND, "app")
 EXPECTED_SHA256 = {
     os.path.join(APP, "engine", "types.py"):
         "94d1195662229af9b8e2e5a4b69498d94f5af285ac3f061c8f67c50c0163677d",
+    # 跨模块契约（M2）：卷 API / 渲染导出 / 前端界面共同依赖，任何人不得擅改
+    os.path.join(APP, "contracts", "__init__.py"):
+        "b04c3444dae8c3e61720c281ab9b09b5e3c626c3656ce072c65dd6d298885807",
+    os.path.join(APP, "contracts", "layout.py"):
+        "693a0b44a1e3add13880553966d0c83bb90139daba6b2819f943bb4db5c5fbbe",
+    os.path.join(APP, "contracts", "sheet.py"):
+        "befc52262a77799e6b84b59d480baf68b6d9e20a74f304a47cfa5bdb515100ed",
+    os.path.join(APP, "contracts", "api.py"):
+        "368664577a5b7fdc2cd7469e6557afa3e58a753ae7bc3b27f4e907b89985edea",
 }
 
 # 纯函数包中禁止出现的依赖

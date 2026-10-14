@@ -87,21 +87,27 @@
 ## 常用命令
 
 ```powershell
-# 工作区 Python（后端测试与文档构建都用它）
-$PY = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
+# 工作区 Python（纯逻辑测试与文档构建用它，零依赖）
+$PY  = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe'
+# 项目 venv Python（M2 起：FastAPI / SQLAlchemy / Jinja2 / Playwright 装在这里，见 D51）
+$VPY = 'C:\Users\Ed\dsh_workspace\mathgen\backend\.venv\Scripts\python.exe'
 
-# 后端门禁测试（M1 起生效；标准库 unittest，无需安装任何依赖，见 D43）
-$PY -m unittest discover -s backend/tests -t backend -v            # 全部
-$PY -m unittest discover -s backend/tests/engine -t backend -v     # 只跑引擎
+# 后端门禁测试（标准库 unittest，见 D43；两套 Python 都能跑，装了依赖的用 $VPY）
+& $VPY -m unittest discover -s backend/tests -t backend -v            # 全部
+& $VPY -m unittest discover -s backend/tests/engine -t backend -v     # 只跑引擎
+& $VPY -m unittest discover -s backend/tests/api    -t backend -v     # 只跑 API（M2）
+
+# 启动服务（M2 起）：后端 127.0.0.1:8000，前端 Vite dev 5173 并代理 /api
+& $VPY -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend
 
 # 文档与配图
 & $PY tools\make_diagrams.py    # 10 张配图 -> docs/word/figures/
 & $PY tools\build_docs.py       # md -> docx（封面 / 目录 / 图表题注）-> docs/word/
-
-# 前端与端到端（M2 起生效，目录尚未创建）
-pnpm --dir frontend test
-npx playwright test tests/e2e
 ```
+
+> **端口约定（冻结）**：后端固定 `127.0.0.1:8000`；前端 Vite dev server `5173`，把 `/api` 代理到 `127.0.0.1:8000`。
+> **依赖安装**：`& 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe' -m venv backend\.venv` 后
+> `& $VPY -m pip install --no-cache-dir -e backend`（清单见 `backend/pyproject.toml`，D51）。**不要**往运行时自带的 site-packages 里装业务依赖。
 
 **文档构建要点**：图的位置在 `build_docs.py` 的 `ANCHORS` 里按标题声明，锚点找不到会**报错退出**（不会静默错位）；Word 打开后按 **F9 更新目录**（python-docx 只写域代码，无法预生成条目）。
 
