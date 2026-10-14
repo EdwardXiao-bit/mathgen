@@ -1,0 +1,173 @@
+{
+  "margin_experiment": [
+    {
+      "page_margin_cm": 1.0,
+      "nominal_mm": 10.0,
+      "pdf": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\e2e_m2\\artifacts\\margin-1.pdf",
+      "pages": 1,
+      "page1_size_pt": [
+        594.96,
+        841.92
+      ],
+      "path1_pdfium_text_xmin_mm": 10.05,
+      "path2_raster_ink_left_mm": 10.05,
+      "path2_raster_ink_right_mm": 9.79,
+      "patch_status": 200
+    },
+    {
+      "page_margin_cm": 2.0,
+      "nominal_mm": 20.0,
+      "pdf": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\e2e_m2\\artifacts\\margin-2.pdf",
+      "pages": 2,
+      "page1_size_pt": [
+        594.96,
+        841.92
+      ],
+      "path1_pdfium_text_xmin_mm": 20.11,
+      "path2_raster_ink_left_mm": 20.11,
+      "path2_raster_ink_right_mm": 19.76,
+      "patch_status": 200
+    },
+    {
+      "page_margin_cm": 3.0,
+      "nominal_mm": 30.0,
+      "pdf": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\e2e_m2\\artifacts\\margin-3.pdf",
+      "pages": 2,
+      "page1_size_pt": [
+        594.96,
+        841.92
+      ],
+      "path1_pdfium_text_xmin_mm": 29.9,
+      "path2_raster_ink_left_mm": 29.9,
+      "path2_raster_ink_right_mm": 29.99,
+      "patch_status": 200
+    }
+  ],
+  "documents": {
+    "question": {
+      "pdf": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\e2e_m2\\artifacts\\paper-question.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "size_pt": [
+            594.96,
+            841.92
+          ],
+          "text_xmin_mm": 15.08,
+          "ink_mm": {
+            "left": 14.99,
+            "top": 16.76,
+            "right": 14.77,
+            "bottom": 32.63
+          }
+        },
+        {
+          "page": 2,
+          "size_pt": [
+            594.96,
+            841.92
+          ],
+          "text_xmin_mm": 15.08,
+          "ink_mm": {
+            "left": 14.99,
+            "top": 16.98,
+            "right": 14.77,
+            "bottom": 193.81
+          }
+        }
+      ]
+    },
+    "answer": {
+      "pdf": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\e2e_m2\\artifacts\\paper-answer.pdf",
+      "pages": [
+        {
+          "page": 1,
+          "size_pt": [
+            594.96,
+            841.92
+          ],
+          "text_xmin_mm": 15.08,
+          "ink_mm": {
+            "left": 14.99,
+            "top": 16.76,
+            "right": 14.77,
+            "bottom": 32.63
+          }
+        },
+        {
+          "page": 2,
+          "size_pt": [
+            594.96,
+            841.92
+          ],
+          "text_xmin_mm": 15.08,
+          "ink_mm": {
+            "left": 14.99,
+            "top": 16.98,
+            "right": 14.77,
+            "bottom": 193.81
+          }
+        },
+        {
+          "page": 3,
+          "size_pt": [
+            594.96,
+            841.92
+          ],
+          "text_xmin_mm": 15.08,
+          "ink_mm": {
+            "left": 14.99,
+            "top": 16.32,
+            "right": 14.77,
+            "bottom": 32.19
+          }
+        },
+        {
+          "page": 4,
+          "size_pt": [
+            594.96,
+            841.92
+          ],
+          "text_xmin_mm": 15.08,
+          "ink_mm": {
+            "left": 15.21,
+            "top": 16.76,
+            "right": 130.09,
+            "bottom": 27.12
+          }
+        },
+        {
+          "page": 5,
+          "size_pt": [
+            594.96,
+            841.92
+          ],
+          "text_xmin_mm": 15.08,
+          "ink_mm": {
+            "left": 15.21,
+            "top": 16.76,
+            "right": 130.09,
+            "bottom": 27.12
+          }
+        },
+        {
+          "page": 6,
+          "size_pt": [
+            594.96,
+            841.92
+          ],
+          "text_xmin_mm": 15.08,
+          "ink_mm": {
+            "left": 15.21,
+            "top": 16.76,
+            "right": 130.09,
+            "bottom": 201.97
+          }
+        }
+      ]
+    }
+  },
+  "a4_ok": true,
+  "answer_mode_pages": 6,
+  "question_mode_pages": 2
+}

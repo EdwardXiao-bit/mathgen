@@ -24,6 +24,9 @@ coverage/
 .playwright/
 test-results/
 
+# verify 自装的独立库（如 pypdfium2）：只在本地目录，不入库
+.pylibs/
+
 # ---------- 编辑器 / 操作系统 ----------
 .vscode/
 .idea/
