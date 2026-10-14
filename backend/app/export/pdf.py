@@ -57,7 +57,24 @@ def export_pdf(html: str, out_path: str) -> None:
 
 
 def export_pdf_report(html: str, out_path: str, measure: bool = True) -> PdfReport:
-    """导出 PDF，并返回页数与浏览器侧实测排布。"""
+    """导出 PDF，并返回页数与浏览器侧实测排布。
+
+    ## 坏字节校验 + 一次重试（task-14）
+
+    全量门禁曾**偶发**（实测 6 轮中 1 轮）出现产物不以 `%PDF-` 开头、
+    也不以 `%%EOF` 结尾的情况 —— 即 `page.pdf()` 在某种瞬时状态下没有给出
+    完整 PDF，而旧实现**照样把它写盘**，于是失败以「测试断言 False」的形式
+    出现在离现场很远的地方，无法定位。
+
+    现在两件事：
+
+    1. `_ensure_valid_pdf()` —— 落盘**之前**校验头/尾；不合格就丢弃这份字节，
+       **换一个新 page 重试一次**（瞬时渲染器故障重试即好）；
+    2. 重试仍不合格 → 抛 `BrowserError`，**永不写坏文件**。
+       这样失败点就在现场，且带首尾字节证据。
+
+    注意：这不改变任何正常路径的行为（校验通过就原样写），也不改变 V1 契约。
+    """
     if not isinstance(html, str):
         raise TypeError("html 必须是 str")
     if not html.strip():
@@ -66,44 +83,56 @@ def export_pdf_report(html: str, out_path: str, measure: bool = True) -> PdfRepo
     directory = os.path.dirname(os.path.abspath(out_path))
     os.makedirs(directory, exist_ok=True)
 
-    measurement: Mapping[str, Any] = {}
-    try:
-        # 刻意**不**在每次导出后关闭浏览器：`02-技术设计.md` §11 明确要求常驻实例复用启动开销
-        # （实测 launch 约 1.0s，而一次 pdf() 只要 0.2s）。会话由调用方或进程退出时释放。
-        session = browser_session()
-        browser = session.browser()
-        page = browser.new_page()
+    last_problem = ""
+    for attempt in (1, 2):
+        measurement: Mapping[str, Any] = {}
         try:
-            # 用 set_content 而不是 file:// —— 不落临时文件，也就没有「路径不可写」这条失败面
-            page.set_content(html, wait_until="load")
-            # 打印媒体查询与打印一致（NFR-5）。**必须在测量之前**：
-            # 否则量到的是 screen 媒体下的排布，与真正打印出来的不是同一份。
-            page.emulate_media(media="print")
-            page.wait_for_timeout(0)
-            if measure:
-                measurement = page.evaluate(measure_js())
-            pdf_bytes = page.pdf(
-                format="A4",
-                print_background=True,
-                prefer_css_page_size=True,
+            # 刻意**不**在每次导出后关闭浏览器：`02-技术设计.md` §11 明确要求常驻实例复用启动开销
+            # （实测 launch 约 1.0s，而一次 pdf() 只要 0.2s）。会话由调用方或进程退出时释放。
+            session = browser_session()
+            browser = session.browser()
+            page = browser.new_page()
+            try:
+                # 用 set_content 而不是 file:// —— 不落临时文件，也就没有「路径不可写」这条失败面
+                page.set_content(html, wait_until="load")
+                # 打印媒体查询与打印一致（NFR-5）。**必须在测量之前**：
+                # 否则量到的是 screen 媒体下的排布，与真正打印出来的不是同一份。
+                page.emulate_media(media="print")
+                page.wait_for_timeout(0)
+                if measure:
+                    measurement = page.evaluate(measure_js())
+                pdf_bytes = page.pdf(
+                    format="A4",
+                    print_background=True,
+                    prefer_css_page_size=True,
+                )
+            finally:
+                page.close()
+        except BrowserError:
+            raise
+        except Exception as exc:  # pragma: no cover - 环境分支
+            last_problem = f"{type(exc).__name__}: {exc}"
+            if attempt == 2:
+                raise BrowserError(f"PDF 导出失败：{last_problem}") from exc
+            continue
+
+        pdf_bytes = _normalise_dates(pdf_bytes)
+        problem = _pdf_payload_problem(pdf_bytes)
+        if problem is None:
+            with open(out_path, "wb") as handle:
+                handle.write(pdf_bytes)
+            return PdfReport(
+                path=os.path.abspath(out_path),
+                pages=count_pdf_pages(pdf_bytes),
+                byte_size=len(pdf_bytes),
+                measurement=measurement,
             )
-        finally:
-            page.close()
-    except BrowserError:
-        raise
-    except Exception as exc:  # pragma: no cover - 环境分支
-        raise BrowserError(f"PDF 导出失败：{type(exc).__name__}: {exc}") from exc
 
-    pdf_bytes = _normalise_dates(pdf_bytes)
-    with open(out_path, "wb") as handle:
-        handle.write(pdf_bytes)
+        last_problem = (f"第 {attempt} 次导出的字节不是完整 PDF：{problem}"
+                        f"（size={len(pdf_bytes)}, head={pdf_bytes[:12]!r}, "
+                        f"tail={pdf_bytes[-12:]!r}）")
 
-    return PdfReport(
-        path=os.path.abspath(out_path),
-        pages=count_pdf_pages(pdf_bytes),
-        byte_size=len(pdf_bytes),
-        measurement=measurement,
-    )
+    raise BrowserError(f"PDF 导出失败（已重试一次）：{last_problem}")
 
 
 def export_png(html: str, out_path: str, full_page: bool = True, scale: float = 1.0) -> str:
@@ -121,6 +150,39 @@ def export_png(html: str, out_path: str, full_page: bool = True, scale: float = 
         finally:
             page.close()
     return os.path.abspath(out_path)
+
+
+def _pdf_payload_problem(pdf_bytes: bytes) -> str | None:
+    """校验打印通道给的字节是不是**完整 PDF**；不合格则返回可读原因。
+
+    两条判据：
+
+    * **头**：Chromium 的 PDF 必以 `%PDF-` 开头。不是 → `page.pdf()` 根本没返回 PDF
+      （瞬时渲染器/通道故障），不是「写出截断」。
+    * **尾**：完整 PDF 以 `%%EOF` 收尾（允许尾部空白）。缺尾 → 字节流不完整。
+
+    ## 为什么加这道校验（task-14 的教训）
+
+    M3 门禁排查期间出现过「产物不以 `%PDF-` 开头」的失败。事后定位到根因是
+    **跑门禁时有人在改实现文件**（见 `docs/03-协作规范.md` 新增的「运行窗口内不落盘」），
+    不是导出通道的缺陷 —— 但那次排查暴露了一个**真实的健壮性缺口**：
+
+    旧实现对 `page.pdf()` 的返回值**不做任何校验就直接写盘**。一旦拿到空字节或残缺字节，
+    坏文件照样落盘，失败会在离现场很远的断言里冒出来，极难定位。
+    现在改成「落盘前校验 → 不合格就换新 page 重试一次 → 仍不合格则抛错且**不写文件**」，
+    失败点因此回到现场，并带首尾字节证据。
+
+    代价为零：正常路径只是三次内存比较。
+    """
+    if not pdf_bytes:
+        return "字节为空"
+    if not pdf_bytes.startswith(b"%PDF-"):
+        return "缺少 %PDF- 头"
+    if not pdf_bytes.rstrip().endswith(b"%%EOF"):
+        return "缺少 %%EOF 尾（字节流不完整）"
+    if len(pdf_bytes) < 200:
+        return f"体积异常（{len(pdf_bytes)} 字节）"
+    return None
 
 
 def _normalise_dates(pdf_bytes: bytes) -> bytes:

@@ -24,6 +24,7 @@ from app.export import (
     export_pdf_report,
     is_available,
 )
+from app.export.pdf import _pdf_payload_problem
 from app.layout import detect_overflow, detect_page_crossing
 from app.render import render_sheet
 
@@ -71,6 +72,102 @@ class TestPdfCounter(unittest.TestCase):
 
     def test_falls_back_to_count_entry(self):
         self.assertEqual(count_pdf_pages(b"%PDF-1.4 /Count 3"), 3)
+
+
+class TestPdfPayloadValidation(unittest.TestCase):
+    """task-14：坏字节必须被**当场判定**，不能写盘后由远处的断言发现。
+
+    全量门禁曾偶发（实测 6 轮 1 轮）产物不以 `%PDF-` 开头、也不以 `%%EOF` 结尾；
+    旧实现照样写盘，失败表现为「某个断言 False」，离现场很远。
+    """
+
+    def test_accepts_a_well_formed_payload(self):
+        self.assertIsNone(_pdf_payload_problem(b"%PDF-1.4" + b"x" * 500 + b"%%EOF"))
+
+    def test_accepts_trailing_whitespace_after_eof(self):
+        self.assertIsNone(_pdf_payload_problem(b"%PDF-1.4" + b"x" * 500 + b"%%EOF\n\n"))
+
+    def test_rejects_empty_payload(self):
+        self.assertIn("空", _pdf_payload_problem(b""))
+
+    def test_rejects_missing_pdf_header(self):
+        problem = _pdf_payload_problem(b"<html>not a pdf</html>" * 40)
+        self.assertIsNotNone(problem)
+        self.assertIn("%PDF-", problem)
+
+    def test_rejects_truncated_payload_without_eof(self):
+        problem = _pdf_payload_problem(b"%PDF-1.4" + b"x" * 500)
+        self.assertIsNotNone(problem)
+        self.assertIn("%%EOF", problem)
+
+    def test_rejects_absurdly_small_payload(self):
+        self.assertIsNotNone(_pdf_payload_problem(b"%PDF-1.4%%EOF"))
+
+    def test_export_never_writes_an_invalid_file(self):
+        """真导出一次，产物必须同时满足头/尾判据（写盘的就是校验过的字节）。"""
+        _require_browser()
+        path = _artifact("validated.pdf")
+        export_pdf(render_sheet(build_ctx(count=6)), path)
+        with open(path, "rb") as handle:
+            data = handle.read()
+        self.assertTrue(data.startswith(b"%PDF-"))
+        self.assertTrue(data.rstrip().endswith(b"%%EOF"))
+        self.assertIsNone(_pdf_payload_problem(data))
+
+    def test_bad_payload_retries_then_raises_without_writing(self):
+        """`page.pdf()` 连坏两次时必须抛错、且**不留下坏文件**。
+
+        用假浏览器会话注入坏字节，验证「校验 → 重试 → 报错」这条链路，
+        不需要真的制造渲染器故障。
+        """
+        _require_browser()
+        from app.export import pdf as pdf_module
+
+        path = _artifact("must-not-exist.pdf")
+        if os.path.exists(path):
+            os.remove(path)
+
+        attempts = {"count": 0}
+
+        class FakePage:
+            def set_content(self, *_a, **_k):
+                return None
+
+            def emulate_media(self, *_a, **_k):
+                return None
+
+            def wait_for_timeout(self, *_a, **_k):
+                return None
+
+            def evaluate(self, *_a, **_k):
+                return {}
+
+            def pdf(self, **_kwargs):
+                attempts["count"] += 1
+                return b"<html>renderer gave garbage</html>" * 20
+
+            def close(self):
+                return None
+
+        class FakeBrowser:
+            def new_page(self, **_kwargs):
+                return FakePage()
+
+        class FakeSession:
+            def browser(self):
+                return FakeBrowser()
+
+        original = pdf_module.browser_session
+        pdf_module.browser_session = lambda: FakeSession()
+        try:
+            with self.assertRaises(BrowserError) as caught:
+                export_pdf("<html></html>", path)
+        finally:
+            pdf_module.browser_session = original
+
+        self.assertEqual(attempts["count"], 2, "坏字节应当重试一次")
+        self.assertIn("PDF", str(caught.exception))
+        self.assertFalse(os.path.exists(path), "校验不通过时绝不能留下坏产物")
 
 
 class TestPdfExport(unittest.TestCase):
