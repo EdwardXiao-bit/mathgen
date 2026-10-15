@@ -286,6 +286,7 @@
       "attempt_id",
       "correct",
       "items",
+      "score",
       "total"
     ],
     "item_keys": [
