@@ -23,7 +23,12 @@ from html import escape
 from app.contracts.layout import LayoutParams
 from app.contracts.sheet import SheetContext, SheetItem, SheetMode
 
-from app.layout.answers import AnswerEntry, AnswerPlan, build_answer_plan
+from app.layout.answers import (
+    HEADER_FIELD_LABELS,
+    AnswerEntry,
+    AnswerPlan,
+    build_answer_plan,
+)
 from app.layout.styles import (
     layout_fingerprint,
     root_style_attr,
@@ -133,20 +138,31 @@ def _render_meta(ctx: SheetContext) -> str:
     return '<div class="sheet-meta">' + "".join(parts) + "</div>\n"
 
 
+#: 卷头栏字段（D41：学生身份 = **姓名 + 学号** 两者必填；`student_no NOT NULL`）。
+#: 卷面必须与 D41 一致，所以这里是四项而不是三项。
+#: 定义在 `app.layout.answers`，**HTML 与 DOCX 共用同一份**，两边不可能漂移。
+HEADER_FIELDS = HEADER_FIELD_LABELS
+
+
 def _render_header_bar(ctx: SheetContext) -> str:
-    """班级 / 姓名 / 得分 填写栏。
+    """班级 / 姓名 / 学号 / 得分 填写栏（D41 + D70）。
 
     **始终输出**该元素，显隐完全交给 CSS 变量 `--header-bar-display`
     （`.header-bar { display: var(--header-bar-display, grid) }`）。
     原因与 `_render_blank()` 相同：让老师端面板「只覆盖 CSS 变量」也能实时生效（D59）。
+
+    D70 视觉轮的两点改动：
+
+    * **补上学号**——修掉与 D41 的不一致（学生重名时需要学号区分）；
+    * **去掉厚重横带**——不再用上下外框，改成「标签 + 一段下划线」，
+      下划线只出现在**书写位**上（`.hb-line`），不再给整块加边框。
     """
-    return (
-        '<div class="header-bar">'
-        '<span class="hb-field">班级：</span>'
-        '<span class="hb-field">姓名：</span>'
-        '<span class="hb-field">得分：</span>'
-        "</div>\n"
+    fields = "".join(
+        f'<span class="hb-field"><span class="hb-label">{label}：</span>'
+        f'<span class="hb-line"></span></span>'
+        for label in HEADER_FIELDS
     )
+    return f'<div class="header-bar">{fields}</div>\n'
 
 
 # ---------------------------------------------------------------------------

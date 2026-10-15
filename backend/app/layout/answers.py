@@ -21,7 +21,39 @@ from dataclasses import dataclass
 
 from app.contracts.sheet import SheetContext, SheetItem, SheetMode
 
-__all__ = ["AnswerEntry", "AnswerPlan", "build_answer_plan"]
+__all__ = [
+    "AnswerEntry",
+    "AnswerPlan",
+    "build_answer_plan",
+    "HEADER_FIELD_LABELS",
+    "TITLE_SCALE",
+    "TITLE_LONG_TEXT_STRATEGY",
+]
+
+#: 卷头栏字段（D41 + D70）。
+#:
+#: D41 定学生身份为「**姓名 + 学号**」两者必填（`student_no NOT NULL`），
+#: 所以卷面卷头栏必须是四项——M3 之前只有「班级 / 姓名 / 得分」，与 D41 不一致，D70 补齐。
+#:
+#: 放在 `layout` 而不是 `render`：**HTML 与 DOCX 都从这里取**，
+#: 两边不可能各写一份字段列表（契约第 6 条的结构一致性因此是结构性的）。
+HEADER_FIELD_LABELS: tuple[str, ...] = ("班级", "姓名", "学号", "得分")
+
+#: 标题字号相对**题目字号**（`--font-size`）的放大倍数（D70）。
+#:
+#: 用户反馈「卷面文字相对纸面偏大」。`--font-size` 是冻结的**题目字号**（10..20pt，默认 14），
+#: 语义与边界都不能动，所以只收紧标题倍数：1.5 → 1.35
+#: （默认 14pt 时标题 21pt → 18.9pt，正文仍是 14pt）。
+#:
+#: 放在 `layout` 的理由同 `HEADER_FIELD_LABELS`：**HTML 与 DOCX 共用**，不会一边改一边漏。
+TITLE_SCALE = 1.35
+
+#: 标题长文本策略（D70）：**折行 + 允许断词**，而不是按字数缩字号。
+#:
+#: 理由：A4 版心固定，若按字数缩字号，「多长算长」会变成一个魔数阈值，
+#: 且不同字数得到不同字号、观感跳变；折行对任意长度都稳定，也不影响其它版面参数。
+#: 这里只记录策略常量（供测试与文档引用），实际 CSS 见 `app.layout.styles`。
+TITLE_LONG_TEXT_STRATEGY = "wrap"
 
 
 @dataclass(frozen=True)

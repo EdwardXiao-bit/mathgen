@@ -42,7 +42,12 @@ from docx.shared import Cm, Pt
 from app.contracts.layout import LayoutParams
 from app.contracts.sheet import SheetContext, SheetMode
 
-from app.layout.answers import AnswerPlan, build_answer_plan
+from app.layout.answers import (
+    HEADER_FIELD_LABELS,
+    TITLE_SCALE,
+    AnswerPlan,
+    build_answer_plan,
+)
 from app.render.sheet import chunk_rows
 
 __all__ = ["export_docx", "DocxExportError", "docx_body_text"]
@@ -150,7 +155,9 @@ def _render_title(document, ctx: SheetContext, layout: LayoutParams) -> None:
         paragraph = document.add_paragraph()
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = paragraph.add_run(ctx.title)
-        _style_run(run, size_pt=layout.font_size * 1.5, bold=True)
+        # D70：标题倍数 1.5 → 1.35，与 HTML 的 `.sheet-title` 保持一致。
+        # 长标题靠 Word 自身的折行处理（段落自动换行），不需要按字数缩字号。
+        _style_run(run, size_pt=layout.font_size * TITLE_SCALE, bold=True)
 
     meta: list[str] = []
     if ctx.code:
@@ -165,18 +172,33 @@ def _render_title(document, ctx: SheetContext, layout: LayoutParams) -> None:
 
 
 def _render_header_bar(document, layout: LayoutParams) -> None:
-    """班级 / 姓名 / 得分 填写栏（`layout.header_bar` 为假时**整块不出现**）。"""
+    """班级 / 姓名 / 学号 / 得分 填写栏（D41 + D70；`layout.header_bar` 为假时整块不出现）。
+
+    与 HTML 的对应关系（契约第 6 条要求结构一致）：
+
+    | HTML | DOCX |
+    | --- | --- |
+    | `.header-bar` grid（auto-fit 自动换行） | 1 行 4 列表格（Word 自身按列宽换行） |
+    | `.hb-label`「班级：」 | 单元格里的「班级：」文字 |
+    | `.hb-line`（下划线书写位） | 同段落后接空格 + 下边框 |
+
+    字段列表取自 `HEADER_FIELD_LABELS`，**与 HTML 同一个常量**，两边不可能漂移。
+    """
     if not layout.header_bar:
         return
-    table = document.add_table(rows=1, cols=3)
+    labels = [f"{label}：" for label in HEADER_FIELD_LABELS]
+    table = document.add_table(rows=1, cols=len(labels))
     _clear_table_borders(table)
-    labels = ("班级：", "姓名：", "得分：")
     for cell, label in zip(table.rows[0].cells, labels):
         cell.text = ""
         paragraph = cell.paragraphs[0]
         run = paragraph.add_run(label)
         _style_run(run, size_pt=layout.font_size * 0.9)
-        _set_cell_borders(cell)
+        # 「标签 + 一段下划线」：只给书写位画下划线（对应 HTML 的 `.hb-line`），
+        # 不再给整块加外框（D70 去掉「双横带」）。
+        line = paragraph.add_run(" " * 8)
+        _style_run(line, size_pt=layout.font_size * 0.9)
+        _set_paragraph_bottom_border(paragraph)
 
 
 def _render_blank(paragraph, layout: LayoutParams) -> None:

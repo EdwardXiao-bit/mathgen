@@ -19,6 +19,9 @@ if __package__:
         sys.path.insert(0, _BACKEND)
 
 from app.layout.answers import (  # noqa: E402
+    HEADER_FIELD_LABELS,
+    TITLE_LONG_TEXT_STRATEGY,
+    TITLE_SCALE,
     AnswerEntry,
     AnswerPlan,
     build_answer_plan,
@@ -56,6 +59,7 @@ __all__ = [
     "AnswerEntry",
     "AnswerPlan",
     "DIRECTIONS",
+    "HEADER_FIELD_LABELS",
     "MEASURED_BREAK_CEILING_PX",
     "MM_PER_PX",
     "Overflow",
@@ -63,6 +67,8 @@ __all__ = [
     "PageMeasurement",
     "PaginationGeometry",
     "ReflowResult",
+    "TITLE_LONG_TEXT_STRATEGY",
+    "TITLE_SCALE",
     "build_answer_plan",
     "detect_overflow",
     "detect_page_crossing",

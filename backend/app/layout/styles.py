@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 from app.contracts.layout import CSS_VAR_NAMES, LayoutParams, css_variables
+from app.layout.answers import TITLE_SCALE
 
 __all__ = [
     "A4_WIDTH_MM",
@@ -136,34 +137,64 @@ def style_text(layout: LayoutParams) -> str:
     }}
 
     /* ---- 卷头 ---- */
+    /* D70 视觉轮：标题倍数 1.5 → **1.35**。
+       用户反馈「卷面文字相对纸面偏大」，而 `--font-size` 是冻结的**题目字号**
+       （语义不能动），所以只收紧标题的放大倍数：
+       默认 14pt 时标题 21pt → 18.9pt（−10%），正文保持 14pt 不变。
+       另外标题**允许折行**并按需断词，长标题因此不会溢出纸面（见下方 overflow-wrap）。 */
     .sheet-title {{
       margin: 0 0 calc(var({var_gap}) * 0.5em) 0;
-      font-size: calc(var({var_font}) * 1.5);
+      font-size: calc(var({var_font}) * {TITLE_SCALE});
       font-weight: 700;
       text-align: center;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.05em;
+      line-height: 1.25;
+      /* 长标题策略：**折行 + 允许断开长词**，而不是按字数缩字号。
+         理由：A4 版心固定，缩字号会让「多长算长」变成一个魔数阈值，
+         且不同字数得到的字号不一致、观感跳变；折行则对任意长度都稳定。 */
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
     .sheet-meta {{
       display: flex;
       justify-content: center;
+      flex-wrap: wrap;
       gap: 1.5em;
       margin-bottom: calc(var({var_gap}) * 0.5em);
       font-size: calc(var({var_font}) * 0.85);
     }}
-    /* 卷头信息栏开关：**完全由 CSS 变量驱动**（D59）。
-       元素始终输出，可见性只看 `--header-bar-display`，
-       这样老师端面板覆盖变量即可实时生效，与后端渲染走同一条通路。 */
+    /* 卷头信息栏（D41 + D70）：**标签 + 一段下划线**，四项。
+       开关**完全由 CSS 变量驱动**（D59）：元素始终输出，可见性只看
+       `--header-bar-display`，老师端面板覆盖变量即可实时生效。
+
+       D70 去掉了原来上下两条外框（用户说的「双横带」），改成：
+         · 每个字段 = 「标签」+ 可伸缩的书写位（`.hb-line` 带下划线）
+         · 无外框、无背景，只有下划线本身提供书写参照
+       `auto-fit` + `minmax` 让四项在 A4 上**一行放得下就一行，放不下自动换行**，
+       不写死列数（页边距调到 3cm 时版心变窄，会自动落成 2×2）。 */
     .header-bar {{
       display: var({var_header}, grid);
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1em;
-      padding: calc(var({var_gap}) * 0.4em) 0;
+      grid-template-columns: repeat(auto-fit, minmax(30mm, 1fr));
+      gap: calc(var({var_gap}) * 0.45em) 1.4em;
       margin-bottom: var({var_gap});
-      border-top: 1px solid #000;
-      border-bottom: 1px solid #000;
+      /* 去掉厚重横带：不再有上下外框与内边距 */
+      padding: 0;
+      border: 0;
       font-size: calc(var({var_font}) * 0.9);
     }}
-    .header-bar span {{ border-bottom: 1px solid #000; display: inline-block; min-width: 5em; }}
+    .header-bar .hb-field {{
+      display: flex;
+      align-items: flex-end;
+      gap: 0.25em;
+      white-space: nowrap;
+    }}
+    .header-bar .hb-label {{ flex: 0 0 auto; }}
+    .header-bar .hb-line {{
+      flex: 1 1 auto;
+      min-width: 3em;
+      height: 1.15em;
+      border-bottom: 1px solid #000;
+    }}
 
     /* ---- 题目网格：每行题数由 --cols-per-row 驱动 ----
        分两层是**实测逼出来的**（本机 Chromium 1223，2026-10-14）：
@@ -271,10 +302,18 @@ MEASURE_JS = """
   const rows = Array.from(document.querySelectorAll('.q-row'));
   const items = Array.from(document.querySelectorAll('.q-item'));
   const pxPerCm = 96 / 2.54;
+  const box = (el) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { top: r.top + window.scrollY, left: r.left, width: r.width, height: r.height };
+  };
   return {
     pxPerCm,
     docHeight: document.documentElement.scrollHeight,
     bodyWidth: document.body.getBoundingClientRect().width,
+    /* D70：长标题「不溢出纸面」的判定需要标题自身的几何 */
+    title: box(document.querySelector('.sheet-title')),
+    headerBar: box(document.querySelector('.header-bar')),
     rows: rows.map((el) => {
       const r = el.getBoundingClientRect();
       return { top: r.top + window.scrollY, height: r.height, cols: getComputedStyle(el.querySelector('.q-row-grid') || el).gridTemplateColumns.split(' ').length };
