@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 __all__ = [
     "ROUTES", "PaperConfigIn", "LayoutIn", "AnswerLayoutIn", "PaperItemOut",
     "PaperDetail", "PaperSummary", "PaperListOut", "PublishResult",
-    "ErrorBody", "ErrorResponse",
+    "ErrorBody", "ErrorResponse", "ArchivedFilter",
 ]
 
 #: 路径常量（**冻结**）：前端与后端都必须引用这里，禁止各写字符串字面量
@@ -32,6 +32,10 @@ ROUTES = {
     "update_layout": "/api/papers/{paper_id}/layout",
     "update_answer_layout": "/api/papers/{paper_id}/answer-layout",
     "publish_paper": "/api/papers/{paper_id}/publish",
+    # ---- 卷库收纳（D78）----
+    "archive_paper": "/api/papers/{paper_id}/archive",
+    "unarchive_paper": "/api/papers/{paper_id}/unarchive",
+    "delete_paper": "/api/papers/{paper_id}",
     "copy_paper": "/api/papers/{paper_id}/copy",
     "sheet": "/api/papers/{paper_id}/sheet",
     "export": "/api/papers/{paper_id}/export",
@@ -44,6 +48,8 @@ ROUTES = {
 }
 
 PaperStatus = Literal["draft", "published"]
+#: D78 卷库列表的归档筛选：`exclude` 只看未归档（默认）/ `include` 全部 / `only` 只看已归档。
+ArchivedFilter = Literal["exclude", "include", "only"]
 QuestionTypeName = Literal["oral", "stepwise", "fill"]
 RangeName = Literal["R1", "R2", "R3", "R4", "R5", "R6", "R7"]
 OpName = Literal["+", "-", "×", "÷"]
@@ -111,6 +117,10 @@ class PaperDetail(BaseModel):
     answer_layout: AnswerLayoutIn
     created_at: str
     published_at: str | None = None
+    #: D78 归档时间（ISO 8601 带时区）；`None` = 未归档。
+    #: **与 `status` 正交**：归档只决定「老师在卷库里看不看得见它」，
+    #: `status` 仍决定「能不能发卷 / 卷号是否有效」。
+    archived_at: str | None = None
     items: list[PaperItemOut]
 
 
@@ -122,16 +132,25 @@ class PaperSummary(BaseModel):
     item_count: int
     created_at: str
     published_at: str | None = None
+    #: 见 `PaperDetail.archived_at`（D78）。
+    archived_at: str | None = None
+    #: 这套卷是否已有学生成绩（D78）。有成绩时**不允许物理删除**，只能归档。
+    #: 列表页据此决定「删除」按钮是否可用，并在禁用时给出人话理由。
+    has_attempts: bool = False
 
 
 class PaperListOut(BaseModel):
-    """卷库列表（M3 起支持分页与搜索）。
+    """卷库列表（M3 起支持分页与搜索；M4.x 起支持归档筛选，D78）。
 
     查询参数：`limit`（1..100，默认 20）、`offset`（≥0）、`q`（按标题模糊匹配）、
-    `status`（`draft` / `published`，留空为全部）。
+    `status`（`draft` / `published`，留空为全部）、
+    `archived`（`exclude`（默认，只看未归档）/ `include` / `only`）。
+
+    `total` 与 `papers` 都受 `archived` 影响——切到「只看已归档」时，
+    `total` 是**已归档的**总数，不是全部总数。
     """
 
-    total: int          # 符合条件的总数（不受 limit/offset 影响）
+    total: int          # 符合条件的总数（不受 limit/offset 影响，但受 archived 影响）
     limit: int
     offset: int
     papers: list[PaperSummary]

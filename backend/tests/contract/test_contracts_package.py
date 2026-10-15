@@ -163,6 +163,10 @@ class TestApiContract(unittest.TestCase):
             "update_layout": "/api/papers/{paper_id}/layout",
             "update_answer_layout": "/api/papers/{paper_id}/answer-layout",
             "publish_paper": "/api/papers/{paper_id}/publish",
+            # ---- 卷库收纳（D78）----
+            "archive_paper": "/api/papers/{paper_id}/archive",
+            "unarchive_paper": "/api/papers/{paper_id}/unarchive",
+            "delete_paper": "/api/papers/{paper_id}",
             "copy_paper": "/api/papers/{paper_id}/copy",
             "sheet": "/api/papers/{paper_id}/sheet",
             "export": "/api/papers/{paper_id}/export",
@@ -194,11 +198,12 @@ class TestApiContract(unittest.TestCase):
         self.assertEqual(
             list(PaperDetail.model_fields),
             ["id", "code", "title", "status", "seed", "config", "layout",
-             "answer_layout", "created_at", "published_at", "items"],
+             "answer_layout", "created_at", "published_at", "archived_at", "items"],
         )
         self.assertEqual(
             list(PaperSummary.model_fields),
-            ["id", "code", "title", "status", "item_count", "created_at", "published_at"],
+            ["id", "code", "title", "status", "item_count", "created_at", "published_at",
+             "archived_at", "has_attempts"],
         )
         self.assertEqual(
             list(PaperListOut.model_fields),
