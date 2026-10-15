@@ -187,7 +187,7 @@ class TestMobileLayout(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.freshness = assert_dist_fresh(cls)
+        cls.freshness = assert_dist_fresh()
         cls.stack = ExitStack()
         cls.server = cls.stack.enter_context(UiServer())
         cls.paper = cls.server.published_paper(
@@ -318,7 +318,7 @@ class TestLayoutNegativeControl(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        assert_dist_fresh(cls)
+        assert_dist_fresh()
         cls.stack = ExitStack()
         cls.static_dir = degraded_dist("layout")
         cls.server = cls.stack.enter_context(UiServer(static_dir=cls.static_dir))

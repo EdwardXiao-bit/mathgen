@@ -75,7 +75,9 @@ D78 之前 `paper.archived_at` 与 `attempt.attempt_uuid` 漏写在 `docs/02-技
 
 负对照：后端 **13 条**（用例名带 `negative_control` 的）+ UI 侧 **3 类**（纯函数逐种错法、撒谎桩双向、页序请求日志；另有一条「好世界必须绿」防止负对照本身空转）。全部要求「制造失败条件后必须红且具名」，原文见 §5.3 / §5.2。
 
-**判据 1 的完整证据**：`TestContractSurface` 内断言 `contracts/api.py` 哈希 == 冻结值 `359efa5323376c66e2abb04768f6a3f74b49fa8ef3510436aaaee16526c7c435`，并核对 D78 的路由键与 `archived_at`/`has_attempts` 字段真的存在；**契约域全绿**由 §5.4 的全量后端门禁覆盖（980 / OK，含 `backend/tests/contract/**`）；**ROUTES 后端/前端键集合一致**由前端门禁的门禁② 覆盖（12 步全 PASS）。
+**判据 1 的完整证据**：`TestContractSurface` 内断言 `contracts/api.py` 哈希 == 冻结值 `31202c98d1740edddfb9985f490b3f26771ca0b92459a8d2145faad207c09ded`，并核对 D78 的路由键与 `archived_at`/`has_attempts` 字段真的存在；**契约域全绿**由 §5.4 的全量后端门禁覆盖（980 / OK，含 `backend/tests/contract/**`）；**ROUTES 后端/前端键集合一致**由前端门禁的门禁② 覆盖（12 步全 PASS）。
+
+> **订正（task-43，2026-10-16）**：上面这段原先写的冻结值是 `359efa5323376c66e2abb04768f6a3f74b49fa8ef3510436aaaee16526c7c435` —— 那是 **M4 当时的旧值**；M5 起 `contracts/api.py` 合法地重新冻结为 `31202c98d1740edddfb9985f490b3f26771ca0b92459a8d2145faad207c09ded`（两处机器守卫 `backend/tests/contract/test_layering.py:31` 与 `backend/tests/e2e_m4/test_paper_archive_acceptance.py:30` 都已同步，测试一直是绿的）。**只改了这一段已确认过期的陈述，本报告其余结论、数字与证据一字未动。** 顺带记下一条教训：**报告会持续变陈，而没有任何东西会因此变红** —— 测试锁的是代码里的冻结值，锁不住报告正文里誊写的那一份；这次是人工发现才订正的（task-43 顺手做的，不属于原 M4 交付）。
 
 ---
 

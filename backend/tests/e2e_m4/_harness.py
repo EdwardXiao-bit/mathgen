@@ -130,14 +130,22 @@ def dist_freshness() -> tuple[bool, float, float]:
     return dist_m >= src_m, src_m, dist_m
 
 
-def assert_dist_fresh(case) -> dict:
-    """产物不新则**明确变红**（不重建：重建是 `frontend/**` 写域）。"""
+def assert_dist_fresh() -> dict:
+    """产物不新则**明确变红**（不重建：重建是 `frontend/**` 写域）。
+
+    这里**刻意不接 `case` 参数**（task-43 的修复）：旧版签名是 `assert_dist_fresh(case)`
+    并在体内写 `case.assertTrue(fresh, 消息)`，而六个调用点传的是**类**不是实例 ——
+    于是 `TestCase.assertTrue` 被当普通函数调用：`self=fresh`(bool)、`expr=消息`(非空)，
+    `if not expr:` 恒假 → **真不新鲜也永远不抛**（一条恒绿的守卫）。
+    改成无参后，`assert_dist_fresh(cls)` 会当场 `TypeError`，签名层面就不允许再传错东西；
+    判据留在仓库：`tests/e2e_m4/test_dist_freshness_guard.py`。
+    """
     fresh, src_m, dist_m = dist_freshness()
-    case.assertTrue(
-        fresh,
-        "前端产物早于源码 → 本套件判据无效。请在 `frontend/**` 写域里"
-        f"先跑 `pnpm --dir frontend build`（src={src_m:.0f} dist={dist_m:.0f}）。",
-    )
+    if not fresh:
+        raise AssertionError(
+            "前端产物早于源码 → 本套件判据无效。请在 `frontend/**` 写域里"
+            f"先跑 `pnpm --dir frontend build`（src={src_m:.0f} dist={dist_m:.0f}）。"
+        )
     return {"dist_student_html_mtime": dist_m, "src_newest_mtime": src_m}
 
 

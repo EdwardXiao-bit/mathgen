@@ -85,7 +85,7 @@ class TestLibraryUiWithRealBackend(_PageCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.freshness = assert_dist_fresh(cls)
+        cls.freshness = assert_dist_fresh()
         cls.stack = ExitStack()
         cls.server = cls.stack.enter_context(sup.ArchiveServer())
         cls.browser = cls.stack.enter_context(browser_session()).browser()
@@ -171,7 +171,7 @@ class TestLibraryUiAgainstALyingStub(_PageCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.freshness = assert_dist_fresh(cls)
+        cls.freshness = assert_dist_fresh()
         cls.stack = ExitStack()
         cls.stub = cls.stack.enter_context(sup.LibraryStubServer([
             # 101：真实世界它有成绩、该被禁用 —— 桩说 has_attempts=False
@@ -208,7 +208,7 @@ class TestLibraryPagingResetsOnTabSwitch(_PageCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.freshness = assert_dist_fresh(cls)
+        cls.freshness = assert_dist_fresh()
         cls.stack = ExitStack()
         papers = [sup.stub_paper(300 + i, title=f"在用卷 {i:02d}") for i in range(25)]
         papers += [sup.stub_paper(400 + i, title=f"已归档卷 {i}", archived=True)

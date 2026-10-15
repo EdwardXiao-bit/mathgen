@@ -38,7 +38,7 @@ class StorageDisabledCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.freshness = assert_dist_fresh(cls)
+        cls.freshness = assert_dist_fresh()
         cls.stack = ExitStack()
         cls.server = cls.stack.enter_context(UiServer())
         cls.paper = cls.server.published_paper(
