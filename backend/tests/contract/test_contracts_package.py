@@ -272,6 +272,56 @@ class TestApiContract(unittest.TestCase):
                          ["id", "code", "qr_url", "student_url"])
 
 
+class TestAttemptRoutesAreAssembledInOrder(unittest.TestCase):
+    """`ROUTES` 里的**声明顺序**不等于真实 app 的**装配顺序**。
+
+    上一条 `test_export_route_is_declared_before_the_id_route` 只看 dict 的键序，
+    它守的是**意图**；真正决定 FastAPI 匹配的是 `include_router` 的先后。若
+    `attempts.router` 先于 `exports.router` 被 include，`/api/attempts/export`
+    仍会被 `/api/attempts/{attempt_id}` 吃掉并回 422 —— 而 dict 顺序看起来完全正确。
+
+    （render 套件里有一条等价断言的另一份实现。两条都留着：一条看声明、一条看装配，
+    任一环节单独坏掉都该红，而它们坏掉的原因不同。）
+    """
+
+    def _registered_paths(self) -> list[str]:
+        """真实 app 上的路径，按注册顺序。
+
+        FastAPI 0.143 的 `include_router` 是惰性的：`app.routes` 里放的是
+        `_IncludedRouter` 包装对象，子路由在 `original_router.routes` 里。
+        两种形态都要摊平——只取顶层 `.path` 会看到「一个 API 路由都没有」的假象。
+        """
+        from app.main import app  # 局部 import：契约套件其余部分不该被 app 拖慢/牵连
+
+        paths: list[str] = []
+
+        def walk(route) -> None:
+            path = getattr(route, "path", None)
+            if isinstance(path, str):
+                paths.append(path)
+            for child in getattr(route, "routes", ()) or ():
+                walk(child)
+
+        for route in app.routes:
+            original = getattr(route, "original_router", None)
+            if original is not None and original is not route:
+                for child in original.routes:
+                    walk(child)
+            else:
+                walk(route)
+        return paths
+
+    def test_export_is_assembled_before_the_id_route(self):
+        paths = self._registered_paths()
+        self.assertIn(ROUTES["export_attempts"], paths, "成绩导出路由未注册到 app")
+        self.assertIn(ROUTES["get_attempt"], paths, "成绩明细路由未注册到 app")
+        self.assertLess(
+            paths.index(ROUTES["export_attempts"]),
+            paths.index(ROUTES["get_attempt"]),
+            "装配顺序里字面量路由被参数路由吃掉了（声明顺序对，装配顺序错）",
+        )
+
+
 class TestScoreRule(unittest.TestCase):
     """得分口径（D80）：`score_of` 是**唯一**实现，且必须与 M4 学生端的显示逐位一致。"""
 
