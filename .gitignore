@@ -31,6 +31,7 @@ test-results/
 # 入库会导致「跑一次测试就脏一大片」。需要 M7 配图时当场由脚本生成。
 backend/tests/e2e_m2/artifacts/
 backend/tests/e2e_m3/artifacts/
+backend/tests/e2e_*/artifacts/
 
 # 前端验收脚本的截图同理（可随时重跑生成）
 frontend/shot-*.png
