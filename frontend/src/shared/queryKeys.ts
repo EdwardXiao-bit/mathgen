@@ -7,9 +7,24 @@ export const queryKeys = {
   papersRoot: ['papers'] as const,
   /** 后端健康探测（与卷库分页查询分开缓存键，避免互相覆盖） */
   health: ['papers', 'health'] as const,
-  /** 卷库列表：带上分页/搜索/筛选，任何一项变化都算不同查询 */
+  /**
+   * 卷库列表：带上分页/搜索/筛选，任何一项变化都算不同查询。
+   *
+   * **`archived` 必须进缓存键**（D78）：不进的话「在用 / 已归档」两档会共用同一个
+   * 缓存条目，切档时 TanStack Query 直接把上一档的数据当成本档的数据渲染 ——
+   * 界面会声称「已归档」却列出在用卷，且**不会报错**（D59 不许谎报状态）。
+   * 缺省写成 `'exclude'`，与后端默认值对齐。
+   */
   papers: (query: PaperListQuery) =>
-    ['papers', 'list', query.limit, query.offset, query.q ?? '', query.status ?? 'all'] as const,
+    [
+      'papers',
+      'list',
+      query.limit,
+      query.offset,
+      query.q ?? '',
+      query.status ?? 'all',
+      query.archived ?? 'exclude',
+    ] as const,
   paper: (paperId: number) => ['paper', paperId] as const,
   paperByCode: (code: string) => ['paper', 'by-code', code] as const,
   practice: (config: PaperConfigIn, seed: number | null) =>

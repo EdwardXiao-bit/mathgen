@@ -21,9 +21,11 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { checkDistFreshness, formatFreshnessResult } from './dist-freshness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.resolve(__dirname, '..');
@@ -645,7 +647,7 @@ async function main() {
       : '(量不到)';
 
   const a9 = result.a9 ?? {};
-  console.log('\n—— 负对照 1/9：A9 纸内几何（判据见门禁⑧ verify-preview-scale.mjs）——');
+  console.log('\n—— 负对照 1/11：A9 纸内几何（判据见门禁⑧ verify-preview-scale.mjs）——');
   for (const [key, label] of [
     ['baseline', '基线（无注入）'],
     ['n1_margin3cm', '负对照 A9-N1：注入 --page-margin:3cm'],
@@ -661,7 +663,7 @@ async function main() {
     }
   }
 
-  console.log('\n—— 负对照 2/9：卷面焦点环（判据见门禁⑦ 的 A3）——');
+  console.log('\n—— 负对照 2/11：卷面焦点环（判据见门禁⑦ 的 A3）——');
   const fBase = result.focus?.baseline_unfocused;
   const fTab = result.focus?.after_real_tab;
   console.log('  基线（未聚焦）');
@@ -731,7 +733,7 @@ async function main() {
   const a10 = result.a10 ?? {};
   const sentinelHit = (a10.with_sentinel ?? []).find((h) => (h.text ?? '').includes('--page-margin'));
   const keywordHit = (a10.with_keyword ?? []).find((h) => (h.text ?? '').includes('block'));
-  console.log('\n—— 负对照 3/9：无开发者文本（判据见门禁⑨ verify-ui-voice.mjs）——');
+  console.log('\n—— 负对照 3/11：无开发者文本（判据见门禁⑨ verify-ui-voice.mjs）——');
   console.log(`  基线（真实页面）：命中 ${(a10.baseline ?? []).length} 处  ← 必须为 0`);
   console.log(
     `  注入哨兵「页边距 --page-margin（D56）」：命中 ${(a10.with_sentinel ?? []).length} 处` +
@@ -801,7 +803,7 @@ async function main() {
   const baseBg = a11.baseline ?? {};
   const injBg = a11.injected_desk ?? {};
   const restoredBg = a11.restored ?? {};
-  console.log('\n—— 负对照 4/9：灰底只用于画布（判据见门禁⑨）——');
+  console.log('\n—— 负对照 4/11：灰底只用于画布（判据见门禁⑨）——');
   console.log(`  基线：root=${baseBg.root?.bg} body=${baseBg.body?.bg}  ← 应为 #f7f8f9（rgb(247,248,249)）`);
   console.log(`  注入灰桌面色 #8e939a：root=${injBg.root?.bg} body=${injBg.body?.bg}  ← 应变成 rgb(142,147,154)`);
   console.log(`  还原后：root=${restoredBg.root?.bg} body=${restoredBg.body?.bg}`);
@@ -826,7 +828,7 @@ async function main() {
     `root=${restoredBg.root?.bg} body=${restoredBg.body?.bg}`,
   );
 
-  // ---------- 5/9：学生端覆盖（A10 + A11 的覆盖面真实性） ----------
+  // ---------- 5/11：学生端覆盖（A10 + A11 的覆盖面真实性） ----------
   // 这一组盯的是**覆盖面的真实性**，不是文案本身。历史坑有两个，都会"全绿但没查"：
   //   (a) verify-server.mjs 的 SPA 回落在 catch 分支里一律回 dist/index.html，于是
   //       /student/** 拿到的是**老师端**入口 —— 判据会拿学生端 URL 扫老师端页面；
@@ -843,7 +845,7 @@ async function main() {
   const sBase = a11s.baseline ?? {};
   const sInj = a11s.injected_desk ?? {};
   const sRestored = a11s.restored ?? {};
-  console.log('\n—— 负对照 5/9：学生端覆盖（判据见门禁⑨ 的 A10/A11）——');
+  console.log('\n—— 负对照 5/11：学生端覆盖（判据见门禁⑨ 的 A10/A11）——');
   console.log(`  A10 /student        根容器=${stuShell.rootChildCls} stScreen=${stuShell.stScreen} teacherShell=${stuShell.teacherShell}`);
   console.log(`  A10 /student/result 根容器=${stuResShell.rootChildCls} stScreen=${stuResShell.stScreen}`);
   console.log(`  A10 基线命中：/student ${(a10s.baseline ?? []).length} 处；/student/result ${(a10s.result_page_baseline ?? []).length} 处；注入哨兵后 ${(a10s.with_sentinel ?? []).length} 处`);
@@ -917,12 +919,12 @@ async function main() {
     `root=${sRestored.root?.bg}`,
   );
 
-  // ---------- 6/9：裸 /api 路径扫描（判据见门禁② verify-contract.py 的 ④） ----------
+  // ---------- 6/11：裸 /api 路径扫描（判据见门禁② verify-contract.py 的 ④） ----------
   // 这条判据历史上真的**空过**：排除条件按**文件名**（api.ts）写，把学生端同名的
   // src/student/api.ts 一起跳过，于是 4 处裸路径全部漏报、判据还显示 PASS。
   // 修法是按**文件路径**排除。下面直接把 verify-contract.py 的 --self-test 跑起来，
   // 它自己会注入一个真文件（走同一条 rglob）、断言转红且红得具名、最后删掉。
-  console.log('\n—— 负对照 6/9：裸 /api 路径扫描（判据见门禁② 的 ④）——');
+  console.log('\n—— 负对照 6/11：裸 /api 路径扫描（判据见门禁② 的 ④）——');
   const contractSelfTest = spawnSync(PYTHON, [path.join(__dirname, 'verify-contract.py'), '--self-test'], {
     encoding: 'utf8',
     cwd: FRONTEND_DIR,
@@ -949,7 +951,7 @@ async function main() {
     '无残留',
   );
 
-  // ---------- 7/9：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面） ----------
+  // ---------- 7/11：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面） ----------
   // 这一组守的是「**mock 自己**有没有照抄真实契约」，不是产品代码。
   //
   // 为什么需要它：本轮我把学生端三条接口补进 mock（`verify-server.mjs`），而门禁⑨
@@ -961,7 +963,7 @@ async function main() {
   //   ① 断言 mock 响应的**关键不变量**（D74 不泄答案、D76 幂等、状态码 201/200）；
   //   ② 证明这些断言守着的代码路径**真的会被执行** —— 用 `MATHGEN_MOCK_TAMPER`
   //      故意破坏钩子，若服务照旧返回 200 就说明钩子没接上、哨兵是摆设。
-  console.log('\n—— 负对照 7/9：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面）——');
+  console.log('\n—— 负对照 7/11：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面）——');
 
   record(
     'mock 契约（D74）：GET /api/student/paper/{code} 带 paper_id/title/total/items，且 items **不含** answer/steps',
@@ -1000,7 +1002,7 @@ async function main() {
     `status=${mockContract.tamperStatus} code=${mockContract.tamperCode}`,
   );
 
-  // ---------- 8/9：门禁入口的参数解析（判据见 run-all-verifications.mjs） ----------
+  // ---------- 8/11：门禁入口的参数解析（判据见 run-all-verifications.mjs） ----------
   // 守的是**门禁入口自己**的用法契约，不是产品代码。
   //
   // 为什么需要：`--list` 的卖点是「列出步骤但不执行」。如果用「输出里没有 PASS/FAIL
@@ -1014,7 +1016,7 @@ async function main() {
   // 「干净」。所以下面还有一条反向断言：--list 必须**列满 12 步**（task-32 起第 ⑫ 步是
   // mock↔真实后端逐字段比对）。
   // 两条合起来才能区分「正确地只列不跑」与「坏掉了什么都不说」。
-  console.log('\n—— 负对照 8/9：门禁入口的参数解析（判据见 run-all-verifications.mjs）——');
+  console.log('\n—— 负对照 8/11：门禁入口的参数解析（判据见 run-all-verifications.mjs）——');
 
   const RUNNER = path.join(__dirname, 'run-all-verifications.mjs');
   const EXEC_ONLY = ['门禁脚本自检', '源码夹逼', '汇总', '全部验收通过'];
@@ -1095,7 +1097,7 @@ async function main() {
     `合成转录命中 ${EXEC_ONLY.filter((m) => syntheticFullRun.includes(m)).length}/${EXEC_ONLY.length} 个标记`,
   );
 
-  // ---------- 9/9：task-32 —— 判据「不进默认门禁就不存在」（判据见 compare-mock-and-real.mjs） ----------
+  // ---------- 9/11：task-32 —— 判据「不进默认门禁就不存在」（判据见 compare-mock-and-real.mjs） ----------
   // 守的是 task-32(a) 新增的**第 ⑫ 步**：把 mock↔真实后端的逐字段比对接进默认门禁。
   //
   // 为什么需要：task-29 交付的比对本身很硬（它的自检 C 段证明了抓得住「少一个键」和
@@ -1107,7 +1109,7 @@ async function main() {
   // 所以这里对**同一个真实脚本**喂两种世界，断言它给出**相反**的结论：
   //   态 A 正常输入 → exit 0（绿）      态 B 前置缺失 → exit ≠ 0 且点名原因、且**不含 PASS**（红）
   // 两态的原始输出都打出来（V9.1：报告会过期，脚本不会 —— 别人要能在仓库里 grep 到它）。
-  console.log('\n—— 负对照 9/9：第 ⑫ 步「前置缺失时红、绝不静默绿」（判据见 compare-mock-and-real.mjs）——');
+  console.log('\n—— 负对照 9/11：第 ⑫ 步「前置缺失时红、绝不静默绿」（判据见 compare-mock-and-real.mjs）——');
 
   const PARITY = path.join(__dirname, 'compare-mock-and-real.mjs');
   const runParity = (env) =>
@@ -1176,6 +1178,349 @@ async function main() {
   console.log('\n  ---- 态 C（覆盖面故障注入）原始输出末尾 ----');
   for (const line of parityFaultOut.split('\n').filter((l) => l.trim()).slice(-4)) {
     console.log(`  | ${line}`);
+  }
+
+  // ---------- 10/11：task-35 卷库归档 / 恢复 / 删除（判据见契约 D78 与门禁②/⑨） ----------
+  //
+  // 为什么需要：task-35 给卷库加了「归档 / 恢复 / 删除」，有实质风险的只有删除。
+  // 用户裁决原话是「有成绩的可以归档，类似于软删除」——于是界面上「有成绩的卷」必须
+  // **事先禁用**删除并写明人话理由，而不是等老师点下去才吃一个 409（D65：报错好过静默错）。
+  //
+  // 界面那条禁用条件读的是 `PaperSummary.has_attempts`，所以真正的判据在**数据层**：
+  // `has_attempts` 必须能预测 DELETE 的真实结局。判据错了，界面就会在一个错误的世界里
+  // 全绿（D69 那一族），或者把一个能删的卷禁掉。
+  //
+  // 于是这里做三件同源的事：
+  //   ① 同一个谓词分别喂**真实响应**与**合成响应**，证明它对两种世界给出相反结论（V11）；
+  //   ② 用破坏钩子把 `has_attempts` 从响应里抹掉，证明上面那个绿**真的在看这个字段**（V9.2）；
+  //   ③ 正面证明「有成绩的卷能归档」（用户要的正是这条出路）。
+  console.log('\n—— 负对照 10/11：卷库归档 / 恢复 / 删除（判据见契约 D78）——');
+
+  // 谓词**只定义一次**，真实响应与合成响应共用 —— 另抄一份等于什么都没证明。
+  const defaultViewHidesArchived = (payload) =>
+    Array.isArray(payload?.papers) &&
+    payload.papers.length > 0 && // 空世界必须红：「没得比」不等于「比过且一致」
+    payload.papers.every((p) => p.archived_at === null);
+  const hasAttemptsPredictsDelete = (hasAttempts, deleteStatus) =>
+    hasAttempts === true ? deleteStatus === 409 : deleteStatus === 204;
+
+  const spawnMock = (env) => {
+    const child = spawn(NODE_EXE, [path.join(__dirname, 'verify-server.mjs')], {
+      cwd: FRONTEND_DIR,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, MATHGEN_VERIFY_MODE: 'online', ...env },
+    });
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    return new Promise((resolve, reject) => {
+      let buffer = '';
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error(`mock 服务没就绪。stderr:\n${stderr}`));
+      }, 15_000);
+      child.stdout.on('data', (chunk) => {
+        buffer += chunk;
+        const ports = buffer.match(/VERIFY_PORTS static=(\d+) api=(\d+)/);
+        if (ports && buffer.includes('VERIFY_SERVER_READY')) {
+          clearTimeout(timer);
+          // 端口由 listenWithRetry 决定，**必须从 stdout 读**，不能写死。
+          //
+          // 这里刻意**直连 api 端口**，而不是走静态端口上的 `/api` 代理 —— 2026-10-15 实测踩到：
+          // `verify-server.mjs` 的静态服务把 `/api/*` 转发到**请求的** api 端口，而不是重试后
+          // **实际**绑上的那个。于是当默认端口被别的实例占用、listenWithRetry 把本实例挪到
+          // 4175/8125 时，走静态端口的请求会被**静默转发到占用 8123 的另一个进程**上。
+          // 症状极具误导性：破坏钩子明明生效（直连 8125 看到 0/40 行有 `has_attempts`），
+          // 经 4175 却看到 40/40 —— 看起来像「钩子没接上」，实际是问错了进程。
+          // 直连 api 端口即规避整个代理，也让「我测的就是我 spawn 的那个实例」结构上成立。
+          const apiPort = Number(ports[2]);
+          resolve({ child, base: `http://127.0.0.1:${apiPort > 0 ? apiPort : ports[1]}` });
+        }
+      });
+      child.on('exit', (code) => {
+        if (code !== null) {
+          clearTimeout(timer);
+          reject(new Error(`mock 服务提前退出（code=${code}）。stderr:\n${stderr}`));
+        }
+      });
+    });
+  };
+
+  const call = async (base, method, apiPath) => {
+    const res = await fetch(base + apiPath, { method });
+    const text = await res.text();
+    return { status: res.status, text, body: text ? JSON.parse(text) : null };
+  };
+
+  const libMock = await spawnMock({});
+  const libBase = libMock.base;
+
+  const listDefault = (await call(libBase, 'GET', '/api/papers?limit=100')).body;
+  const listOnly = (await call(libBase, 'GET', '/api/papers?limit=100&archived=only')).body;
+  const listInclude = (await call(libBase, 'GET', '/api/papers?limit=100&archived=include')).body;
+
+  const leaks = (listDefault?.papers ?? []).filter((p) => p.archived_at !== null).length;
+  record(
+    '默认档（archived=exclude）不返回已归档行，且返回的不是空表',
+    defaultViewHidesArchived(listDefault),
+    `total=${listDefault?.total} 已归档泄漏=${leaks}`,
+  );
+  record(
+    '三档互为划分：include 总数 = exclude + only，且 only 档每行都有 archived_at',
+    listInclude?.total === listDefault?.total + listOnly?.total &&
+      (listOnly?.papers?.length ?? 0) > 0 &&
+      listOnly.papers.every((p) => p.archived_at !== null),
+    `exclude=${listDefault?.total} only=${listOnly?.total} include=${listInclude?.total}`,
+  );
+  record(
+    'V11 判别力：同一谓词喂「默认档混进一行已归档」的合成响应 → 必为假（判据能红）',
+    defaultViewHidesArchived({
+      papers: [
+        { id: 1, archived_at: null },
+        { id: 2, archived_at: '2026-10-15T12:00:00+08:00' },
+      ],
+    }) === false &&
+      defaultViewHidesArchived({ papers: [{ id: 1, archived_at: null }] }) === true &&
+      defaultViewHidesArchived({ papers: [] }) === false,
+    '坏世界=false 好世界=true 空世界=false',
+  );
+
+  // 夹具自检：若响应里根本没有 has_attempts=true 的行，下面那条判据就是**空的**（V9.1）。
+  const withAttempts = (listInclude?.papers ?? []).filter((p) => p.has_attempts === true);
+  const withoutAttempts = (listInclude?.papers ?? [])
+    .filter((p) => p.has_attempts !== true)
+    .slice(0, 2);
+  record(
+    '夹具存在：至少一行 has_attempts=true、两行 false（否则下一条判据什么都没测）',
+    withAttempts.length >= 1 && withoutAttempts.length >= 2,
+    `有成绩=${withAttempts.length} 无成绩=${withoutAttempts.length}`,
+  );
+
+  const del = async (base, paper) => {
+    const r = await call(base, 'DELETE', `/api/papers/${paper.id}`);
+    return {
+      id: paper.id,
+      hasAttempts: paper.has_attempts,
+      status: r.status,
+      empty: r.text === '',
+      code: r.body?.error?.code ?? null,
+    };
+  };
+  const goodDeletes = [];
+  for (const p of [...withAttempts, ...withoutAttempts]) goodDeletes.push(await del(libBase, p));
+  record(
+    'has_attempts 能预测 DELETE 的真实结局（有成绩→409 且点名 PAPER_HAS_ATTEMPTS；无成绩→204 真空体）',
+    goodDeletes.every((r) => hasAttemptsPredictsDelete(r.hasAttempts, r.status)) &&
+      goodDeletes.some((r) => r.status === 409 && r.code === 'PAPER_HAS_ATTEMPTS') &&
+      goodDeletes.some((r) => r.status === 204 && r.empty),
+    goodDeletes
+      .map((r) => `${r.id}:has=${r.hasAttempts}→${r.status}${r.code ? `(${r.code})` : ''}`)
+      .join(' '),
+  );
+
+  // 正面：用户要的那条出路 —— 有成绩的卷可以归档（软删除），且归档后立刻离开默认档。
+  const victim = withAttempts[0];
+  const arch = await call(libBase, 'POST', `/api/papers/${victim.id}/archive`);
+  const afterArchDefault = (await call(libBase, 'GET', '/api/papers?limit=100')).body;
+  const afterArchOnly = (await call(libBase, 'GET', '/api/papers?limit=100&archived=only')).body;
+  const unarch = await call(libBase, 'POST', `/api/papers/${victim.id}/unarchive`);
+  const afterUnarchDefault = (await call(libBase, 'GET', '/api/papers?limit=100')).body;
+  record(
+    '有成绩的卷可以归档（用户裁决的出路）：归档后立刻移出默认档、出现在 only 档',
+    arch.status === 200 &&
+      typeof arch.body?.archived_at === 'string' &&
+      !afterArchDefault.papers.some((p) => p.id === victim.id) &&
+      afterArchOnly.papers.some((p) => p.id === victim.id),
+    `archive=${arch.status} 默认档含它=${afterArchDefault.papers.some((p) => p.id === victim.id)} only档含它=${afterArchOnly.papers.some((p) => p.id === victim.id)}`,
+  );
+  record(
+    '恢复幂等：unarchive 后 archived_at 归零，卷立刻回到默认档',
+    unarch.status === 200 &&
+      unarch.body?.archived_at === null &&
+      afterUnarchDefault.papers.some((p) => p.id === victim.id),
+    `unarchive=${unarch.status} archived_at=${JSON.stringify(unarch.body?.archived_at)}`,
+  );
+
+  // V9.2：证明上面的绿**真的在看 has_attempts**。另起一个装了破坏钩子的实例，
+  // 把 `papers[].has_attempts` 整键抹掉 —— 若判据仍绿，说明它根本没读这个字段。
+  // 注意钩子只能**删键**（不能改成 false），所以坏世界里该字段是 undefined，
+  // 而这条卷实际仍会被 409 拒绝 → 预测与现实相反 → 判据必须红。
+  const libTamper = await spawnMock({ MATHGEN_MOCK_TAMPER_DELETE: 'papers[].has_attempts' });
+  const tPapers = (await call(libTamper.base, 'GET', '/api/papers?limit=100&archived=include')).body
+    .papers;
+  const tVictim = tPapers.find((p) => p.id === victim.id);
+  const tDelete = await call(libTamper.base, 'DELETE', `/api/papers/${victim.id}`);
+  const tKeyGone =
+    tVictim !== undefined && !Object.prototype.hasOwnProperty.call(tVictim, 'has_attempts');
+  record(
+    'V9.2 破坏钩子真实生效：抹掉 papers[].has_attempts 后，同一判据在同一夹具上变红',
+    tKeyGone &&
+      tDelete.status === 409 &&
+      hasAttemptsPredictsDelete(tVictim.has_attempts, tDelete.status) === false,
+    `键被抹掉=${tKeyGone} 实际 DELETE=${tDelete.status} 谓词=${hasAttemptsPredictsDelete(tVictim?.has_attempts, tDelete.status)}`,
+  );
+  record(
+    'V11 判别力：合成「预测与现实相反」的两种世界 → 谓词给出相反结论',
+    hasAttemptsPredictsDelete(true, 409) === true &&
+      hasAttemptsPredictsDelete(true, 204) === false &&
+      hasAttemptsPredictsDelete(undefined, 409) === false,
+    '预测=现实 → true；预测与现实相反 → false；键缺失 → false',
+  );
+
+  libTamper.child.kill();
+  libMock.child.kill();
+
+  // —— 负对照 11/11：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——
+  // 为什么要有这一条（V13 同族）：门禁第 ③④⑤⑦⑨ 步加载 frontend/dist/**，而门禁**不构建**。
+  // 改了 src 却忘了 build，那四个浏览器门禁测的是旧 bundle —— 会给出与源码无关的**绿**。
+  // 这里用**合成目录树**构造两个世界（不碰真实 frontend/dist，也不依赖真实构建）：
+  //   A 世界：dist 比源码新 → 判据绿
+  //   B 世界：dist 比源码旧 → 判据红，且必须**点名**那个更晚的源文件
+  //   （V9.2：B 世界必须自证它真的制造了失败条件，而不只是"我们相信它会红"）
+  console.log(
+    '\n—— 负对照 11/11：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——',
+  );
+  {
+    const WORLDS = path.join(TMP_DIR, 'dist-freshness-worlds');
+    const FRESHNESS_CLI = path.join(__dirname, 'dist-freshness.mjs');
+    const T0 = Date.parse('2026-10-15T22:00:00+08:00');
+    const at = (seconds) => new Date(T0 + seconds * 1000);
+    rmSync(WORLDS, { recursive: true, force: true });
+    const makeTree = (name) => {
+      const root = path.join(WORLDS, name);
+      mkdirSync(path.join(root, 'src', 'teacher'), { recursive: true });
+      mkdirSync(path.join(root, 'dist', 'assets'), { recursive: true });
+      writeFileSync(path.join(root, 'src', 'teacher', 'Page.tsx'), 'export const x = 1;\n');
+      writeFileSync(path.join(root, 'index.html'), '<div id="root"></div>\n');
+      writeFileSync(path.join(root, 'dist', 'index.html'), '<html></html>\n');
+      writeFileSync(path.join(root, 'dist', 'assets', 'main-abc.js'), 'console.log(1);\n');
+      return root;
+    };
+    const stamp = (root, rel, date) => {
+      const target = path.join(root, ...rel.split('/'));
+      utimesSync(target, date, date);
+    };
+
+    const freshWorld = makeTree('fresh');
+    stamp(freshWorld, 'src/teacher/Page.tsx', at(0));
+    stamp(freshWorld, 'index.html', at(0));
+    stamp(freshWorld, 'dist/index.html', at(10));
+    stamp(freshWorld, 'dist/assets/main-abc.js', at(10));
+
+    const staleWorld = makeTree('stale');
+    stamp(staleWorld, 'index.html', at(0));
+    stamp(staleWorld, 'dist/index.html', at(0));
+    stamp(staleWorld, 'dist/assets/main-abc.js', at(0));
+    stamp(staleWorld, 'src/teacher/Page.tsx', at(30));
+
+    const fresh = checkDistFreshness({ frontendDir: freshWorld });
+    const stale = checkDistFreshness({ frontendDir: staleWorld });
+
+    record(
+      'A 世界（dist 比源码新）→ 判据绿，并报出输入/产物文件数',
+      fresh.ok === true && fresh.counts.inputs >= 2 && fresh.counts.artifacts === 2,
+      `ok=${fresh.ok} reason=${fresh.reason} 输入=${fresh.counts.inputs} 产物=${fresh.counts.artifacts}`,
+    );
+    record(
+      'B 世界（dist 比源码旧）→ 判据红（V9.2：证明 A 的绿不是恒真，这个输入真的能把它弄红）',
+      stale.ok === false && stale.reason === 'stale',
+      `ok=${stale.ok} reason=${stale.reason}`,
+    );
+    record(
+      'B 世界红的时候**点名**了那个更晚的源文件（不是只说"不一致"）',
+      stale.offenders.length === 1 && stale.offenders[0].rel === 'src/teacher/Page.tsx',
+      `offenders=${JSON.stringify(stale.offenders.map((f) => f.rel))}`,
+    );
+    record(
+      'V11 判别力：A/B 两个世界得到**相反**结论（同一函数、同一份代码）',
+      fresh.ok !== stale.ok,
+      `A.ok=${fresh.ok} B.ok=${stale.ok}`,
+    );
+    const staleText = formatFreshnessResult(stale);
+    record(
+      '报错文案可照做：含晚的源文件名 + 含 pnpm --dir frontend build + 写明"比源码旧"',
+      staleText.includes('src/teacher/Page.tsx') &&
+        staleText.includes('pnpm --dir frontend build') &&
+        staleText.includes('frontend/dist 比源码旧'),
+      staleText.split('\n')[0],
+    );
+
+    // 同拍口径（报告里必须写明的确定性口径）：mtime 相等判 PASS —— 判据是"dist 不早于源码"。
+    const sameWorld = makeTree('same');
+    for (const rel of [
+      'src/teacher/Page.tsx',
+      'index.html',
+      'dist/index.html',
+      'dist/assets/main-abc.js',
+    ]) {
+      stamp(sameWorld, rel, at(5));
+    }
+    const same = checkDistFreshness({ frontendDir: sameWorld });
+    record(
+      '同拍口径确定：dist 与源码 mtime 相等 → 判 PASS（「不早于」而非「严格晚于」，故粗粒度文件系统上不会假红）',
+      same.ok === true,
+      `ok=${same.ok} reason=${same.reason}`,
+    );
+
+    // 输入集合不含 scripts/：改门禁脚本不该要求重建 dist（否则这条红会被训练成噪声，最终被忽略）。
+    const scriptsWorld = makeTree('scripts-new');
+    stamp(scriptsWorld, 'src/teacher/Page.tsx', at(0));
+    stamp(scriptsWorld, 'index.html', at(0));
+    stamp(scriptsWorld, 'dist/index.html', at(10));
+    stamp(scriptsWorld, 'dist/assets/main-abc.js', at(10));
+    mkdirSync(path.join(scriptsWorld, 'scripts'), { recursive: true });
+    writeFileSync(path.join(scriptsWorld, 'scripts', 'gate.mjs'), '// x\n');
+    stamp(scriptsWorld, 'scripts/gate.mjs', at(999));
+    const scriptsNew = checkDistFreshness({ frontendDir: scriptsWorld });
+    record(
+      '构建输入集合**不含** scripts/：只有门禁脚本变新时仍判绿（改了门禁脚本不该被要求重建 dist）',
+      scriptsNew.ok === true,
+      `ok=${scriptsNew.ok} reason=${scriptsNew.reason}`,
+    );
+
+    // "没得比"不许当绿（V11）：输入集合为空必须红。
+    const emptyWorld = path.join(WORLDS, 'empty');
+    mkdirSync(path.join(emptyWorld, 'dist'), { recursive: true });
+    writeFileSync(path.join(emptyWorld, 'dist', 'index.html'), 'x\n');
+    const empty = checkDistFreshness({ frontendDir: emptyWorld });
+    record(
+      '输入集合为空 → 判红（「没得比」不等于「比过且一致」，不许静默变绿）',
+      empty.ok === false && empty.reason === 'no-inputs',
+      `ok=${empty.ok} reason=${empty.reason}`,
+    );
+
+    // 门禁读的是**退出码**，所以退出码语义本身也要被证明：陈旧 → 2；新鲜 → 0。
+    const cliStale = spawnSync(NODE_EXE, [FRESHNESS_CLI, staleWorld], {
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    const cliFresh = spawnSync(NODE_EXE, [FRESHNESS_CLI, freshWorld], {
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    record(
+      'CLI 退出码语义与门禁一致：陈旧 → 2（非零），新鲜 → 0',
+      cliStale.status === 2 && cliFresh.status === 0,
+      `陈旧 exit=${cliStale.status} 新鲜 exit=${cliFresh.status}`,
+    );
+    record(
+      'CLI 在陈旧世界的输出里点名了源文件（端到端可照做，不只是函数返回值对）',
+      `${cliStale.stdout}${cliStale.stderr}`.includes('src/teacher/Page.tsx'),
+      `${cliStale.stdout}${cliStale.stderr}`.split('\n')[0],
+    );
+
+    // 真实世界阳性：门禁此刻正在跑，说明前置判据对真实 frontend/ 判的就是"新鲜"。
+    const real = checkDistFreshness({ frontendDir: FRONTEND_DIR });
+    record(
+      '真实 frontend/ 此刻判绿（与门禁前置判据同一函数、同一目录；这条红 = dist 陈旧，先 pnpm --dir frontend build）',
+      real.ok === true,
+      `reason=${real.reason} 输入=${real.counts.inputs} 产物=${real.counts.artifacts} 最新输入=${real.srcNewest?.rel}`,
+    );
+
+    rmSync(WORLDS, { recursive: true, force: true });
   }
 
   const failed = results.filter((r) => !r.ok);

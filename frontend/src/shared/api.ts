@@ -25,6 +25,12 @@ export const ROUTES = {
   // M3：第六维「答案版形式」落库（`paper.answer_layout`）
   update_answer_layout: '/api/papers/{paper_id}/answer-layout',
   publish_paper: '/api/papers/{paper_id}/publish',
+  // ---- 卷库收纳（D78）----
+  // 归档 = 软删除；`archived_at` 与 `status` **正交**（归档不改 status，恢复后回到原状态）。
+  // 有学生成绩的卷不允许物理删除（后端 409 `PAPER_HAS_ATTEMPTS`），只能归档。
+  archive_paper: '/api/papers/{paper_id}/archive',
+  unarchive_paper: '/api/papers/{paper_id}/unarchive',
+  delete_paper: '/api/papers/{paper_id}',
   // D53 新收录：已发布卷只读，改题走「另存为可编辑副本」（契约 §6 状态机）
   copy_paper: '/api/papers/{paper_id}/copy',
   sheet: '/api/papers/{paper_id}/sheet',
@@ -57,6 +63,8 @@ export function route(name: RouteName, params: Record<string, string | number> =
 // ---------------------------------------------------------------------------
 
 export type PaperStatus = 'draft' | 'published';
+/** D78 卷库列表的归档筛选：`exclude` 只看未归档（**默认**）/ `include` 全部 / `only` 只看已归档。 */
+export type ArchivedFilter = 'exclude' | 'include' | 'only';
 export type QuestionTypeName = 'oral' | 'stepwise' | 'fill';
 export type RangeName = 'R1' | 'R2' | 'R3' | 'R4' | 'R5' | 'R6' | 'R7';
 export type OpName = '+' | '-' | '×' | '÷';
@@ -178,6 +186,8 @@ export interface PaperDetail {
   answer_layout: AnswerLayoutIn;
   created_at: string;
   published_at: string | null;
+  /** D78 归档时间（ISO 8601 带时区）；`null` = 未归档。与 `status` **正交**。 */
+  archived_at: string | null;
   items: PaperItemOut[];
 }
 
@@ -190,6 +200,16 @@ export interface PaperSummary {
   item_count: number;
   created_at: string;
   published_at: string | null;
+  /** D78：`null` = 未归档（默认列表只列这些）。 */
+  archived_at: string | null;
+  /**
+   * D78：这套卷是否已有学生成绩。
+   *
+   * 界面据此**事先**禁用「删除」并写明理由 —— 有成绩的卷后端只允许归档，
+   * 物理删除会撞外键约束（返回 409）。让老师点下去才吃一个错误，
+   * 正是 D65「报错好过静默错」与 D59「界面不许谎报状态」要防的。
+   */
+  has_attempts: boolean;
 }
 
 /** 对应 `PaperListOut`（M3 起带分页回显）。 */
@@ -201,7 +221,7 @@ export interface PaperListOut {
   papers: PaperSummary[];
 }
 
-/** 卷库列表的查询参数 —— 与契约 §5.1 的 `limit` / `offset` / `q` / `status` 对应。 */
+/** 卷库列表的查询参数 —— 与契约 §5.1 的 `limit` / `offset` / `q` / `status` / `archived` 对应。 */
 export interface PaperListQuery {
   limit: number;
   offset: number;
@@ -209,6 +229,11 @@ export interface PaperListQuery {
   q?: string;
   /** 留空 = 全部 */
   status?: PaperStatus;
+  /**
+   * D78 归档筛选。**不传就是 `exclude`**（后端默认值）——
+   * 默认把已归档的卷混在列表里，等于归档没做（契约 §5.1 明确写了这条）。
+   */
+  archived?: ArchivedFilter;
 }
 
 /** 卷库分页的边界（与后端 Query 约束一致）。 */

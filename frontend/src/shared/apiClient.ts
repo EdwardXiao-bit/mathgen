@@ -263,7 +263,14 @@ function normalizePaperList(
     total,
     limit: typeof raw.limit === 'number' ? raw.limit : limit,
     offset: typeof raw.offset === 'number' ? raw.offset : mode === 'legacy' ? offset : 0,
-    papers: raw.papers,
+    // D78 两字段对**未实现归档的旧后端**不存在：补上默认值而不是留 `undefined`，
+    // 否则界面会把「字段缺失」当成「未知状态」渲染（`undefined` 上界面是 A10 明令禁止的）。
+    // 语义上缺失 = 未归档 / 无成绩，与后端的默认值一致。
+    papers: raw.papers.map((paper) => ({
+      ...paper,
+      archived_at: paper.archived_at ?? null,
+      has_attempts: paper.has_attempts ?? false,
+    })),
   };
 }
 
@@ -335,6 +342,7 @@ export const teacherApi = {
     const offset = query?.offset ?? 0;
     const q = query?.q?.trim() ?? '';
     const status = query?.status;
+    const archived = query?.archived;
 
     const buildUrl = (mode: 'contract' | 'legacy') => {
       const params = new URLSearchParams();
@@ -347,6 +355,10 @@ export const teacherApi = {
       }
       if (q !== '') params.set('q', q);
       if (status !== undefined) params.set('status', status);
+      // D78：不传 `archived` 就是后端的 `exclude` 默认值，**不要**在这里补默认值——
+      // 显式发 `archived=exclude` 会让「旧后端忽略未知参数」这件事无法被区分：
+      // 忽略的参数与后端自己的默认值恰好同义，所以两者都不会改变结果。
+      if (archived !== undefined) params.set('archived', archived);
       return `${route('list_papers')}?${params.toString()}`;
     };
 
@@ -383,6 +395,40 @@ export const teacherApi = {
     if (Array.isArray(payload)) return payload;
     if (payload && Array.isArray(payload.items)) return payload.items;
     throw new ApiError('BAD_RESPONSE', '删题响应缺少 items 数组', 200);
+  },
+
+  /**
+   * `POST /api/papers/{id}/archive` —— **归档**（D78 软删除，契约 §5.1）。
+   *
+   * 与 `status` **正交**：归档不改 `status`，恢复后回到原来的草稿 / 已发布。
+   * 任何状态的卷都能归档，且**不影响学生端**（纸张已印、二维码已发，把旧卷突然
+   * 变成打不开只会让正在上课的人踩坑）。可逆，所以界面不做二次确认。
+   */
+  async archivePaper(paperId: number): Promise<PaperDetail> {
+    const payload = await requestJson<unknown>(route('archive_paper', { paper_id: paperId }), {
+      method: 'POST',
+    });
+    return parsePaperDetail(payload);
+  },
+
+  /** `POST /api/papers/{id}/unarchive` —— **恢复**：把卷放回「在用」列表（可逆）。 */
+  async unarchivePaper(paperId: number): Promise<PaperDetail> {
+    const payload = await requestJson<unknown>(route('unarchive_paper', { paper_id: paperId }), {
+      method: 'POST',
+    });
+    return parsePaperDetail(payload);
+  },
+
+  /**
+   * `DELETE /api/papers/{id}` —— **物理删除**（D78），成功是 **204 且无响应体**。
+   *
+   * 该卷已有学生成绩时后端返回 **409 `PAPER_HAS_ATTEMPTS`**。
+   * 界面**必须**先用 `PaperSummary.has_attempts` 事先禁用入口并写明理由；
+   * 这里的 409 只是**并发**下的最后一道防线（列表读完之后、点删除之前刚好有学生交了卷），
+   * 两道都要有 —— 但不能只有后一道（那就是「点下去才吃错误」，D65/D59 明确要防的）。
+   */
+  async deletePaper(paperId: number): Promise<void> {
+    await requestJson<null>(route('delete_paper', { paper_id: paperId }), { method: 'DELETE' });
   },
 
   /** `POST /api/papers/{id}/items/{seq}/regenerate` —— 换一题。 */

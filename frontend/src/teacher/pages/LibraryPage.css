@@ -1,0 +1,56 @@
+/*
+ * 卷库页的**页面级**样式（D78：归档 / 恢复 / 删除）。
+ *
+ * 为什么单独一个文件、而不是写进 `src/styles.css`：
+ *   · `src/styles.css` 是**全站**样式表，本轮的写域是 `frontend/src/teacher/**`；
+ *   · 项目里已有同样的先例 —— `frontend/src/student/student.css` 就是学生端自己的
+ *     样式文件，由 `student/main.tsx` 引入。这里照同一条约定走。
+ *
+ * 两条必须守住的规矩（与 `src/ui/**` 相同）：
+ *   ① 颜色**只准**写 `var(--mg-*)`，不得出现颜色字面量（判据 A1 扫 `src/**`）；
+ *   ② 不要在这里给 `.library-page` 或 `body` 换底色 —— 那会撞判据 A11
+ *      「浅底铺满、灰底只留给画布」。
+ *
+ * 这里只补齐三块新增结构的排布：一行里的操作区、删除二次确认、禁用理由。
+ * 纯文字标签的排布（搜索框 / 状态下拉 / 按卷号打开）已经由 `styles.css` 的
+ * `.library-toolbar` 负责，本文件不重复。
+ */
+
+/* 一行里的操作区：归档 / 恢复 / 删除 + 禁用理由要能在窄单元格里换行，
+   否则「已有学生成绩，不能删除」会把表格撑到需要横向滚动。 */
+.library-actions,
+.library-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mg-sp-3);
+}
+
+/* 二次确认里的那句「删掉《卷名》就找不回来了」——不可逆操作要醒目，用错误色。 */
+.library-confirm-text {
+  color: var(--mg-danger);
+  font-size: var(--mg-fs-11);
+}
+
+/* 禁用理由：与次级文字同色，字号小一档 —— 它是**说明**，不是按钮。 */
+.library-row-hint {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+/* 「在用 / 已归档」分段控件的标签，与 `.library-toolbar label` 的排布保持一致
+   （标签在上、控件在下），否则它在工具栏里会与旁边的下拉框错位。 */
+.library-archive-filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+}
+
+.library-filter-label {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.library-delete-guard {
+  display: inline-flex;
+}

@@ -63,6 +63,18 @@ function json(res, status, body) {
   res.end(payload);
 }
 
+/**
+ * 204：**无响应体**。
+ *
+ * 为什么单独有这个函数、而不是写 `json(res, 204, {})`：后者是「有响应体的 204」，
+ * 而真实后端 `DELETE /api/papers/{id}` 是显式 `Response(status_code=204)`（空体）。
+ * 逐字段比对里「空体」与「一个空对象」是两种形状 —— 用同一个函数就分不出来了。
+ */
+function noContent(res) {
+  res.writeHead(204);
+  res.end();
+}
+
 // ---------------------------------------------------------------------------
 // 故意改坏一条 mock 响应的开关（负对照用，默认完全不生效）
 // ---------------------------------------------------------------------------
@@ -206,6 +218,9 @@ const MOCK_PAPER = {
   },
   created_at: '2026-10-14T20:00:00+08:00',
   published_at: null,
+  // D78：归档时间。`PaperDetail` 有这一键（**没有** `has_attempts` —— 那是
+  // `PaperSummary` 独有的，只给列表页决定「删除」能不能点）。
+  archived_at: null,
   // M3：第六维答案版形式（`paper.answer_layout`），四字段与 AnswerLayoutIn 一致
   answer_layout: {
     separate_page: true,
@@ -258,15 +273,60 @@ const MOCK_LIBRARY = Array.from({ length: 37 }, (_, index) => {
     item_count: 10 + (seq % 5),
     created_at: `2026-10-${String(10 + (seq % 20)).padStart(2, '0')}T09:${String(seq % 60).padStart(2, '0')}:00+08:00`,
     published_at: published ? `2026-10-${String(10 + (seq % 20)).padStart(2, '0')}T10:00:00+08:00` : null,
+    // D78：这两个键是 `PaperSummary` 的一部分（契约 §5.1）。
+    // 预置的 37 套**全部未归档**，所以默认视图（`archived=exclude`）看到的仍是原来那 37 套，
+    // 现有分页 / 搜索判据的「总数」断言不会被这轮改动动到。
+    archived_at: null,
+    // 第 6 套刻意标成「已有学生成绩」：界面上「删除」必须**事先禁用**并写明人话理由，
+    // 这一行就是那条判据的可见样本。选第 6 套而不是第 1 套，是因为第 1 套
+    // （id 100 / 卷号 2610-0001）是学生端取卷逐键比对的样本，保持它不带额外语义。
+    has_attempts: seq === 6,
   };
 });
+
+/**
+ * 已归档的卷（D78）—— **单独追加在尾部**，不改变上面 37 套的既有断言。
+ *
+ * 为什么必须真的预置几套，而不是「只加归档路由就够了」：默认视图是
+ * `archived=exclude`，如果把归档行混进那 37 套里，「默认看不到归档」这条判据
+ * 就会和「总数仍是 37」互相打架。分开之后两种情况都能被断言：
+ * 默认视图 37 套、`archived=only` 视图 3 套、`archived=include` 视图 40 套。
+ *
+ * 这三套都用 `2610-00NN` 卷号（延续已有编号规则），状态保持 `published` ——
+ * 归档与 `status` **正交**，归档不改状态，所以列表里「已发布」与「已归档」会同时出现。
+ */
+const MOCK_ARCHIVED = Array.from({ length: 3 }, (_, index) => {
+  const seq = 38 + index;
+  const day = String(10 + (seq % 20)).padStart(2, '0');
+  return {
+    id: LIBRARY_ID_BASE + 37 + index,
+    code: `2610-${String(seq).padStart(4, '0')}`,
+    // 标题里带上「两位数」是为了让**搜索与归档两个筛选条件可以叠加**被断言
+    // （seq=39 时 `seq % 3 === 0`，与上面 37 套的标题规则一致）。
+    title: seq % 3 === 0 ? `两位数乘一位数 练习 ${seq}` : `三位数乘两位数 练习 ${seq}`,
+    status: 'published',
+    item_count: 10 + (seq % 5),
+    created_at: `2026-10-${day}T09:00:00+08:00`,
+    published_at: `2026-10-${day}T10:00:00+08:00`,
+    archived_at: '2026-10-15T12:00:00+08:00',
+    has_attempts: false,
+  };
+});
+MOCK_LIBRARY.push(...MOCK_ARCHIVED);
 
 /** 列表里的每套卷都能按 ID / 卷号打开；`MOCK_PAPER`（id=1，草稿）保持原样 */
 const MOCK_DETAILS = new Map();
 MOCK_DETAILS.set(MOCK_PAPER.id, MOCK_PAPER);
 for (const summary of MOCK_LIBRARY) {
+  // `has_attempts` 只属于 `PaperSummary`（列表页用它决定「删除」能不能点）；
+  // `PaperDetail` 里**没有**这一键，卷详情页也不需要知道成绩数量 —— 所以这里必须剥掉。
+  // 若照抄进详情，`GET /api/papers/{id}` 会多出一个真实后端没有的键，
+  // 逐字段比对（门禁第 ⑫ 步）就会报一条**并不存在的**「差异」，把真差异淹掉。
+  // `archived_at` 相反：`PaperDetail` 有这个键，必须保留。
+  const base = { ...summary };
+  delete base.has_attempts;
   MOCK_DETAILS.set(summary.id, {
-    ...summary,
+    ...base,
     seed: 1000 + summary.id,
     config: { ...MOCK_PAPER.config, count: summary.item_count },
     layout: { ...MOCK_PAPER.layout },
@@ -289,13 +349,30 @@ if (studentPaperDetail) {
   studentPaperDetail.item_count = studentPaperDetail.items.length;
 }
 
+/**
+ * 归档筛选（D78 / 契约 `PaperListOut`）。
+ *
+ * `archived` 三态：`exclude`（**默认**，只看在用）/ `include`（两档都要）/ `only`（只看已归档）。
+ * 默认就是 `exclude` —— 这正是「归档 = 软删除」的全部意义：收起来的东西默认不再出现在眼前。
+ *
+ * 判据写成 `!paper.archived_at` 而不是 `=== null`：预置数据显式写了 `null`，
+ * 但 `POST /api/papers` 之后 push 进列表的摘要也要走同一条路。用真值判断可以少一个
+ * 「新增字段忘了补 → 卷凭空从列表消失」的机会；缺字段按「未归档」处理，与后端默认值一致。
+ */
+function applyArchivedFilter(rows, url) {
+  const archived = url.searchParams.get('archived') ?? 'exclude';
+  if (archived === 'include') return rows;
+  if (archived === 'only') return rows.filter((paper) => Boolean(paper.archived_at));
+  return rows.filter((paper) => !paper.archived_at);
+}
+
 /** 卷库列表：契约形态（回显 limit/offset） */
 function listPapers(url) {
   const limit = Number(url.searchParams.get('limit') ?? 20);
   const offset = Number(url.searchParams.get('offset') ?? 0);
   const q = (url.searchParams.get('q') ?? '').trim();
   const status = url.searchParams.get('status') ?? '';
-  let rows = MOCK_LIBRARY;
+  let rows = applyArchivedFilter(MOCK_LIBRARY, url);
   if (q !== '') rows = rows.filter((paper) => paper.title.includes(q));
   if (status === 'draft' || status === 'published') {
     rows = rows.filter((paper) => paper.status === status);
@@ -309,7 +386,7 @@ function listPapersLegacy(url) {
   const page = Number(url.searchParams.get('page') ?? 1);
   const q = (url.searchParams.get('q') ?? '').trim();
   const status = url.searchParams.get('status') ?? '';
-  let rows = MOCK_LIBRARY;
+  let rows = applyArchivedFilter(MOCK_LIBRARY, url);
   if (q !== '') rows = rows.filter((paper) => paper.title.includes(q));
   if (status === 'draft' || status === 'published') {
     rows = rows.filter((paper) => paper.status === status);
@@ -712,6 +789,11 @@ function dispatchApi(req, res, url) {
       item_count: detail.items.length,
       created_at: detail.created_at,
       published_at: null,
+      // 新卷一定未归档、一定没有学生成绩 —— 两个键都要显式写：
+      // 少了 `archived_at` 会让归档筛选（真值判断）误判，少了 `has_attempts`
+      // 会让列表页把它读成「没有成绩」（当前确实如此，但字段缺席和字段为 false 不是一回事）。
+      archived_at: null,
+      has_attempts: false,
     });
     return json(res, 201, detail);
   }
@@ -745,6 +827,76 @@ function dispatchApi(req, res, url) {
       qr_url: `/api/papers/${detail.id}/qr.png`,
       student_url: `http://${req.headers.host ?? '127.0.0.1'}${STUDENT_PAPER_PATH}/${detail.code}`,
     });
+  }
+
+  // ---- D78：卷库收纳（归档 / 恢复 / 删除）---------------------------------
+  //
+  // 语义逐条照真实实现抄（`backend/app/routers/papers.py` + `services/paper_service.py`），
+  // 不是照记忆编的：
+  //   · 归档 = **软删除**，可逆，**幂等**（重复归档保留第一次的 `archived_at`，不报错），
+  //     且**任何状态都能归档**、**不改 `status`**（归档与状态正交 —— 改了状态，恢复时
+  //     就不知道该死回 `draft` 还是 `published`）。
+  //   · 恢复 = `archived_at` 归 `null`，**幂等**。
+  //   · 删除 = **物理删除**，成功 **204 无响应体**；有学生成绩 → **409
+  //     `PAPER_HAS_ATTEMPTS`**，卷与成绩原样保留（外键没有 `ondelete`，真删只会撞
+  //     数据库错误，把它翻译成 409 + 一句人话 + 一条出路才是有用的行为）。
+  //
+  // 那条 409 只是**并发兜底**（列表读完之后、点删除之前刚好有学生交了卷）；
+  // 界面必须先用 `PaperSummary.has_attempts` 事先禁用入口并写明理由（D65/D59）。
+  //
+  // 路由顺序：`DELETE /api/papers/{id}` 与 `DELETE /api/papers/{id}/items/{seq}`
+  // 形状相邻，所以下面用**精确正则**锁死各自路径，前者不会吃掉后者。
+  const archiveMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/archive$/);
+  if (req.method === 'POST' && archiveMatch) {
+    const id = Number(archiveMatch[1]);
+    const detail = MOCK_DETAILS.get(id);
+    const summary = MOCK_LIBRARY.find((row) => row.id === id);
+    if (!detail || !summary) {
+      return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: `卷 ${id} 不存在` } });
+    }
+    if (summary.archived_at === null) {
+      // 时间戳格式照真实后端 `services/timeutil.utcnow_iso()`：`datetime.now(timezone.utc)
+      // .isoformat()` 给的是 `+00:00` 结尾，**不是** `Z`。两者都能被 `new Date()` 解析，
+      // 所以形状比对抓不出差别 —— 正因为抓不出，才更要照抄，别留下没人会发现的漂移。
+      const stamp = new Date().toISOString().replace(/Z$/, '+00:00');
+      summary.archived_at = stamp;
+      detail.archived_at = stamp;
+    }
+    return json(res, 200, detail);
+  }
+
+  const unarchiveMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/unarchive$/);
+  if (req.method === 'POST' && unarchiveMatch) {
+    const id = Number(unarchiveMatch[1]);
+    const detail = MOCK_DETAILS.get(id);
+    const summary = MOCK_LIBRARY.find((row) => row.id === id);
+    if (!detail || !summary) {
+      return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: `卷 ${id} 不存在` } });
+    }
+    summary.archived_at = null;
+    detail.archived_at = null;
+    return json(res, 200, detail);
+  }
+
+  const deletePaperMatch = url.pathname.match(/^\/api\/papers\/(\d+)$/);
+  if (req.method === 'DELETE' && deletePaperMatch) {
+    const id = Number(deletePaperMatch[1]);
+    const index = MOCK_LIBRARY.findIndex((row) => row.id === id);
+    if (index === -1 || !MOCK_DETAILS.has(id)) {
+      return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: `卷 ${id} 不存在` } });
+    }
+    if (MOCK_LIBRARY[index].has_attempts) {
+      return json(res, 409, {
+        error: {
+          code: 'PAPER_HAS_ATTEMPTS',
+          // 与真实后端的文案逐字一致（`paper_service.purge_paper`）。
+          message: `卷 ${id} 已有学生成绩，不能删除；可以改为归档`,
+        },
+      });
+    }
+    MOCK_LIBRARY.splice(index, 1);
+    MOCK_DETAILS.delete(id);
+    return noContent(res);
   }
 
   const deleteMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/items\/(\d+)$/);

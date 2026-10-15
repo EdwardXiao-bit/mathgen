@@ -26,8 +26,11 @@
  * 另有 2 项**前置自检**（先于上面 12 步）：scripts/check-script-syntax.mjs 逐个 node --check，
  * 以及反引号整洁工具自身的 --self-test。
  *
- * 本脚本**不构建**：它只检查 frontend/dist/index.html 是否存在，dist 必须由
- * `pnpm --dir frontend build` 先行产出。
+ * 本脚本**不构建**：dist 必须由 `pnpm --dir frontend build` 先行产出。它做两件事：
+ *   1. 检查 frontend/dist/index.html 是否存在；
+ *   2. **断言 dist 比它的构建输入新**（scripts/dist-freshness.mjs，V13 同族）。
+ * 第 2 条是必需的：第 ③④⑤⑦⑨ 步加载的是 frontend/dist/**，若 dist 陈旧，
+ * 那几个浏览器门禁测的是**旧 bundle**，会给出与源码无关的绿（真发生过一次）。
  */
 
 import { spawnSync } from 'node:child_process';
@@ -35,6 +38,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { checkDistFreshness, formatFreshnessResult, REBUILD_COMMAND } from './dist-freshness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.resolve(__dirname, '..');
@@ -187,7 +192,7 @@ const steps = [
 const USAGE = [
   '用法：node scripts/run-all-verifications.mjs [--help | --list]',
   '',
-  '  无参数      跑完整门禁（2 项前置自检 + 11 步，全绿才算通过）',
+  '  无参数      跑完整门禁（1 项前置产物判据 + 2 项前置自检 + 12 步，全绿才算通过）',
   '  -h, --help  只打印本用法与步骤清单，不执行任何门禁',
   '  --list      只按执行顺序列出步骤名与脚本路径，不执行任何门禁',
   '',
@@ -230,6 +235,29 @@ if (!existsSync(path.join(FRONTEND_DIR, 'dist', 'index.html'))) {
   console.error('找不到 frontend/dist/index.html —— 请先运行：pnpm --dir frontend build');
   process.exit(2);
 }
+
+// ---- 前置判据：dist 必须是新的（scripts/dist-freshness.mjs，V13 同族）----
+// 为什么必须在跑任何步骤**之前**：第 ③④⑤⑦⑨ 步是浏览器门禁，它们加载 frontend/dist/**。
+// dist 陈旧时那些门禁测的是旧 bundle，会给出与源码无关的绿 —— 与其跑出一堆不可信的
+// PASS 再在汇总里发现，不如在这一步大声红、并给出能直接照做的命令。
+// 退出码取 2（与上面"缺 dist"一致）：2 = 门禁状态不可信/前置不满足，与"跑了但没过"的 1 区分。
+{
+  const title = '前置判据：frontend/dist 必须比构建输入新（陈旧产物 = 浏览器门禁测的是旧 bundle）';
+  console.log(`\n${'='.repeat(72)}\n${title}\n${'='.repeat(72)}`);
+  const freshness = checkDistFreshness({ frontendDir: FRONTEND_DIR });
+  const text = formatFreshnessResult(freshness);
+  if (freshness.ok) {
+    console.log(text);
+  } else {
+    console.error(text);
+    console.error(
+      `\n陈旧产物：门禁状态不可信，未执行任何步骤（退出码 2）。` +
+        `\n修正：${REBUILD_COMMAND} 之后重跑本命令（pnpm --dir frontend verify）。`,
+    );
+    process.exit(2);
+  }
+}
+
 if (!existsSync(PYTHON)) {
   console.error(`找不到 ${PYTHON}（契约检查与 Playwright 都依赖它）`);
   process.exit(2);

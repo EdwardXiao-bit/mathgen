@@ -224,6 +224,33 @@ BG_SCAN = """() => {
             viewport: {w: window.innerWidth, h: window.innerHeight}};
 }"""
 
+# 卷库收纳态（D78）：**结构**证据，不是文本证据。
+#
+# 为什么单靠「扫可见文本」不够：A10 能证明归档页没有开发者术语，但证明不了
+# **这一条 case 真的换了一档**。若切档的 click 静默失败，library-archived 扫到的
+# 仍是在用列表，而它同样干净 —— 于是"多覆盖了一条"变成重复计数，判据恒真（V11）。
+# 所以这里把两档的**互斥特征**抓出来：分段控件的 data-state、行标题集合、
+# 归档/恢复按钮各出现几个、以及删除的禁用态与理由文本的**数量对比**。
+LIB_STATE_SCAN = """() => {
+    const q = (sel) => document.querySelector(sel);
+    const all = (sel) => Array.from(document.querySelectorAll(sel));
+    const del = all("[data-testid='library-delete']");
+    return {
+        filterState: (q("[data-testid='library-archive-filter']") || {}).getAttribute
+            ? q("[data-testid='library-archive-filter']").getAttribute('data-state') : null,
+        rows: all("[data-testid='library-rows'] tr").length,
+        start: (q("[data-testid='library-range-start']") || {}).innerText ?? null,
+        rowTitles: all("[data-testid='library-rows'] tr")
+            .map((tr) => tr.getAttribute('data-paper-title')).slice(0, 3),
+        guards: all("[data-delete-guard]").map((g) => g.getAttribute('data-delete-guard')),
+        blockedReasons: all("[data-testid='library-delete-blocked-reason']").length,
+        deleteButtons: del.length,
+        deleteDisabled: del.filter((b) => b.disabled).length,
+        archiveButtons: all("[data-testid='library-archive']").length,
+        unarchiveButtons: all("[data-testid='library-unarchive']").length,
+    };
+}"""
+
 def parse_rgb_unused(text):
     return None
 
@@ -246,6 +273,9 @@ def parse_rgb_unused(text):
 CASES = [
     ("config", "/teacher", "[data-dimension='answer_form']"),
     ("library", "/teacher/library", "[data-testid='library-rows'] tr"),
+    # 卷库收纳（D78）：同一条路由的**另一档**。分档是组件 state，不在 URL 里，
+    # 所以由下面的 click 钩子把分段控件切到「已归档」再扫（见 LIB_STATE_SCAN）。
+    ("library-archived", "/teacher/library", "[data-testid='library-rows'] tr"),
     ("paper", "/teacher/paper/1", "#sheet-frame"),
     ("paper-answer", "/teacher/paper/1", "#sheet-frame"),
     ("publish", "/teacher/paper/1/publish", ".publish-page"),
@@ -341,6 +371,8 @@ def _seed_identity(page):
     except Exception:
         pass
 
+archived_tab_switch = None  # 见下面 library-archived 钩子：先记、后并入 result
+
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
     for name, url, wait in CASES:
@@ -358,6 +390,36 @@ with sync_playwright() as p:
                 page.click("[data-testid='preview-tab-answer']", timeout=5000)
             except Exception:
                 pass
+        # library-archived：把「在用 / 已归档」切到「已归档」再扫。
+        #
+        # 点的是**可见的分段（label）**，不是里面那个 radio：CSS 里 .mg-segment input 是
+        # 1px + clip-path: inset(50%) 的视觉隐藏控件（无障碍语义需要它，但用户点不到），
+        # 直接点 input 会因为命中点被别的元素盖住而失败 —— 这正是本条判据第一次跑时
+        # 抓到的红（filterState 停在 exclude，两档扫的是同一页）。
+        # 钩子失败不在这里抛（避免整条 case 崩掉让报告只剩异常），而是让
+        # LIB_STATE_SCAN 抓到的 filterState 停在 exclude —— 判据侧会因为
+        # 「两档 state 相同」而报红，红的地方在判据里，不在异常栈里。
+        if name == "library-archived":
+            # 先把分页推到第 2 页，**再**切档。任务卡第 2 条：切档必须把分页重置到第一页，
+            # 否则会停在一个空页上 —— 那是「静默的错」。不先离开第 1 页就区分不出
+            # "实现了重置" 与 "压根没有重置"（两者在第 1 页上看起来一模一样）。
+            try:
+                page.click("[data-testid='library-next']", timeout=5000)
+                page.wait_for_timeout(900)
+            except Exception:
+                pass
+            paged_start = page.evaluate(
+                "() => { const el = document.querySelector(\"[data-testid='library-range-start']\");"
+                " return el ? el.innerText : null; }")
+            try:
+                page.click(
+                    "[data-testid='library-archive-filter'] label:has-text('已归档')",
+                    timeout=5000)
+            except Exception:
+                pass
+            # 存进局部变量，等下面 result["pages"][name] 建好之后再合并 ——
+            # 这一段的执行顺序在 result["pages"][name] 赋值**之前**（见下面的循环体）。
+            archived_tab_switch = {"before_start": paged_start}
         page.wait_for_timeout(800)
         # student-paper-flow：照常量完答题页之后，**继续走完交卷流程**并把
         # 结果页也量一遍（同一个 page 对象，交卷写的 sessionStorage 直接可用）。
@@ -380,6 +442,39 @@ with sync_playwright() as p:
             page.evaluate(INJECT_SENTINEL)
             page.wait_for_timeout(150)
         result["pages"][name] = {"devHits": page.evaluate(DEV_SCAN), "bg": page.evaluate(BG_SCAN)}
+        if name.startswith("library"):
+            result["pages"][name]["lib"] = page.evaluate(LIB_STATE_SCAN)
+        if name == "library-archived":
+            result["pages"][name]["tab_switch"] = archived_tab_switch
+        # 卷库归档的**行为**证据（D78）：点第一行的「归档」，看三件事同时发生 ——
+        #   · 该行立刻移出「在用」视图（失效重取，archived=exclude）
+        #   · 出现 Toast，且带「撤销」（归档可逆，反馈必须可撤销）
+        #   · Toast 自己的文案也要过 A10 —— 新出现的可见文本不能逃过扫描
+        # 只断言"发出了请求"是不够的：请求成功但列表没刷新，用户看到的是"点了没反应"，
+        # 那正是任务卡第 5 条要防的东西。
+        if name == "library":
+            first_title = page.evaluate(
+                "() => { const tr = document.querySelector(\"[data-testid='library-rows'] tr\");"
+                " return tr ? tr.getAttribute('data-paper-title') : null; }")
+            try:
+                page.click(
+                    "[data-testid='library-rows'] tr:first-child [data-testid='library-archive']",
+                    timeout=5000)
+                page.wait_for_timeout(1500)
+            except Exception:
+                pass
+            result["pages"][name]["archive_flow"] = {
+                "first_title": first_title,
+                "toast": page.evaluate(
+                    "() => { const t = document.querySelector(\"[data-testid='library-toast']\");"
+                    " return t ? t.innerText : null; }"),
+                "has_undo": page.evaluate(
+                    "() => Boolean(document.querySelector(\"[data-testid='library-toast-undo']\"))"),
+                "still_present": page.evaluate(
+                    "(title) => Array.from(document.querySelectorAll(\"[data-testid='library-rows'] tr\"))"
+                    ".some((tr) => tr.getAttribute('data-paper-title') === title)", first_title),
+                "devHits": page.evaluate(DEV_SCAN),
+            }
         if name == "config":
             page.screenshot(path=os.path.join(r"@@FRONTEND_DIR@@".lstrip("/"), "verify-voice-config-1440x900.png"))
         if name == "library":
@@ -573,6 +668,85 @@ async function main() {
   }
 
   check('无 pageerror', (result.console_errors ?? []).length === 0, (result.console_errors ?? []).join(';').slice(0, 200));
+
+  // ---- 卷库收纳态（D78）：归档 / 恢复 / 删除 ----
+  //
+  // 这一节查的是**结构**，不是文本。理由：文本判据（A10）对「这一条 case 到底看的哪一档」
+  // 完全不敏感 —— 切档 click 静默失败时，library-archived 扫到的仍是在用列表，而它同样干净。
+  // 所以这里先证明**两档真的不同**，再证明每档里该出现的东西确实出现、且**对立面也在场**
+  // （只有 blocked 没有 allowed 的话，「事先禁用」也可能是"把所有删除都禁掉"这种错误实现）。
+  {
+    console.log('\n—— 卷库收纳态（D78）：分档互斥 + 删除的事先禁用 ——');
+    const inUse = result.pages?.library?.lib ?? {};
+    const arch = result.pages?.['library-archived']?.lib ?? {};
+    console.log(`  在用档：${JSON.stringify(inUse)}`);
+    console.log(`  已归档档：${JSON.stringify(arch)}`);
+
+    check(
+      '卷库两档的分段控件状态互斥（在用=exclude / 已归档=only）—— 证明切档真的生效，不是重复扫同一页',
+      inUse.filterState === 'exclude' && arch.filterState === 'only',
+      `在用=${inUse.filterState} 已归档=${arch.filterState}`,
+    );
+    check(
+      '卷库两档拿到的是**不同**的行集合（否则「已归档」是假分档）',
+      (arch.rows ?? 0) >= 1 &&
+        JSON.stringify(inUse.rowTitles) !== JSON.stringify(arch.rowTitles),
+      `在用行数=${inUse.rows} 首行=${JSON.stringify(inUse.rowTitles?.[0])} / 已归档行数=${arch.rows} 首行=${JSON.stringify(arch.rowTitles?.[0])}`,
+    );
+    check(
+      '在用档里**同时**存在「可删除」与「已有成绩 → 事先禁用」两种行（禁用是有选择的，不是一律禁掉）',
+      Array.isArray(inUse.guards) && inUse.guards.includes('blocked') && inUse.guards.includes('allowed'),
+      `guards=${JSON.stringify(inUse.guards)}`,
+    );
+    check(
+      '有成绩的行：删除按钮**真的 disabled**，且旁边写着人话理由（不是点下去才吃 409）',
+      (inUse.deleteDisabled ?? 0) >= 1 &&
+        (inUse.blockedReasons ?? 0) >= 1 &&
+        (inUse.deleteDisabled ?? 0) < (inUse.deleteButtons ?? 0),
+      `禁用=${inUse.deleteDisabled}/${inUse.deleteButtons} 理由文本=${inUse.blockedReasons}`,
+    );
+    check(
+      '已归档档：每行给的是「恢复」而不是「归档」（按钮方向随归档态翻转）',
+      (arch.unarchiveButtons ?? 0) >= 1 && (arch.archiveButtons ?? 0) === 0,
+      `归档按钮=${arch.archiveButtons} 恢复按钮=${arch.unarchiveButtons}`,
+    );
+
+    // 切档必须把分页重置回第一页（任务卡第 2 条：否则会停在空页上，那是静默的错）。
+    // 判据要**先证明自己离开了第 1 页**，否则「回到第 1 页」与「从来没离开」不可区分 ——
+    // 那就是一条恒真断言（V9）。
+    const tabSwitch = result.pages?.['library-archived']?.tab_switch ?? {};
+    console.log(`  切档分页：${JSON.stringify(tabSwitch)} 切档后起始行=${arch.start}`);
+    check(
+      '切档前确实翻到了第 2 页（先证明判据的前提成立，否则下面那条是恒真的）',
+      tabSwitch.before_start != null && tabSwitch.before_start !== '1',
+      `翻页后起始行=${JSON.stringify(tabSwitch.before_start)}`,
+    );
+    check(
+      '切到「已归档」后分页重置回第一页（不是停在空页上）',
+      arch.start === '1' && (arch.rows ?? 0) >= 1,
+      `切档后起始行=${JSON.stringify(arch.start)} 行数=${arch.rows}`,
+    );
+
+    // 行为面：真的点一次「归档」。上面那几条查的是"列表长什么样"，
+    // 这一条查的是"按下去之后发生了什么"—— 两者都可能单独坏掉。
+    const flow = result.pages?.library?.archive_flow ?? {};
+    console.log(`  归档流程：${JSON.stringify(flow)}`);
+    check(
+      '点了「归档」之后该行**立刻**移出「在用」列表（不是留在原地让人以为没生效）',
+      Boolean(flow.first_title) && flow.still_present === false,
+      `归档的行=${JSON.stringify(flow.first_title)} 仍在列表里=${flow.still_present}`,
+    );
+    check(
+      '归档成功给出**可撤销**的反馈（Toast + 撤销按钮）—— 归档是可逆操作，反馈也必须可逆',
+      typeof flow.toast === 'string' && flow.toast.length > 0 && flow.has_undo === true,
+      `toast=${JSON.stringify(flow.toast)} 有撤销=${flow.has_undo}`,
+    );
+    check(
+      '归档后的 Toast 文案本身也过 A10（新出现的可见文本不能逃过扫描）',
+      Array.isArray(flow.devHits) && flow.devHits.length === 0,
+      (flow.devHits ?? []).map((h) => `"${h.text}"`).join(' ; ') || '0 处',
+    );
+  }
 
   // ---- --self-test：两条自带负对照的断言 ----
   if (result.self_test) {
