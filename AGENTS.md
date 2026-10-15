@@ -41,6 +41,7 @@
 | `docs/04-接口契约.md` | **接口唯一权威来源**：数据结构、API、表、依赖方向 |
 | `docs/05-任务板.md` | **工作台账**：WBS、写域、依赖、验收标准、DoD |
 | `docs/06-测试方案.md` | 门禁测试、安全测试、端到端场景、性能基准 |
+| `docs/07-设计规范.md` | **老师端设计规范**（M3.5）：设计令牌、组件清单与必备状态、交互约定、可判定判据 A1–A8 |
 | `docs/word/` | 课程提交 Word / PDF / 配图 |
 | `tools/` | 文档构建脚本 |
 
@@ -59,7 +60,8 @@
 
 | 文件 | 谁可以改 |
 | --- | --- |
-| `AGENTS.md`、`docs/PROJECT.md`、`docs/00`、`docs/03`、`docs/04`、`docs/05`、`README.md` | **仅 Lead** |
+| `AGENTS.md`、`docs/PROJECT.md`、`docs/00`、`docs/03`、`docs/04`、`docs/05`、`docs/07`、`README.md` | **仅 Lead** |
+| `frontend/src/design/tokens.css` | **仅 Lead**（设计令牌冻结契约，D67；实现方只读） |
 | `docs/01-需求分析.md`、`docs/02-技术设计.md` | 只读；修改需申请并同步重新生成 Word |
 | `docs/06-测试方案.md` | verify |
 | `docs/word/**`、`tools/**` | docs-build |

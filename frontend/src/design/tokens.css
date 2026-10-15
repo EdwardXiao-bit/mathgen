@@ -1,0 +1,140 @@
+/* ============================================================================
+ * mathgen 老师端设计令牌 —— **冻结契约（Lead 维护，实现方只读）**
+ * ============================================================================
+ *
+ * 为什么这个文件是"契约"而不是普通样式表：
+ *   M2 交付的老师端实测有 **33 处硬编码颜色**、14 个自定义变量、950 行 CSS 挤在一个文件里，
+ *   于是"改一次主色要手工改多处"，界面也谈不上统一。把令牌集中冻结之后：
+ *     ① 颜色 / 间距 / 字号 / 圆角 / 阴影 **只有一个来源**；
+ *     ② 验收可以做成**可判定**的——「UI 里不得出现令牌之外的颜色字面量」；
+ *     ③ 与后端契约同一套治理方式（改令牌要新增决策，见 docs/00）。
+ *
+ * 令牌值的来源（不是凭空定的）：
+ *   - 主体取自 **C1「工作台」样张**（用户定案，见 frontend/mockups/option-c1-workbench.html）
+ *   - 桌面质感与纸面投影取自 **C2「聚焦」样张**（用户确认"吸收 C2 的纸面质感"，D63）
+ *
+ * ⚠️ 边界（重要）：
+ *   本文件只管**应用外壳**（顶栏 / 侧栏 / 排版面板 / 状态条 / 工具栏 / 画布底色）。
+ *   **卷面本身**由后端 `app/render/` 渲染，其六个排版参数走**另一套**已冻结的变量
+ *   （`--cols-per-row` / `--row-gap` / `--font-size` / `--page-margin` /
+ *    `--answer-line-display` / `--header-bar-display`，见 backend/app/contracts/layout.py）。
+ *   两者**不得混用**：应用外壳令牌一律带 `--mg-` 前缀，就是为了避免与卷面变量撞名。
+ *   卷面渲染只有一套实现（D56 / C3）——前端不得自己画卷面。
+ * ========================================================================== */
+
+:root {
+  /* ---------- 桌面 / 画布 ---------- */
+  --mg-desk-1: #8e939a;              /* 桌面主色（C1） */
+  --mg-desk-2: #767c84;              /* 桌面下沉端（C2） */
+  --mg-desk-ambient: radial-gradient(
+      130% 100% at 50% -10%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 58%);  /* 环境光（C2） */
+  --mg-desk-vignette: radial-gradient(
+      90% 70% at 50% 120%, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0) 60%);                 /* 底部压暗（C2） */
+  --mg-desk-grid-color: rgba(255, 255, 255, 0.6);   /* 极淡网格线（C2） */
+  --mg-desk-grid-size: 24px;                        /* 网格步长（C2 的 0.10 不透明度） */
+  --mg-desk-grid-opacity: 0.1;
+
+  /* ---------- 表面与墨色 ---------- */
+  --mg-paper: #ffffff;               /* 纸面 / 浮动层底色 */
+  --mg-surface: #ffffff;
+  --mg-surface-sunken: #f7f8f9;      /* 斑马纹行底色 */
+  --mg-surface-chip: #f1f2f4;        /* 小标签底色 */
+  --mg-ink: #1f2227;                 /* 主文字 */
+  --mg-ink-soft: #5c626a;            /* 次级文字 */
+  --mg-ink-faint: #8a9098;           /* 弱化文字：序号、刻度、分组标题 */
+  --mg-ink-invert: #eef1f4;          /* 深底上的文字 */
+
+  /* ---------- 主色与强调色 ---------- */
+  --mg-primary: #2b2f36;             /* 主色（近黑，工具感） */
+  --mg-primary-ink: #ffffff;
+  --mg-primary-soft: #eef0f3;        /* 主色的浅底（激活按钮） */
+  --mg-accent: #b4622a;              /* 强调色：卷号、当前数值（赭橙，克制使用） */
+  --mg-success: #1d6b46;             /* 答案 / 成功 */
+  --mg-success-bright: #6fd6a2;      /* 深底上的成功点 */
+  --mg-danger: #b3261e;              /* 错误 / 不可改 */
+
+  /* ---------- 顶栏（深色带）---------- */
+  --mg-topbar-1: #3a3f46;
+  --mg-topbar-2: #31353b;
+  --mg-topbar-ink: #eef1f4;
+  --mg-topbar-ink-soft: #c8cdd4;
+  --mg-topbar-muted: #a6adb6;
+  --mg-topbar-active: rgba(255, 255, 255, 0.12);
+
+  /* ---------- 状态条（深色细带）---------- */
+  --mg-statusbar-bg: rgba(38, 42, 48, 0.92);
+  --mg-statusbar-ink: #c9cfd6;
+
+  /* ---------- 描边（三级）---------- */
+  --mg-line: #dcdfe2;                /* 控件描边 */
+  --mg-line-strong: #c3c8cd;         /* 激活 / 强调描边 */
+  --mg-line-faint: #e3e5e8;          /* 分隔线 */
+  --mg-line-track: #e6e8ea;          /* 滑轨底色 */
+
+  /* ---------- 圆角 ---------- */
+  --mg-radius-float: 8px;            /* 浮动层（C1 的 --r） */
+  --mg-radius: 6px;                  /* 行 / 预设 / 按钮 */
+  --mg-radius-sm: 5px;               /* 小按钮 */
+  --mg-radius-pill: 999px;           /* 胶囊：标签、开关、滑轨 */
+
+  /* ---------- 阴影 ---------- */
+  --mg-shadow-float: 0 1px 2px rgba(0, 0, 0, 0.18), 0 10px 26px rgba(0, 0, 0, 0.22);   /* C1 浮动层 */
+  --mg-shadow-paper: 0 1px 2px rgba(0, 0, 0, 0.22), 0 12px 28px rgba(0, 0, 0, 0.34),
+                     0 40px 80px rgba(0, 0, 0, 0.42);                                    /* C2 纸面三层投影 */
+
+  /* ---------- 排版 ---------- */
+  --mg-font-ui: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC",
+                "Hiragino Sans GB", sans-serif;                    /* 离线：仅系统字体，无网络字体 */
+  --mg-font-paper: "SimSun", "Songti SC", "Times New Roman", serif;  /* 卷面（与后端渲染一致） */
+  --mg-font-mono: "Cascadia Mono", Consolas, "Courier New", monospace; /* 算式 */
+
+  --mg-fs-10: 10px;   /* 刻度、hint */
+  --mg-fs-11: 11px;   /* 小标签、次要按钮 */
+  --mg-fs-12: 12px;   /* 控件标签、正文小号 */
+  --mg-fs-13: 13px;   /* 面板标题 */
+  --mg-fs-14: 14px;   /* 正文默认 */
+  --mg-fs-16: 16px;   /* 区块标题 */
+
+  --mg-fw-normal: 400;
+  --mg-fw-medium: 600;
+  --mg-fw-bold: 700;
+
+  --mg-lh-tight: 1.25;
+  --mg-lh: 1.55;
+
+  /* ---------- 间距（4px 基准）---------- */
+  --mg-sp-1: 2px;
+  --mg-sp-2: 4px;
+  --mg-sp-3: 6px;
+  --mg-sp-4: 8px;
+  --mg-sp-5: 10px;
+  --mg-sp-6: 12px;
+  --mg-sp-7: 14px;
+  --mg-sp-8: 16px;
+  --mg-sp-10: 20px;
+  --mg-sp-12: 24px;
+
+  /* ---------- 关键尺寸 ---------- */
+  --mg-topbar-h: 44px;               /* 顶栏高度（C1/C2 一致） */
+  --mg-statusbar-h: 34px;            /* 底部状态条 */
+  --mg-side-w: 300px;                /* 左侧题目列表 / 右侧面板宽度 */
+  --mg-side-w-narrow: 248px;         /* 1280 宽下的收窄值 */
+  --mg-focus-ring: 0 0 0 2px rgba(43, 47, 54, 0.35);   /* 键盘焦点环 */
+
+  /* ---------- 层级 ---------- */
+  --mg-z-canvas: 0;
+  --mg-z-float: 3;
+  --mg-z-toolbar: 3;
+  --mg-z-overlay: 10;
+}
+
+/* 尊重系统的"减少动态效果"偏好（无障碍） */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --mg-motion: 0ms;
+  }
+}
+
+:root {
+  --mg-motion: 140ms;                /* 交互过渡时长；上面可覆盖为 0 */
+}
