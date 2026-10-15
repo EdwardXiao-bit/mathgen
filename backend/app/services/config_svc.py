@@ -12,7 +12,7 @@ from app.contracts.api import PaperConfigIn
 from app.engine.types import ConfigError, GenerateConfig, Op, QuestionType, RangeId
 from app.services.errors import ApiError
 
-__all__ = ["to_engine_config", "config_from_json", "config_to_json"]
+__all__ = ["to_engine_config", "config_from_json", "config_to_json", "question_type_of"]
 
 _OP_BY_VALUE = {op.value: op for op in Op}
 _RANGE_BY_VALUE = {rid.value: rid for rid in RangeId}
@@ -87,3 +87,20 @@ def config_from_json(raw: str) -> GenerateConfig:
     """读取存储 JSON → `GenerateConfig`（审计 / 再生成同配置的一套题用）。"""
     data = json.loads(raw)
     return to_engine_config(PaperConfigIn(**data))
+
+
+def question_type_of(config_json: str | None) -> str:
+    """从存储 JSON 里取题型名（`oral` / `stepwise` / `fill`）。
+
+    老卷的 `config_json` 缺失或损坏时返回空串：题型是**展示用**的附加信息，
+    缺它不该让整张卷/整次成绩读不出来——所以这里不做 `config_from_json()` 那样的强校验，
+    也**不抛异常**。读取方（学生端取题、成绩明细）共用这一处口径。
+    """
+    if not config_json:
+        return ""
+    try:
+        data = json.loads(config_json)
+    except (TypeError, ValueError):
+        return ""
+    value = data.get("question_type") if isinstance(data, dict) else None
+    return value if isinstance(value, str) else ""

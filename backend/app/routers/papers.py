@@ -7,7 +7,7 @@
 - 全部出入参用 `response_model=` 指定冻结模型（字段名 = JSON 字段名 = snake_case）
 - 全部路径引用 `ROUTES` 常量，不写字符串字面量
 - 已发布卷的编辑操作统一 409 `PAPER_NOT_EDITABLE`
-- 写操作统一走 `_finish()`：成功 commit，异常 rollback 后原样抛出
+- 写操作统一走 `finish()`（`app.routers._common`）：成功 commit，异常 rollback 后原样抛出
 - 学生端 URL 与二维码内容一律用**请求的 Host 头**构造绝对地址（D54）
 - **单资源参数平铺**（D55）：`/layout`、`/answer-layout` 的请求体不包一层
 
@@ -16,11 +16,11 @@ M3 变更：
   （显式传旧参数报 422，不静默忽略）
 - 新增 `GET /api/papers/by-code/{code}`（卷号无效 → `CODE_NOT_FOUND`）、
   `PATCH /api/papers/{id}/answer-layout`
+
+M4 变更：事务出口移到 `app.routers._common.finish()`——学生端两条写接口
+（报到、提交作答）也要提交，6 份 `_finish` 复制品没有理由存在。
 """
 from __future__ import annotations
-
-from collections.abc import Iterator
-from contextlib import contextmanager
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
@@ -37,6 +37,7 @@ from app.contracts.api import (
     PublishResult,
 )
 from app.db import get_db
+from app.routers._common import finish
 from app.routers.urls import qr_url_for, student_url_for
 from app.services import paper_service as svc
 from app.services import qr_svc
@@ -47,17 +48,6 @@ from app.services.layout_svc import layout_from_json, layout_in_from_params, to_
 __all__ = ["router"]
 
 router = APIRouter(tags=["papers"])
-
-
-@contextmanager
-def _finish(db: Session) -> Iterator[None]:
-    """写操作事务出口：成功 commit；异常 rollback 并原样抛出。"""
-    try:
-        yield
-    except Exception:
-        db.rollback()
-        raise
-    db.commit()
 
 
 @router.post(ROUTES["create_paper"], response_model=PaperDetail, status_code=201)
@@ -72,7 +62,7 @@ def create_paper(
     答案版形式不在请求体里（D55 的入参表只有 config/seed/title），新卷一律 D20 默认；
     要改走 `PATCH /answer-layout`。
     """
-    with _finish(db):
+    with finish(db):
         paper = svc.create_paper(db, payload, seed=seed, title=title)
         return svc.to_detail(db, paper)
 
@@ -122,7 +112,7 @@ def get_paper(paper_id: int, db: Session = Depends(get_db)) -> PaperDetail:
 @router.delete(ROUTES["delete_item"], response_model=list[PaperItemOut])
 def delete_item(paper_id: int, seq: int, db: Session = Depends(get_db)) -> list[PaperItemOut]:
     """删题（FR-T3）：后续题号前移，`edit_log` 记 `deleted seq=N`。"""
-    with _finish(db):
+    with finish(db):
         rows = svc.delete_item(db, paper_id, seq)
         return [svc.to_item_out(row) for row in rows]
 
@@ -130,7 +120,7 @@ def delete_item(paper_id: int, seq: int, db: Session = Depends(get_db)) -> list[
 @router.post(ROUTES["regenerate_item"], response_model=PaperItemOut)
 def regenerate_item(paper_id: int, seq: int, db: Session = Depends(get_db)) -> PaperItemOut:
     """换一题（FR-E9）：只替换第 seq 题，其余题保持原样。"""
-    with _finish(db):
+    with finish(db):
         row = svc.regenerate_item(db, paper_id, seq)
         return svc.to_item_out(row)
 
@@ -139,7 +129,7 @@ def regenerate_item(paper_id: int, seq: int, db: Session = Depends(get_db)) -> P
 def update_layout(paper_id: int, payload: LayoutIn, db: Session = Depends(get_db)) -> LayoutIn:
     """改排版（FR-T4）：六个参数越界 → 422 VALIDATION_ERROR。"""
     params = to_layout_params(payload)
-    with _finish(db):
+    with finish(db):
         paper = svc.update_layout(db, paper_id, params)
         return layout_in_from_params(layout_from_json(paper.layout_json))
 
@@ -149,7 +139,7 @@ def update_answer_layout(
     paper_id: int, payload: AnswerLayoutIn, db: Session = Depends(get_db)
 ) -> AnswerLayoutIn:
     """改「答案版形式」（M3 第六维，D55 平铺入参）；已发布卷 → 409 `PAPER_NOT_EDITABLE`。"""
-    with _finish(db):
+    with finish(db):
         paper = svc.update_answer_layout(db, paper_id, payload)
         return answer_layout_from_json(paper.answer_layout)
 
@@ -162,7 +152,7 @@ def publish_paper(paper_id: int, request: Request,
     `student_url` 是**绝对**地址，用请求的 `Host` 头构造（契约 §5.3 / D54）；
     `qr_url` 保持相对路径，前端同源引用。
     """
-    with _finish(db):
+    with finish(db):
         paper = svc.publish_paper(db, paper_id)
         detail = svc.to_detail(db, paper)
     code = detail.code or ""
@@ -201,6 +191,6 @@ def copy_paper(
 
     新 id、新 draft、`code` 为空，题目快照与排版 / 答案版形式逐一复制；原卷不受影响。
     """
-    with _finish(db):
+    with finish(db):
         clone = svc.copy_paper(db, paper_id, title=title)
         return svc.to_detail(db, clone)

@@ -110,6 +110,11 @@ class Attempt(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     student_id: Mapped[int] = mapped_column(ForeignKey("student.id"), nullable=False)
+    #: D76 幂等键：客户端每次提交生成的新 UUID，按 (student_id, attempt_uuid) 去重。
+    #: 列在**模型层可空**是有意的：老库升级时 `create_all()` 不会补列，
+    #: 由 `services/attempt_service.ensure_attempt_schema()` 幂等补上（历史行为 NULL，
+    #: SQLite 里 NULL 互不相等，所以老成绩不会撞唯一键）。**API 层仍强制必填**。
+    attempt_uuid: Mapped[str | None] = mapped_column(String(64), nullable=True)
     paper_id: Mapped[int | None] = mapped_column(ForeignKey("paper.id"), nullable=True)
     config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     total: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -118,6 +123,7 @@ class Attempt(Base):
     submitted_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
     __table_args__ = (
+        UniqueConstraint("student_id", "attempt_uuid", name="uq_attempt_student_uuid"),
         Index("idx_attempt_paper", "paper_id"),
         Index("idx_attempt_student", "student_id"),
     )

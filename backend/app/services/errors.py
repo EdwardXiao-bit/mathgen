@@ -23,7 +23,9 @@ ERROR_HTTP_STATUS: Final[dict[str, int]] = {
     "PAPER_NOT_EDITABLE": 409,
     "PAPER_NOT_PUBLISHED": 409,
     "CODE_NOT_FOUND": 404,
-    "ATTEMPT_DUPLICATE": 200,
+    # 注：`ATTEMPT_DUPLICATE` 已按 D76 删除——它原本写作「HTTP 200 + 错误码」自相矛盾，
+    # 且会让重复提交返回错误信封，与「重放返回首次那次的结果、响应体相同」冲突。
+    # 契约 §9 里也已同步删掉（Lead 改的），所以实现里不该再留这个码。
     "VALIDATION_ERROR": 422,
     "ITEM_NOT_FOUND": 404,          # 契约 §9（D53）
     "RENDER_NOT_READY": 503,        # 契约 §9（D53）
