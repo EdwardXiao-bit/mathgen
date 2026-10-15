@@ -1,0 +1,581 @@
+/**
+ * 学生端样式：手机优先（基准宽度 390px），只用 `var(--mg-*)` 令牌。
+ *
+ * 为什么另起一份而不是复用老师端的 `src/styles.css`：
+ * 老师端是 1440px 的三栏工作台（顶栏 + 侧栏 + 卷面画布），搬到一个班几十台手机上完全不成立；
+ * 契约 §8 D-5 也只允许两端共享 `src/shared/`。这里保留同一套颜色/圆角/间距令牌，
+ * 所以两端看起来还是一个系统。
+ *
+ * 手机上的硬要求（M4 验收现场就在手机上）：
+ * - 输入框字号 ≥ 16px：小于 16px 时 iOS Safari 会在聚焦时自动放大整个页面；
+ * - 可点区域 ≥ 44px 高：学生的手指比鼠标指针粗得多；
+ * - 底部按钮留在页面流里（不用 fixed 悬浮）：华为/微信内置浏览器底部工具条会盖住悬浮层。
+ */
+
+/* ---------------------------------------------------------------------------
+   根与页面底色
+
+   为什么必须显式重置：`body` 的浏览器默认 `margin: 8px` 会造成三个连锁问题——
+   外壳四周露出 8px 画布；`min-height: 100dvh` 叠上这 16px 后整页永远比视口高，
+   手机上能一直往下滚一点；390px 手机上 `max-width: 520px` 的外壳被挤到只剩 374px。
+   底色必须与外壳一致：iOS 橡皮筋 / overscroll 时露出来的是 `body` 而不是 `.st-screen`，
+   两边不一致就会在上滑下拉时闪出一条白边。
+   --------------------------------------------------------------------------- */
+
+html,
+body {
+  margin: 0;
+  background: var(--mg-surface-sunken);
+}
+
+/* ---------------------------------------------------------------------------
+   外壳
+   --------------------------------------------------------------------------- */
+
+.st-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh; /* 手机浏览器地址栏收起/展开时，100vh 会让底部按钮跑出屏幕 */
+  max-width: 520px;
+  margin: 0 auto;
+  background: var(--mg-surface-sunken);
+  color: var(--mg-ink);
+  font-family: var(--mg-font-ui);
+  font-size: var(--mg-fs-16);
+  line-height: var(--mg-lh);
+  -webkit-text-size-adjust: 100%;
+}
+
+.st-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--mg-z-toolbar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mg-sp-3);
+  min-height: var(--mg-topbar-h);
+  padding: var(--mg-sp-2) var(--mg-sp-4);
+  padding-top: calc(var(--mg-sp-2) + env(safe-area-inset-top, 0px));
+  background: var(--mg-ink);
+  color: var(--mg-ink-invert);
+}
+
+.st-topbar-title {
+  margin: 0;
+  font-size: var(--mg-fs-16);
+  font-weight: var(--mg-fw-bold);
+  line-height: var(--mg-lh-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-topbar-right {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.st-clock {
+  font-family: var(--mg-font-mono);
+  font-size: var(--mg-fs-13);
+  color: var(--mg-topbar-muted);
+}
+
+.st-body,
+.st-runner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-4);
+  padding: var(--mg-sp-4);
+  padding-bottom: calc(var(--mg-sp-8) + env(safe-area-inset-bottom, 0px));
+  min-width: 0;
+}
+
+.st-lead {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-16);
+}
+
+/* ---------------------------------------------------------------------------
+   卡片
+   --------------------------------------------------------------------------- */
+
+.st-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-3);
+  padding: var(--mg-sp-4);
+  background: var(--mg-surface);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius-float);
+  box-shadow: var(--mg-shadow-float);
+}
+
+.st-hello {
+  margin: 0;
+  font-size: var(--mg-fs-16);
+  font-weight: var(--mg-fw-bold);
+  overflow-wrap: anywhere; /* 姓名可能很长，宁可折行也不要撑破卡片 */
+}
+
+.st-hello-sub,
+.st-score-sub {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-13);
+}
+
+.st-section-title {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-13);
+  font-weight: var(--mg-fw-medium);
+}
+
+/* ---------------------------------------------------------------------------
+   表单
+   --------------------------------------------------------------------------- */
+
+.st-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+}
+
+.st-field-label {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-13);
+}
+
+.st-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: var(--mg-sp-3);
+  background: var(--mg-surface);
+  color: var(--mg-ink);
+  border: 1px solid var(--mg-line-strong);
+  border-radius: var(--mg-radius);
+  font-family: inherit;
+  font-size: var(--mg-fs-16); /* 不要调小：小于 16px 会触发 iOS 自动放大 */
+}
+
+.st-input:focus-visible {
+  outline: none;
+  border-color: var(--mg-primary);
+  box-shadow: var(--mg-focus-ring);
+}
+
+/* 答案框：大字 + 居中，学生报答案时一眼能看清自己填了什么 */
+.st-input--answer {
+  min-height: 64px;
+  text-align: center;
+  font-family: var(--mg-font-paper);
+  font-size: var(--mg-fs-16);
+  font-weight: var(--mg-fw-bold);
+}
+
+.st-slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-3);
+}
+
+.st-slider {
+  flex: 1;
+  min-width: 0;
+  height: 44px; /* 滑杆本体很细，靠高度把可点区域撑到手指能按的尺寸 */
+  margin: 0;
+  accent-color: var(--mg-primary);
+}
+
+.st-slider-value {
+  flex: none;
+  min-width: 56px;
+  text-align: right;
+  color: var(--mg-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   按钮
+   --------------------------------------------------------------------------- */
+
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: var(--mg-sp-3) var(--mg-sp-5);
+  border: 1px solid transparent;
+  border-radius: var(--mg-radius);
+  font-family: inherit;
+  font-size: var(--mg-fs-16);
+  font-weight: var(--mg-fw-medium);
+  cursor: pointer;
+  transition: background-color var(--mg-motion), border-color var(--mg-motion);
+}
+
+.st-btn--block {
+  width: 100%;
+}
+
+.st-btn--primary {
+  background: var(--mg-primary);
+  color: var(--mg-primary-ink);
+}
+
+.st-btn--ghost {
+  background: var(--mg-surface);
+  color: var(--mg-ink);
+  border-color: var(--mg-line-strong);
+}
+
+.st-btn--quiet {
+  background: transparent;
+  color: var(--mg-ink-soft);
+}
+
+.st-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--mg-focus-ring);
+}
+
+.st-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 纯文字小按钮：只用于「修改 / 换一位同学 / 退出 / 回首页」这类低频动作。
+   外观是文字链接，但**可点高度仍然按 44px 给**——最初写成 padding 2px 时实测只有 26px，
+   探针在 390x844 上判红（学生手指点不中）；视觉上依旧是文字，尺寸上必须是按钮。 */
+.st-quiet {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 var(--mg-sp-1);
+  background: none;
+  border: none;
+  color: var(--mg-primary);
+  font-family: inherit;
+  font-size: var(--mg-fs-14);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.st-quiet:focus-visible {
+  outline: none;
+  box-shadow: var(--mg-focus-ring);
+  border-radius: var(--mg-radius-sm);
+}
+
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-3);
+}
+
+.st-row > .st-btn {
+  flex: 1;
+}
+
+.st-row > .st-quiet {
+  flex: none;
+  align-self: center;
+}
+
+/* ---------------------------------------------------------------------------
+   提示条 / 加载
+   --------------------------------------------------------------------------- */
+
+.st-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-1);
+  padding: var(--mg-sp-3) var(--mg-sp-4);
+  border: 1px solid var(--mg-line);
+  border-left-width: 3px;
+  border-radius: var(--mg-radius);
+  background: var(--mg-surface);
+}
+
+.st-note-title {
+  margin: 0;
+  font-weight: var(--mg-fw-medium);
+  overflow-wrap: anywhere;
+}
+
+.st-note-hint {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-13);
+}
+
+.st-note--info {
+  border-left-color: var(--mg-line-strong);
+}
+
+.st-note--error {
+  border-left-color: var(--mg-danger);
+  background: var(--mg-surface-sunken);
+}
+
+.st-note--success {
+  border-left-color: var(--mg-success);
+}
+
+.st-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mg-sp-3);
+  padding: var(--mg-sp-10) 0;
+  color: var(--mg-ink-soft);
+}
+
+.st-loading p {
+  margin: 0;
+  font-size: var(--mg-fs-14);
+}
+
+.st-spinner {
+  width: var(--mg-sp-7);
+  height: var(--mg-sp-7);
+  border: 2px solid var(--mg-line-track);
+  border-top-color: var(--mg-primary);
+  border-radius: var(--mg-radius-pill);
+  animation: st-spin 800ms linear infinite;
+}
+
+@keyframes st-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-spinner {
+    animation-duration: 2s;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   自主练习：难度选择
+   --------------------------------------------------------------------------- */
+
+.st-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+}
+
+.st-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-1);
+  min-height: 60px;
+  padding: var(--mg-sp-3) var(--mg-sp-4);
+  background: var(--mg-surface);
+  border: 1px solid var(--mg-line-strong);
+  border-radius: var(--mg-radius);
+  text-align: left;
+  font-family: inherit;
+  color: var(--mg-ink);
+  cursor: pointer;
+}
+
+.st-choice--on {
+  border-color: var(--mg-primary);
+  background: var(--mg-primary-soft);
+}
+
+.st-choice-label {
+  font-size: var(--mg-fs-16);
+  font-weight: var(--mg-fw-medium);
+}
+
+.st-choice-hint {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-13);
+}
+
+.st-choice:focus-visible {
+  outline: none;
+  box-shadow: var(--mg-focus-ring);
+}
+
+/* ---------------------------------------------------------------------------
+   答题
+   --------------------------------------------------------------------------- */
+
+.st-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+}
+
+.st-progress-track {
+  height: var(--mg-sp-1);
+  background: var(--mg-line-track);
+  border-radius: var(--mg-radius-pill);
+  overflow: hidden;
+}
+
+.st-progress-fill {
+  height: 100%;
+  background: var(--mg-primary);
+  transition: width var(--mg-motion);
+}
+
+.st-progress-text {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-13);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 题面：字号按「手机放在桌上看一眼」定，比正文明显大，但不至于一行只放两个字 */
+.st-question {
+  margin: 0;
+  padding: var(--mg-sp-2) 0;
+  font-family: var(--mg-font-paper);
+  /* 题面比正文明显大：手机放在课桌上，扫一眼就要看清算式 */
+  font-size: calc(var(--mg-fs-16) * 1.5);
+  font-weight: var(--mg-fw-medium);
+  line-height: var(--mg-lh);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap; /* 题面里可能有换行，原样保留 */
+}
+
+.st-confirm-title {
+  margin: 0;
+  font-size: var(--mg-fs-16);
+  font-weight: var(--mg-fw-bold);
+}
+
+.st-confirm-hint {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-13);
+}
+
+.st-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-1);
+  padding: 0 var(--mg-sp-4);
+  padding-bottom: calc(var(--mg-sp-4) + env(safe-area-inset-bottom, 0px));
+  background: var(--mg-surface-sunken);
+}
+
+.st-footer .st-quiet {
+  align-self: center;
+  color: var(--mg-ink-soft);
+}
+
+/* ---------------------------------------------------------------------------
+   结果页
+   --------------------------------------------------------------------------- */
+
+.st-result-title {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-13);
+}
+
+.st-score {
+  margin: 0;
+  /* 分数是全页最重要的信息：令牌里最大字号只有 16px，这里按倍数放大而不是新加令牌 */
+  font-size: calc(var(--mg-fs-16) * 2);
+  font-weight: var(--mg-fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.st-score-unit {
+  margin-left: var(--mg-sp-1);
+  font-size: var(--mg-fs-14);
+  font-weight: var(--mg-fw-normal);
+}
+
+.st-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-result-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+  padding: var(--mg-sp-3) var(--mg-sp-4);
+  background: var(--mg-surface);
+  border: 1px solid var(--mg-line);
+  border-left-width: 3px;
+  border-radius: var(--mg-radius);
+}
+
+.st-result-row--ok {
+  border-left-color: var(--mg-success);
+}
+
+.st-result-row--bad {
+  border-left-color: var(--mg-danger);
+}
+
+.st-result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--mg-sp-3);
+}
+
+.st-result-question {
+  font-family: var(--mg-font-paper);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.st-badge {
+  flex: none;
+  padding: var(--mg-sp-1) var(--mg-sp-2);
+  border-radius: var(--mg-radius-pill);
+  font-size: var(--mg-fs-12);
+  font-weight: var(--mg-fw-medium);
+}
+
+.st-badge--ok {
+  background: var(--mg-primary-soft);
+  color: var(--mg-success);
+}
+
+.st-badge--bad {
+  background: var(--mg-surface-chip);
+  color: var(--mg-danger);
+}
+
+.st-result-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mg-sp-1) var(--mg-sp-4);
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-14);
+}
+
+.st-result-mine,
+.st-result-right {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.st-result-right {
+  color: var(--mg-ink);
+  font-weight: var(--mg-fw-medium);
+}
