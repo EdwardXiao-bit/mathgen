@@ -23,10 +23,10 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 & $NODE $PNPM --dir frontend verify     # 跑全部验收（见下）
 ```
 
-## 七条验收脚本（都可复现，退出码 0 = 通过）
+## 八条验收脚本（都可复现，退出码 0 = 通过）
 
 ```powershell
-& $NODE $PNPM --dir frontend verify                       # 一次跑完七条
+& $NODE $PNPM --dir frontend verify                       # 一次跑完八条
 # 或分开跑：
 & $NODE frontend\scripts\verify-no-cdn.mjs
 & backend\.venv\Scripts\python.exe frontend\scripts\verify-contract.py
@@ -35,6 +35,7 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 & $NODE frontend\scripts\verify-library-m3.mjs
 & $NODE frontend\scripts\verify-tokens.mjs
 & $NODE frontend\scripts\verify-structure.mjs
+& $NODE frontend\scripts\verify-preview-scale.mjs
 ```
 
 | 脚本 | 验证什么 | 怎么保证不是「自证」 |
@@ -45,10 +46,12 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 | `verify-teacher-ui.mjs` | 六维表单选项 = D16/D17、**第六维四个开关可保存**（M3 起不再是只读占位）、打印的是后端卷面、后端未就绪三种形态都不白屏 | 三个场景各跑一遍：后端可用 / 代理 502 / 后端 500 |
 | `verify-library-m3.mjs` | M3 卷库：**分页**（20→17、区间文案、末页禁用、offset 真的发给后端）、**搜索**（20→12、带 `q`）、**状态筛选**、**按卷号打开成/败两条路径**（失败给明确提示且不跳转）、**第六维保存**真的 `PATCH .../answer-layout` 且 body 是平铺的 `AnswerLayoutIn`、已发布卷只读 | 断言同时看**界面**与**后端请求流水**（`/__api-log`）：只看界面的话，前端本地切片也能"看起来分页了" |
 | `verify-tokens.mjs` | **判据 A1**：`frontend/src/**` 除 `design/tokens.css` 外，颜色字面量计数 = 0 | 脚本**逐行扫源码**并打印命中行；允许清单是**逐条**的（带文件+行号+理由），当前为空。注释里也刻意不出现颜色写法，否则会被它自己命中 |
-| `verify-structure.mjs` | **判据 A2/A3/A4/A7/A8**：组件必备状态（样式表规则 + 运行时测 `disabled` / `invalid` 文字原因 / Slider 量纲 / Switch 人话）、键盘可达与焦点环、状态条不谎报、浮动层几何（不互压、不压纸面）、两个视口不横向溢出、纸面 A4 比例、顶栏 44 / 状态条 34 / 1280 侧栏收窄 | 交互类断言用 Playwright 真点真读（`data-state`、`aria-*`、`getBoundingClientRect`），不是看源码里有没写某个 class |
+| `verify-structure.mjs` | **判据 A2/A3/A4/A7/A8**：组件必备状态（样式表规则 + 运行时测 `disabled` / `invalid` 文字原因 / Slider 量纲 / Switch 人话）、键盘可达与焦点环、状态条不谎报、空态与错误态分离、浮动层几何（不互压、不压纸面）、两个视口不横向溢出、纸面 A4 比例、顶栏 44 / 状态条 34 / 1280 侧栏收窄 | 交互类断言用 Playwright 真点真读（`data-state`、`aria-*`、`getBoundingClientRect`），不是看源码里有没写某个 class |
+| `verify-preview-scale.mjs` | **A9**：预览必须是**打印几何的等比缩小**。进到 iframe 文档里量：`.sheet` 计算宽度 = 793.7px ± 2（210mm@96dpi）、`padding-left/宽度 ≈ 0.0952`、`scaleX == scaleY`、题块高度一致（= 不换行）、两种视口下纸内几何不变 | **实测**从渲染结果反推缩放比（`rect.width / offsetWidth`），而不是读我们自己写进去的内联 `scale(k)` —— 后者只证明「我们写了 k」，不证明「浏览器按 k 渲染了」 |
 
 > **A3 的一处例外是逐条的**：Chromium **不渲染 iframe 的 outline**（实测规则命中但 computed outline 仍是 none）。
-> 所以判据拆成「除允许清单外每个 tab 到的元素都要有可见环」+「iframe 的 `:focus-visible` 规则必须已定义」，
+> 所以把焦点环画在**包裹层 `.mg-paper-stage` 的 `:focus-within`** 上，判据拆成
+> 「除允许清单外每个 tab 到的元素都要有可见环」+「卷面真的获得焦点时包裹层出现可见环（功能断言）」，
 > 允许清单里写明是哪个元素与理由 —— 而不是把「必须可见」放宽成恒真。
 
 > **空态与错误态是两个状态，不共用槽位**（Lead 裁决）。`Table` 有独立的 `emptyAction` 与 `errorAction`：
@@ -109,6 +112,43 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 - **验收用的 CSS 变量 dump 默认收起、并放在右侧栏**。它常开时占约 160px 高，
   而纸面按剩余高度缩放，结果 A4 纸被压到 329×465；挪到侧栏并收起后是 459×650。
   门禁③读的是它的 `textContent`（不是可见性），所以收起不改变那条断言的语义。
+
+### 0.1 A9：预览是「等比缩小」，不是「把 A4 横向压扁」（D68）
+
+后端的屏幕 CSS 是**已冻结**的（D56）：
+
+```css
+@media screen { .sheet { width: 210mm; max-width: 100%; padding: var(--page-margin) } }
+```
+
+如果 iframe 的内容视口只有容器那么宽（例如 459px），`max-width: 100%` 会把这张
+「210mm 的纸」**横向钳制**到 459px，而 `padding`（2cm=75.59px）与 `font-size`（14pt）
+仍是**绝对长度**。于是内容区只剩 `459−2×75.59≈308px`，4 列每列 77px，
+而 `243 × 12 ____` 需要约 118px → **题面必然异常换行**。
+屏幕上是乱的、打印出来却是好的 —— 正是 C3 要防的「预览 ≠ 打印」。
+
+修法（**只在前端**，一行后端 CSS 都没动）：
+
+1. 让 **iframe 的内容视口就是真实 A4**（内联 `793.7×1122.5px`）。于是 `.sheet` 的计算宽度
+   就是 793.7px，`max-width:100%` 不再触发钳制，**纸内一切几何与打印逐像素一致**。
+2. 再由外层整体 `transform: scale(k)` 缩到画布大小，
+   `k = min(可用宽/793.7, 可用高/1122.5)` —— **宽高同一个 k**，这就是「等比」的定义。
+3. `SheetFrame` 用 `ResizeObserver` 在 `useLayoutEffect` 里算 k（首帧就位，避免先铺满再缩小）；
+   测量层 `.mg-paper-stage` 与缩放层分开，**避免「量到自己缩放后的尺寸」形成反馈循环**。
+
+修前/修后（1440×900，实测）：
+
+| 指标 | 修前（压扁） | 修后（等比） |
+| --- | --- | --- |
+| iframe 内 `.sheet` 计算宽度 | 459px | **793.688px**（=210mm） |
+| `padding-left / 宽度` | 0.1647 | **0.0952** |
+| 4 列每列宽度 | 76.95px | **160.63px** |
+| 题块高度集合（>1 行会分叉） | —（内容区不够，算式折行） | **{26}** 全部单行 |
+| `.sheet` 矩形比例 | 1.0273（横向扁） | 内容自然高度，**几何 = 打印** |
+
+顺带一条可复用的教训：**判据 A1–A8 全绿也抓不到这个缺陷**，因为没有任何一条量到「纸里面」。
+A1 只管颜色、A2 只管组件状态、A4 只管纸面**容器**比例、A7 只管浮动层几何、A8 只管不溢出。
+所以门禁⑧ 的做法是**进 iframe 文档内部**量 —— 这也是它能抓到这类缺陷的唯一原因。
 
 ### 1. 排版面板：本地状态驱动预览，PATCH 负责持久化 + 重载
 

@@ -317,16 +317,38 @@ with sync_playwright() as p:
         ".mg-switch-value", "els => els.map(e => e.textContent.trim())")
 
     # A2：焦点环令牌确实被定义在 tokens.css 且 styles.css 里用了
-    result["focus_ring_used"] = page.evaluate("""() => {
-        const styles = Array.from(document.styleSheets).flatMap(s => {
+    result["focus_ring_used"] = page.evaluate("""() => {        const styles = Array.from(document.styleSheets).flatMap(s => {
             try { return Array.from(s.cssRules).map(r => r.cssText); } catch (e) { return []; }
         });
         return {
             hasFocusVisibleRule: styles.some(t => t.includes(':focus-visible')),
             hasFocusRingToken: styles.some(t => t.includes('--mg-focus-ring')),
-            // iframe 的焦点环规则是否已定义（Chromium 不渲染 iframe outline，
-            // 但规则必须在 —— 否则键盘用户更没有指示）
-            iframeRule: styles.some(t => t.includes('.sheet-frame') && t.includes(':focus-visible')),
+            // 卷面焦点环的规则是否已定义。
+            // task-17 起改成**包裹层 :focus-within**：verify 实测 Chromium 不渲染 iframe
+            // 自身的 outline，所以把环画在 .mg-paper-stage 上（见 styles.css 注释）。
+            // 字段名保留 iframeRule 是为了不改动消费端；它断言的含义没变 ——
+            // 「键盘 Tab 到卷面时有可见焦点指示」。
+            iframeRule: styles.some(t => t.includes('.mg-paper-stage') && t.includes(':focus-within')),
+        };
+    }""")
+
+    # A3：卷面焦点环的**功能**验证（不只是「样式表里有这条规则」）。
+    # task-17：环画在包裹层 .mg-paper-stage 上（iframe 自身 outline 在 Chromium 不渲染）。
+    # 做法：让包裹层进入 :focus-within（聚焦 iframe），再量包裹层的 computed outline。
+    page.eval_on_selector("#sheet-frame", "el => el.focus()")
+    page.wait_for_timeout(150)
+    result["iframe_focus_ring"] = page.evaluate("""() => {
+        const stage = document.querySelector('.mg-paper-stage');
+        const iw = document.querySelector('#sheet-frame');
+        if (!stage) return {note: '未找到 .mg-paper-stage'};
+        const cs = getComputedStyle(stage);
+        return {
+            focusedTag: document.activeElement ? document.activeElement.tagName.toLowerCase() : null,
+            stageMatchesFocusWithin: stage.matches(':focus-within'),
+            outlineStyle: cs.outlineStyle,
+            outlineWidth: parseFloat(cs.outlineWidth) || 0,
+            outlineColor: cs.outlineColor,
+            iframeOwnOutline: iw ? parseFloat(getComputedStyle(iw).outlineWidth) || 0 : null,
         };
     }""")
 
@@ -514,10 +536,11 @@ async function main() {
     result.focus_ring_used?.hasFocusRingToken === true,
   );
   // Chromium 对 iframe **不渲染** outline（实测：即使规则命中，computed outline 仍是 none）。
-  // 这是浏览器行为，不是样式缺失。所以判据拆成两条，而不是放宽成「允许没有环」：
-  //   ① 除 iframe 外，每个 tab 到的元素都必须有可见环；
-  //   ② iframe 例外必须在**允许清单**里（明确写出是哪个元素），且它的 :focus-visible 规则
-  //      已经被定义（`result.focus_ring_used.iframeRule`）——一旦哪天规则被删掉，这条会红。
+  // 这是浏览器行为，不是样式缺失，所以判据拆成两条而不是放宽成「允许没有环」：
+  //   ① 除豁免清单外，每个 tab 到的元素都必须有可见环；
+  //   ② iframe 那条豁免**不能只是「不写」** —— task-17 起把环画在包裹层 `.mg-paper-stage`
+  //      上（`:focus-within`），并且**实测它在卷面获得焦点时真的有 outline**（下面第二条断言）。
+  //      「豁免」在这里的含义是「不画在 iframe 自身」，不是「可以不画」。
   const RING_EXEMPT = new Set(['sheet-frame']); // 理由：Chromium 不渲染 iframe 的 outline
   const withRing = tabFocus.filter((f) => f.hasRing).length;
   const ringMissing = tabFocus.filter((f) => !f.hasRing);
@@ -528,9 +551,14 @@ async function main() {
     `有环 ${withRing}/${tabFocus.length}；豁免 ${JSON.stringify(ringMissing.map((f) => f.testid))}（理由：Chromium 不渲染 iframe 的 outline）`,
   );
   check(
-    'A3 iframe 的 :focus-visible 规则确实已定义（豁免不等于不写）',
+    'A3 卷面焦点环改成包裹层 :focus-within 规则（豁免不等于不写）',
     result.focus_ring_used?.iframeRule === true,
     JSON.stringify(result.focus_ring_used),
+  );
+  check(
+    'A3 卷面真的获得焦点时，包裹层出现可见焦点环（功能断言，不只是「规则存在」）',
+    (result.iframe_focus_ring?.outlineWidth ?? 0) > 0,
+    JSON.stringify(result.iframe_focus_ring),
   );
   check(
     'A3 开关键盘可达：Space 能切换 aria-checked',
