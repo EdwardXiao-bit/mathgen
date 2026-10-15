@@ -307,5 +307,7 @@ attempt : {id: 1, attempt_uuid: 'attempt-1792065231047-299214026', paper_id: 1,
 
 **明确没有动**：`backend/app/**`、`backend/tests/api/**`、`backend/tests/security/**`、`backend/tests/contract/**`、`frontend/**`、`docs/00`/`03`/`04`/`05`。
 
-**一处刻意没改**：`frontend/scripts/compare-mock-and-real.mjs` 头注释 18–20 行仍写着旧命令名 `verify:mock-vs-real`。
-它属 `frontend/scripts/**`（fe-teacher 写域），我**没有**代改，只在 `docs/06` §9.7 里点名该漂移并写明「以 `package.json` 为准」。
+**一处当时刻意没改，现已闭合（2026-10-15 订正）**：`frontend/scripts/compare-mock-and-real.mjs` 头注释 18–20 行当时仍写着旧命令名 `verify:mock-vs-real`。
+它属 `frontend/scripts/**`（fe-teacher 写域），task-30 当时**没有**代改，只在 `docs/06` §9.7 里点名该漂移并写明「以 `package.json` 为准」。
+**task-32 已由该写域修掉**：头注释现在就是 `verify:mock-parity` / `-- --self-test` / `-- --dump-real`，`frontend/**` 里 grep 该旧名 **0 处**。
+（本条订正由 Lead 授权，只改这一处已确认过期的陈述；本报告其余结论与证据一字未动。）
