@@ -55,6 +55,12 @@ class Paper(Base):
     answer_layout: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
     published_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: D78 归档时间（ISO 8601 带时区）；NULL = 未归档。
+    #: **与 status 正交**：status 决定「能不能发卷 / 卷号是否有效」，
+    #: archived_at 只决定「老师在卷库里看不看得见它」。归档**不改** status，
+    #: 因为一旦把它做成第三种 status，取消归档时就无法知道原来该回到 draft 还是 published。
+    #: 老库没有这一列，靠 `services/paper_schema.ensure_paper_schema()` 幂等补上（无 Alembic）。
+    archived_at: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     __table_args__ = (Index("idx_paper_status", "status"),)
 

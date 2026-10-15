@@ -40,6 +40,7 @@ from app.models import (
     ORIGIN_REGENERATED,
     PAPER_STATUS_DRAFT,
     PAPER_STATUS_PUBLISHED,
+    Attempt,
     EditLog,
     Paper,
     PaperItem,
@@ -49,6 +50,7 @@ from app.services.answer_layout_svc import answer_layout_from_json, answer_layou
 from app.services.config_svc import config_from_json, config_to_json, to_engine_config
 from app.services.errors import ApiError
 from app.services.layout_svc import layout_from_json, layout_in_from_params, layout_to_json
+from app.services.paper_schema import ensure_paper_schema
 from app.services.snapshot import dump_payload, load_payload
 from app.services.timeutil import now, to_iso, utcnow_iso
 
@@ -57,8 +59,17 @@ __all__ = [
     "load_items", "load_item_pairs", "delete_item", "regenerate_item",
     "update_layout", "update_answer_layout", "publish_paper", "copy_paper", "purge_paper",
     "require_editable", "require_published", "to_detail", "to_item_out", "to_summary",
+    "archive_paper", "unarchive_paper", "has_attempts",
+    "ARCHIVED_EXCLUDE", "ARCHIVED_INCLUDE", "ARCHIVED_ONLY",
     "DEFAULT_LIMIT", "MAX_LIMIT", "AUTO_SEED_MAX", "SHIFT_OFFSET",
 ]
+
+#: 归档筛选的三种口径（契约 `ArchivedFilter`，D78）。默认 `exclude`：
+#: 默认就把已归档的卷混在列表里，等于归档没做。
+ARCHIVED_EXCLUDE = "exclude"
+ARCHIVED_INCLUDE = "include"
+ARCHIVED_ONLY = "only"
+ARCHIVED_FILTERS = (ARCHIVED_EXCLUDE, ARCHIVED_INCLUDE, ARCHIVED_ONLY)
 
 #: 未显式给 seed 时的随机上界（真正随机：每次出题得到不同的一套题）
 AUTO_SEED_MAX = 2 ** 31 - 1
@@ -78,7 +89,20 @@ _LIKE_ESCAPE = "\\"
 # --------------------------------------------------------------------------- 查询
 
 
+def has_attempts(db: Session, paper_id: int) -> bool:
+    """这套卷是否已有学生成绩（D78）。
+
+    只看 `attempt.paper_id`：自主练习的 `attempt` 行 `paper_id` 为 NULL，不该算到任何卷头上。
+    用 `EXISTS` 而不是 `count(*)`：这里只需要真假，不必数完。
+    """
+    exists = db.execute(
+        select(Attempt.id).where(Attempt.paper_id == paper_id).limit(1)
+    ).first()
+    return exists is not None
+
+
 def get_paper_or_404(db: Session, paper_id: int) -> Paper:
+    ensure_paper_schema(db)
     paper = db.get(Paper, paper_id)
     if paper is None:
         raise ApiError("PAPER_NOT_FOUND", f"卷 {paper_id} 不存在")
@@ -97,6 +121,7 @@ def get_paper_by_code(db: Session, code: str) -> Paper:
     wanted = (code or "").strip()
     if not wanted:
         raise ApiError("CODE_NOT_FOUND", "卷号不能为空")
+    ensure_paper_schema(db)
     paper = db.execute(select(Paper).where(Paper.code == wanted)).scalar_one_or_none()
     if paper is None:
         raise ApiError("CODE_NOT_FOUND", f"卷号 {wanted} 无效")
@@ -174,22 +199,40 @@ def to_detail(db: Session, paper: Paper) -> PaperDetail:
         answer_layout=answer_layout_from_json(paper.answer_layout),
         created_at=paper.created_at,
         published_at=paper.published_at,
+        archived_at=paper.archived_at,
         items=items,
     )
 
 
-def to_summary(db: Session, paper: Paper) -> PaperSummary:
-    count = db.execute(
-        select(func.count()).select_from(PaperItem).where(PaperItem.paper_id == paper.id)
-    ).scalar_one()
+def to_summary(
+    db: Session,
+    paper: Paper,
+    *,
+    item_count: int | None = None,
+    attempts: bool | None = None,
+) -> PaperSummary:
+    """数据库行 → 列表项（契约 §5.1 `PaperSummary`，D78 新增两列）。
+
+    `item_count` / `attempts` 可**预先批量算好**再传进来：`list_papers` 一页 N 行，
+    逐行现查就是 2N 条 SQL（N+1）。不传时退回「按需现查」，供单卷场景使用。
+    """
+    if item_count is None:
+        count = db.execute(
+            select(func.count()).select_from(PaperItem).where(PaperItem.paper_id == paper.id)
+        ).scalar_one()
+        item_count = int(count)
+    if attempts is None:
+        attempts = has_attempts(db, paper.id)
     return PaperSummary(
         id=paper.id,
         code=paper.code,
         title=paper.title,
         status=paper.status,
-        item_count=int(count),
+        item_count=int(item_count),
         created_at=paper.created_at,
         published_at=paper.published_at,
+        archived_at=paper.archived_at,
+        has_attempts=bool(attempts),
     )
 
 
@@ -233,6 +276,7 @@ def create_paper(
 
     答案版形式（M3）落显式 JSON；不传则用 D20 默认（四项全 true）。
     """
+    ensure_paper_schema(db)   # 老库补 archived_at，否则下面的 INSERT 会带着未知列
     config: GenerateConfig = to_engine_config(config_in)
     layout = layout if layout is not None else LayoutParams()
     answer_layout = answer_layout if answer_layout is not None else AnswerLayoutIn()
@@ -255,6 +299,7 @@ def create_paper(
         answer_layout=answer_layout_to_json(answer_layout),
         created_at=to_iso(now()),
         published_at=None,
+        archived_at=None,
     )
     db.add(paper)
     db.flush()                                        # 拿到 paper.id
@@ -413,17 +458,34 @@ def list_papers(
     offset: int = 0,
     status: str | None = None,
     q: str | None = None,
+    archived: str = ARCHIVED_EXCLUDE,
 ):
-    """卷库检索（FR-T14 / M3）：`limit`/`offset` 分页 + `status`/`q` 过滤。
+    """卷库检索（FR-T14 / M3 + 归档筛选 D78）。
 
     返回 `(total, papers)`，其中 **`total` 是过滤后的总数，不受 limit/offset 影响**
-    （契约 `PaperListOut.total` 的明确语义）。排序：创建时间倒序，同刻按 id 倒序。
+    （契约 `PaperListOut.total` 的明确语义），但**受 `archived` 影响**：切到 `only` 时
+    total 是已归档的总数。排序：创建时间倒序，同刻按 id 倒序。
+
+    `archived` 三口径（契约 `ArchivedFilter`）：`exclude`（默认，只看未归档）/
+    `include`（全部）/ `only`（只看已归档）。非法值不在这里兜底——路由层用 `Literal`
+    声明，非法值由 FastAPI 直接 422；服务层再校验一次是为了**不信任调用方**
+    （服务层也可能被脚本直接调用）。
     """
+    if archived not in ARCHIVED_FILTERS:
+        raise ApiError(
+            "VALIDATION_ERROR",
+            f"archived 只能是 exclude/include/only 之一，收到 {archived!r}",
+        )
+    ensure_paper_schema(db)
     conditions = []
     if status:
         conditions.append(Paper.status == status)
     if q and q.strip():
         conditions.append(Paper.title.like(_like_pattern(q.strip()), escape=_LIKE_ESCAPE))
+    if archived == ARCHIVED_EXCLUDE:
+        conditions.append(Paper.archived_at.is_(None))
+    elif archived == ARCHIVED_ONLY:
+        conditions.append(Paper.archived_at.is_not(None))
 
     base = select(Paper)
     counter = select(func.count()).select_from(Paper)
@@ -439,7 +501,67 @@ def list_papers(
             .offset(offset)
         ).scalars()
     )
-    return total, [to_summary(db, row) for row in rows]
+    counts, attempts = _page_facts(db, [row.id for row in rows])
+    return total, [
+        to_summary(db, row, item_count=counts.get(row.id, 0), attempts=row.id in attempts)
+        for row in rows
+    ]
+
+
+def _page_facts(db: Session, paper_ids: list[int]) -> tuple[dict[int, int], set[int]]:
+    """一次 group-by 取回整页的题目数与「有无成绩」，把 2N 条查询压成 2 条。
+
+    为什么必须这样：卷库默认每页 20 行，逐行 `count(*)` + `EXISTS` 就是 40 条 SQL；
+    而列表页正是最常被打开的一屏。空页直接返回，避免 `IN ()` 这种空列表查询。
+    """
+    if not paper_ids:
+        return {}, set()
+    item_counts = {
+        int(paper_id): int(count)
+        for paper_id, count in db.execute(
+            select(PaperItem.paper_id, func.count())
+            .where(PaperItem.paper_id.in_(paper_ids))
+            .group_by(PaperItem.paper_id)
+        )
+    }
+    with_attempts = {
+        int(paper_id)
+        for (paper_id,) in db.execute(
+            select(Attempt.paper_id)
+            .where(Attempt.paper_id.in_(paper_ids))
+            .group_by(Attempt.paper_id)
+        )
+    }
+    return item_counts, with_attempts
+
+
+def archive_paper(db: Session, paper_id: int) -> Paper:
+    """归档（软删除，D78）：任何状态都能归档。
+
+    **与 status 正交**：这里一个字都不改 `paper.status`，所以取消归档后自然回到原来的
+    `draft`/`published`。**幂等**：重复归档保留**第一次**的 `archived_at` 不改写——
+    那一位记录的是「它是何时被收进归档的」，重放一次请求不该把它变新。
+    """
+    paper = get_paper_or_404(db, paper_id)
+    if paper.archived_at is None:
+        # 用 `utcnow_iso()` 与同表的 `published_at` 保持同一口径（都是生命周期事件时间戳）；
+        # `created_at` 用的是本地时区，属于历史遗留差异，这里不跟着它走。
+        paper.archived_at = utcnow_iso()
+        db.flush()
+    return paper
+
+
+def unarchive_paper(db: Session, paper_id: int) -> Paper:
+    """取消归档（D78）：**幂等**，本来就未归档时原样返回，不报错也不写时间戳。
+
+    注意这里恢复的是「看得见」而不是「状态」——`status` 从头到尾没被归档动过，
+    所以一个归档前是 published 的卷，取消归档后仍是 published（卷号也照旧有效）。
+    """
+    paper = get_paper_or_404(db, paper_id)
+    if paper.archived_at is not None:
+        paper.archived_at = None
+        db.flush()
+    return paper
 
 
 def get_paper(db: Session, paper_id: int) -> PaperDetail:
@@ -447,8 +569,25 @@ def get_paper(db: Session, paper_id: int) -> PaperDetail:
 
 
 def purge_paper(db: Session, paper_id: int) -> None:
-    """物理删除卷及其题目（测试清理用；契约未开放删除卷的 HTTP 接口）。"""
+    """物理删除卷及其题目（`DELETE /api/papers/{id}`，D78）。
+
+    **有成绩的卷一律不许物理删除**：先查 `attempt` 有没有指向它的行，有则抛
+    409 `PAPER_HAS_ATTEMPTS`，让调用方去走归档（软删除）。
+
+    这条限制**首先是数据约束、其次才是政策**：`attempt.paper_id` 外键没有 `ondelete`，
+    `db.py` 又显式打开了 `PRAGMA foreign_keys=ON`，所以真删下去只会撞
+    `FOREIGN KEY constraint failed` —— 那是一个**数据库内部错误**，老师看不懂、
+    前端也无从解释。翻译成 409 + 一句人话 + 一条出路（归档）才是有用的行为。
+
+    历史注记：本函数早于 D78 存在，原 docstring 写着「测试清理用；契约未开放删除卷的
+    HTTP 接口」——那句从 D78 起已过期（接口已开放），此处一并订正。
+    """
     paper = get_paper_or_404(db, paper_id)
+    if has_attempts(db, paper.id):
+        raise ApiError(
+            "PAPER_HAS_ATTEMPTS",
+            f"卷 {paper.id} 已有学生成绩，不能删除；可以改为归档",
+        )
     db.execute(delete(PaperItem).where(PaperItem.paper_id == paper.id))
     db.delete(paper)
     db.flush()

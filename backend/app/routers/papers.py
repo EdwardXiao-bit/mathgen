@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.contracts.api import (
     ROUTES,
     AnswerLayoutIn,
+    ArchivedFilter,
     LayoutIn,
     PaperConfigIn,
     PaperDetail,
@@ -73,16 +74,23 @@ def list_papers(
     offset: int = Query(default=0, ge=0),
     q: str | None = Query(default=None, max_length=200, description="标题模糊匹配"),
     status: PaperStatus | None = Query(default=None),
+    archived: ArchivedFilter = Query(
+        default=svc.ARCHIVED_EXCLUDE,
+        description="归档筛选：exclude（默认，只看未归档）/ include（全部）/ only（只看已归档）",
+    ),
     page: int | None = Query(default=None, deprecated=True, description="M2 旧参数，已移除"),
     size: int | None = Query(default=None, deprecated=True, description="M2 旧参数，已移除"),
     db: Session = Depends(get_db),
 ) -> PaperListOut:
-    """卷库检索（FR-T14 / M3）：`total` 是过滤后的总数，不受 `limit`/`offset` 影响。
+    """卷库检索（FR-T14 / M3 / D78）：`total` 是过滤后的总数，不受 `limit`/`offset` 影响。
 
     分页参数**只有** `limit`/`offset`（D64）。M2 的 `page`/`size` 已删除，
     只保留一条**迁移护栏**：显式传旧参数 → 422 并提示新写法。
     护栏不是兼容层（它不接受旧参数）；存在的原因是 FastAPI 会**默默忽略**未知查询参数，
     让调用方拿到第一页却以为翻页成功了。
+
+    `archived` 用 `ArchivedFilter`（Literal）声明，非法值由 FastAPI 直接 422
+    ——与 `status` 同一个模式，不自己写字符串校验。
     """
     if page is not None or size is not None:
         raise ApiError(
@@ -90,7 +98,9 @@ def list_papers(
             "分页参数已改为 limit/offset（D64）；旧参数 page/size 不再支持，"
             "请改用 ?limit=<1..100>&offset=<>=0>",
         )
-    total, papers = svc.list_papers(db, limit=limit, offset=offset, status=status, q=q)
+    total, papers = svc.list_papers(
+        db, limit=limit, offset=offset, status=status, q=q, archived=archived
+    )
     return PaperListOut(total=total, limit=limit, offset=offset, papers=papers)
 
 
@@ -162,6 +172,41 @@ def publish_paper(paper_id: int, request: Request,
         qr_url=qr_url_for(detail.id),
         student_url=student_url_for(request, code),
     )
+
+
+@router.post(ROUTES["archive_paper"], response_model=PaperDetail)
+def archive_paper(paper_id: int, db: Session = Depends(get_db)) -> PaperDetail:
+    """归档（软删除，D78）：**任何状态都能归档**，返回归档后的 `PaperDetail`。
+
+    - 幂等：重复归档保留**第一次**的 `archived_at`（不报错、不改写时间戳）。
+    - **与 status 正交**：这里不改 `status`，所以取消归档后回到原来的 draft/published。
+    - 归档**不影响学生端**：已发出的卷照常可答（契约 §5「卷库收纳」）。
+    """
+    with finish(db):
+        return svc.to_detail(db, svc.archive_paper(db, paper_id))
+
+
+@router.post(ROUTES["unarchive_paper"], response_model=PaperDetail)
+def unarchive_paper(paper_id: int, db: Session = Depends(get_db)) -> PaperDetail:
+    """取消归档（D78）：`archived_at` 归 `null`，**幂等**（本来就未归档时原样返回）。"""
+    with finish(db):
+        return svc.to_detail(db, svc.unarchive_paper(db, paper_id))
+
+
+@router.delete(ROUTES["delete_paper"], status_code=204, response_class=Response)
+def delete_paper(paper_id: int, db: Session = Depends(get_db)) -> Response:
+    """物理删除整卷（D78）：**只允许删没有任何学生成绩的卷**。
+
+    - 无成绩 → **204**，无响应体（卷与它的题目行真的消失）。
+    - 有成绩 → **409 `PAPER_HAS_ATTEMPTS`**，卷与成绩都**原样保留**，提示改用归档。
+    - 卷不存在 → 404 `PAPER_NOT_FOUND`。
+
+    为什么有成绩就不许删：`attempt.paper_id` 外键没有 `ondelete` 且外键校验是开的，
+    真删只会撞数据库错误（详见 `services/paper_service.purge_paper` 的 docstring）。
+    """
+    with finish(db):
+        svc.purge_paper(db, paper_id)
+    return Response(status_code=204)
 
 
 @router.get(

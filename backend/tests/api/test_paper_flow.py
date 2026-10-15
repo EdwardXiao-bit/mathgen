@@ -17,11 +17,13 @@ class TestPaperFlow(ApiTestCase):
         self.assertEqual(
             set(detail),
             {"id", "code", "title", "status", "seed", "config", "layout", "answer_layout",
-             "created_at", "published_at", "items"},
+             "created_at", "published_at", "archived_at", "items"},
         )
         self.assertEqual(detail["status"], "draft")
         self.assertIsNone(detail["code"])
         self.assertIsNone(detail["published_at"])
+        # D78：新建的卷一定是未归档的（归档只由 POST /archive 产生）
+        self.assertIsNone(detail["archived_at"])
         self.assertEqual(detail["seed"], 2025)
         self.assertEqual(len(detail["items"]), 5)
 
@@ -81,9 +83,13 @@ class TestPaperFlow(ApiTestCase):
         self.assertEqual(len(body["papers"]), 2)
         self.assertEqual(
             set(body["papers"][0]),
-            {"id", "code", "title", "status", "item_count", "created_at", "published_at"},
+            {"id", "code", "title", "status", "item_count", "created_at", "published_at",
+             "archived_at", "has_attempts"},
         )
         self.assertEqual(body["papers"][0]["item_count"], 2)
+        # D78：刚建的卷既没归档、也没成绩
+        self.assertIsNone(body["papers"][0]["archived_at"])
+        self.assertFalse(body["papers"][0]["has_attempts"])
 
         page2 = self.client.get(
             url_of("list_papers"), params={"limit": 2, "offset": 2}

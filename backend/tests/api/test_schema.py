@@ -141,11 +141,14 @@ class TestSchema(unittest.TestCase):
         self.assertEqual(
             set(Paper.__table__.columns.keys()),
             {"id", "code", "title", "status", "seed", "config_json", "layout_json",
-             "answer_layout", "created_at", "published_at"},
+             "answer_layout", "created_at", "published_at", "archived_at"},
         )
         self.assertTrue(Paper.__table__.c.code.unique)
         self.assertTrue(Paper.__table__.c.code.nullable)
         self.assertTrue(Paper.__table__.c.published_at.nullable)
+        # D78：归档与 status 正交，所以这一列必须可空（NULL = 未归档），
+        # 而不是靠一个第三态 status 表达。
+        self.assertTrue(Paper.__table__.c.archived_at.nullable)
         for name in ("title", "status", "seed", "config_json", "layout_json",
                      "answer_layout", "created_at"):
             self.assertFalse(Paper.__table__.c[name].nullable, f"paper.{name} 应 NOT NULL")
