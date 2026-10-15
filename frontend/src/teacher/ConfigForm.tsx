@@ -26,6 +26,7 @@ import {
   type RangeName,
 } from '../shared/api';
 import { AnswerLayoutEditor } from './AnswerLayoutEditor';
+import { Checkbox, NumberInput } from '../ui';
 
 export interface ConfigDraft {
   config: PaperConfigIn;
@@ -114,20 +115,18 @@ export function ConfigForm({
         </h2>
         <div className="chip-row">
           {OP_OPTIONS.map((option) => (
-            <label
+            // M3.5：改用组件层的 Checkbox（原先是手写 <label class="chip"> + <input>）。
+            // class 仍是 `chip` / `chip-on`，`data-testid="op-*"` 不变 ——
+            // 门禁④按 `[data-dimension="ops"] .chip` 与 `.chip-on` 断言选项与选中态，
+            // 含义不变（仍是「可多选的胶囊选项」），只是状态样式改由组件层统一提供。
+            <Checkbox
               key={option.value}
-              className={`chip ${config.ops.includes(option.value) ? 'chip-on' : ''}`}
+              testId={`op-${option.value}`}
+              checked={config.ops.includes(option.value)}
+              onChange={() => patchConfig({ ops: toggle<OpName>(config.ops, option.value) })}
             >
-              <input
-                type="checkbox"
-                data-testid={`op-${option.value}`}
-                checked={config.ops.includes(option.value)}
-                onChange={() =>
-                  patchConfig({ ops: toggle<OpName>(config.ops, option.value) })
-                }
-              />
               {option.label}
-            </label>
+            </Checkbox>
           ))}
         </div>
         {showHints ? <p className="dim-hint">至少选一种；脱式题建议选两种以上。</p> : null}
@@ -226,14 +225,18 @@ export function ConfigForm({
           <span className="dim-index">⑤</span> 题量
         </h2>
         <div className="count-row">
-          <input
+          {/* M3.5：改用组件层的 NumberInput —— 它自带 min/max 校验与 **invalid 文字原因**
+              （§4：`invalid` 必须同时给出文字原因，不能只变红）。
+              `data-testid="count"` 与 min/max 属性都保留：门禁④按它们断言
+              「默认 20、范围 1..100 与契约一致」。 */}
+          <NumberInput
             id="count"
-            data-testid="count"
-            type="number"
+            testId="count"
+            unit="题"
+            value={config.count}
             min={CONFIG_BOUNDS.count[0]}
             max={CONFIG_BOUNDS.count[1]}
-            value={config.count}
-            onChange={(event) => patchConfig({ count: Number(event.target.value) })}
+            onValueChange={(next) => patchConfig({ count: next === '' ? 0 : next })}
           />
           <div className="chip-row">
             {COUNT_PRESETS.map((preset) => (

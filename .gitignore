@@ -32,6 +32,10 @@ test-results/
 backend/tests/e2e_m2/artifacts/
 backend/tests/e2e_m3/artifacts/
 
+# 前端验收脚本的截图同理（可随时重跑生成）
+frontend/shot-*.png
+frontend/verify-*.png
+
 # ---------- 编辑器 / 操作系统 ----------
 .vscode/
 .idea/

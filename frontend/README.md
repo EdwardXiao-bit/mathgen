@@ -23,16 +23,18 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 & $NODE $PNPM --dir frontend verify     # 跑全部验收（见下）
 ```
 
-## 五条验收脚本（都可复现，退出码 0 = 通过）
+## 七条验收脚本（都可复现，退出码 0 = 通过）
 
 ```powershell
-& $NODE $PNPM --dir frontend verify                       # 一次跑完五条
+& $NODE $PNPM --dir frontend verify                       # 一次跑完七条
 # 或分开跑：
 & $NODE frontend\scripts\verify-no-cdn.mjs
 & backend\.venv\Scripts\python.exe frontend\scripts\verify-contract.py
 & $NODE frontend\scripts\verify-layout-css-vars.mjs
 & $NODE frontend\scripts\verify-teacher-ui.mjs
 & $NODE frontend\scripts\verify-library-m3.mjs
+& $NODE frontend\scripts\verify-tokens.mjs
+& $NODE frontend\scripts\verify-structure.mjs
 ```
 
 | 脚本 | 验证什么 | 怎么保证不是「自证」 |
@@ -42,6 +44,18 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 | `verify-layout-css-vars.mjs` | 排版面板六个控件**实时**改变 **iframe 文档**里的 CSS 变量；打印取的是后端卷面 | 真实产物 + 模拟后端（含 `/sheet` 路由），Playwright 读 `iframe.contentDocument`；断言调参期间 **0 次**读卷/读卷面 |
 | `verify-teacher-ui.mjs` | 六维表单选项 = D16/D17、**第六维四个开关可保存**（M3 起不再是只读占位）、打印的是后端卷面、后端未就绪三种形态都不白屏 | 三个场景各跑一遍：后端可用 / 代理 502 / 后端 500 |
 | `verify-library-m3.mjs` | M3 卷库：**分页**（20→17、区间文案、末页禁用、offset 真的发给后端）、**搜索**（20→12、带 `q`）、**状态筛选**、**按卷号打开成/败两条路径**（失败给明确提示且不跳转）、**第六维保存**真的 `PATCH .../answer-layout` 且 body 是平铺的 `AnswerLayoutIn`、已发布卷只读 | 断言同时看**界面**与**后端请求流水**（`/__api-log`）：只看界面的话，前端本地切片也能"看起来分页了" |
+| `verify-tokens.mjs` | **判据 A1**：`frontend/src/**` 除 `design/tokens.css` 外，颜色字面量计数 = 0 | 脚本**逐行扫源码**并打印命中行；允许清单是**逐条**的（带文件+行号+理由），当前为空。注释里也刻意不出现颜色写法，否则会被它自己命中 |
+| `verify-structure.mjs` | **判据 A2/A3/A4/A7/A8**：组件必备状态（样式表规则 + 运行时测 `disabled` / `invalid` 文字原因 / Slider 量纲 / Switch 人话）、键盘可达与焦点环、状态条不谎报、浮动层几何（不互压、不压纸面）、两个视口不横向溢出、纸面 A4 比例、顶栏 44 / 状态条 34 / 1280 侧栏收窄 | 交互类断言用 Playwright 真点真读（`data-state`、`aria-*`、`getBoundingClientRect`），不是看源码里有没写某个 class |
+
+> **A3 的一处例外是逐条的**：Chromium **不渲染 iframe 的 outline**（实测规则命中但 computed outline 仍是 none）。
+> 所以判据拆成「除允许清单外每个 tab 到的元素都要有可见环」+「iframe 的 `:focus-visible` 规则必须已定义」，
+> 允许清单里写明是哪个元素与理由 —— 而不是把「必须可见」放宽成恒真。
+
+> **空态与错误态是两个状态，不共用槽位**（Lead 裁决）。`Table` 有独立的 `emptyAction` 与 `errorAction`：
+> 后者一旦传入，wrapper 的 `data-state` 就是 `error`。把 `ErrorState` 塞进 `emptyAction` 会让一个**错误**
+> 场景对外宣称「没有数据」，那是语义层的小谎报 —— 与 D59（界面谎报已保存）、D65（`?page=2` 静默拿到第一页）
+> 同一条原则。门禁⑦为此**另起一个 `MATHGEN_VERIFY_MODE=api-down` 的服务**，断言后端 500 时
+> `data-state === 'error'` 且只渲染 `.mg-table-error`、不渲染 `.mg-table-empty`。
 
 > **端口自适应**：本机 4173 常被别的服务占用（老师端预览、样张静态服务）。服务进程会自己退让到
 > 4174…，并把**真实端口**打印成 `VERIFY_PORTS static=… api=…`，父脚本解析后用它渲染
@@ -67,6 +81,34 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 > 表现是前端保存状态卡在 `saving`（M3 实测踩过）。
 
 ## 几个必须知道的实现约定
+
+### 0. M3.5 结构轮：令牌 + 组件层 + C1 骨架
+
+三件事，纪律优先于观感（观感留给视觉轮）：
+
+1. **设计令牌**在 `src/design/tokens.css`（**Lead 冻结，实现方只读**，D67）。
+   `src/**` 里任何颜色/间距/字号/圆角/阴影都必须写 `var(--mg-*)`。
+   判据 A1 由 `verify-tokens.mjs` 机器扫描；**缺令牌要向 Lead 申请，不要本地加**。
+2. **组件层**在 `src/ui/**`：`Button` / `IconButton` / `Input` / `NumberInput` / `Checkbox` /
+   `Switch` / `Slider` / `SegmentedControl` / `List` / `Table` / `Card` / `FloatingPanel` /
+   `Toolbar` / `StatusBar` / `Badge` / `Chip` / `EmptyState` / `ErrorState` / `Toast`。
+   每个组件在 DOM 上带 `data-state`，状态样式只引用令牌 —— 这是判据 A2 能被机器检查的前提。
+   两个 API 是**刻意「不好用」**的：
+   - `Input` 的校验失败要传 `invalidReason: string`（不是 `invalid: boolean`），
+     从接口层面杜绝「只变红不说原因」（§4）；
+   - `ErrorState` 必须同时给 `what`（发生了什么）与 `how`（怎么办），
+     从接口层面杜绝 M2 那种「只有一句 TimeoutError」（I3）。
+3. **骨架取 C1「工作台」**：顶栏 44px + 三栏（侧栏 `--mg-side-w` / 画布 / 面板）+ 状态条 34px；
+   纸面按 A4 真实比例 `210/297` 居中缩放；1280 宽侧栏收窄到 `--mg-side-w-narrow`。
+
+两条与骨架有关的实现选择，都不是「随手这么写」：
+
+- **浮动工具栏用文档流占位，不用绝对定位**。工具栏是画布列的**第一行**，
+  于是「不压住纸面」是布局的自然结果（判据 A7 的几何断言直接量 `toolbar.b <= paper.t`），
+  而不是靠调 `top` 数值凑出来 —— 样张初版就是 `position: absolute` 把工具栏压在纸面上（D62 实测缺陷）。
+- **验收用的 CSS 变量 dump 默认收起、并放在右侧栏**。它常开时占约 160px 高，
+  而纸面按剩余高度缩放，结果 A4 纸被压到 329×465；挪到侧栏并收起后是 459×650。
+  门禁③读的是它的 `textContent`（不是可见性），所以收起不改变那条断言的语义。
 
 ### 1. 排版面板：本地状态驱动预览，PATCH 负责持久化 + 重载
 
@@ -178,14 +220,20 @@ flush 待写入的排版（PATCH，让后端渲染时读到最新值）
 
 ```
 src/
+  design/
+    tokens.css     设计令牌唯一来源（**Lead 冻结，只读**；改它要新增决策 D67）
+  ui/              M3.5 组件层（状态统一、只引用令牌；不含任何颜色字面量）
+    Button / Input / Checkbox / Switch / Slider / SegmentedControl / List / Table
+    Panel（Card + FloatingPanel）/ Toolbar / StatusBar / Badge / State / Toast
   shared/          类型 + API 客户端 + query key（老师端与学生端唯一共享层，契约 §8 D-5）
     api.ts         冻结契约的镜像（字段名 snake_case，禁止驼峰映射）
     apiClient.ts   fetch 封装：统一错误结构、超时、可读的中文提示、分页形状自适应
   teacher/         老师端页面（不 import student/**）
+    TeacherShell.tsx         外壳：顶栏 44px + 路由出口（状态条由卷页渲染，避免两条）
     ConfigForm.tsx           六维表单（D16 档位 / D17 题型；第六维可保存，M3）
     AnswerLayoutEditor.tsx   第六维四开关（配置页与卷页复用同一份语义）
     SheetFrame.tsx           卷面 iframe 容器 + 六个变量的实时注入（D56）
-    LayoutPanel.tsx          排版面板六控件
-    pages/                   ConfigPage / PaperPage / LibraryPage / PublishPage（LibraryPage 含 M3 分页/搜索/按卷号）
+    LayoutPanel.tsx          排版面板六控件（走组件层 Slider / Switch）
+    pages/                   ConfigPage / PaperPage（C1 三栏工作台）/ LibraryPage / PublishPage
 scripts/           验收脚本（见上）
 ```

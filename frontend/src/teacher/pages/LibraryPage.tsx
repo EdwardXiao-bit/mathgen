@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { LIST_BOUNDS, type PaperStatus } from '../../shared/api';
 import { ApiError, teacherApi } from '../../shared/apiClient';
 import { queryKeys } from '../../shared/queryKeys';
+import { Button, EmptyState, ErrorState, Table, type TableColumn } from '../../ui';
 
 const PAGE_SIZE = LIST_BOUNDS.defaultLimit;
 /** 输入即查的防抖（ms）：太短会每个字符打一次请求，太长会让「输入即查」变迟钝 */
@@ -175,99 +176,132 @@ export function LibraryPage() {
         </p>
       ) : null}
 
-      {query.isLoading ? (
-        <div className="loading-card">正在读取卷库…</div>
-      ) : query.isError ? (
-        <div className="error-card" data-testid="library-error">
-          <h1>读不到卷库</h1>
-          <p>{readError(query.error)}</p>
-          <button type="button" className="btn btn-primary" onClick={() => void query.refetch()}>
-            重试
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="library-summary" data-testid="library-summary">
-            第 <b data-testid="library-range-start">{rangeStart}</b>–
-            <b data-testid="library-range-end">{rangeEnd}</b> / 共{' '}
-            <b data-testid="library-total">{total}</b> 套
-            {q.trim() !== '' ? `（搜索「${q.trim()}」）` : ''}
-            {statusFilter !== 'all' ? `（${statusFilter === 'draft' ? '草稿' : '已发布'}）` : ''}
-            {paginationMode === 'legacy' ? (
-              <span className="library-legacy-note" data-testid="library-pagination-mode">
-                （后端仍是 page/size 分页，前端已换算）
-              </span>
-            ) : null}
-          </div>
-
-          {!data || data.papers.length === 0 ? (
-            <p className="empty-state" data-testid="library-empty">
-              {q.trim() !== '' || statusFilter !== 'all' ? (
-                <>没有符合条件的卷子。可以清空搜索或把状态切回「全部」。</>
-              ) : (
-                <>
-                  还没有任何卷子。先去 <Link to="/teacher">出题配置</Link> 生成一套。
-                </>
-              )}
-            </p>
-          ) : (
-            <table className="library-table">
-              <thead>
-                <tr>
-                  <th>卷名</th>
-                  <th>状态</th>
-                  <th>卷号</th>
-                  <th>题量</th>
-                  <th>创建时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody data-testid="library-rows">
-                {data.papers.map((paper) => (
-                  <tr key={paper.id} data-paper-id={paper.id} data-paper-title={paper.title}>
-                    <td>
-                      <Link to={`/teacher/paper/${paper.id}`}>{paper.title}</Link>
-                    </td>
-                    <td>{paper.status === 'draft' ? '草稿' : '已发布'}</td>
-                    <td>{paper.code ?? '—'}</td>
-                    <td>{paper.item_count}</td>
-                    <td>{formatTime(paper.created_at)}</td>
-                    <td>
-                      <Link className="btn btn-mini" to={`/teacher/paper/${paper.id}`}>
-                        打开
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          <div className="library-pager">
-            <button
-              type="button"
-              className="btn"
-              data-testid="library-prev"
-              disabled={!canPrev}
-              onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
-            >
-              上一页
-            </button>
-            <span className="library-pager-info" data-testid="library-page-info">
-              每页 {PAGE_SIZE} 套 · 第 {Math.floor(offset / PAGE_SIZE) + 1} 页
+      {/* 分页摘要（M3 门禁⑤按这些 testid 断言区间/总数/回退形态）。
+          含义不变：它说的仍是「当前页区间 / 过滤后的总数」。 */}
+      {!query.isLoading && !query.isError ? (
+        <div className="library-summary" data-testid="library-summary">
+          第 <b data-testid="library-range-start">{rangeStart}</b>–
+          <b data-testid="library-range-end">{rangeEnd}</b> / 共{' '}
+          <b data-testid="library-total">{total}</b> 套
+          {q.trim() !== '' ? `（搜索「${q.trim()}」）` : ''}
+          {statusFilter !== 'all' ? `（${statusFilter === 'draft' ? '草稿' : '已发布'}）` : ''}
+          {paginationMode === 'legacy' ? (
+            <span className="library-legacy-note" data-testid="library-pagination-mode">
+              （后端仍是 page/size 分页，前端已换算）
             </span>
-            <button
-              type="button"
-              className="btn"
-              data-testid="library-next"
-              disabled={!canNext}
-              onClick={() => setOffset((current) => current + PAGE_SIZE)}
-            >
-              下一页
-            </button>
-          </div>
-        </>
-      )}
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* 加载 / 错误 / 数据三态统一走组件层（§4：不得白屏，错误给「发生了什么 + 怎么办」）。
+          `data-testid="library-error"` 与文案保留：门禁④按它断言「后端未就绪时不是白屏」，
+          含义不变（错误态容器 + 错误文案），只是换成统一组件。 */}
+      <Table
+        testId="library-table"
+        ariaLabel="卷库列表"
+        bodyTestId="library-rows"
+        isLoading={query.isLoading}
+        loadingText="正在读取卷库…"
+        columns={
+          [
+            { key: 'title', header: '卷名' },
+            { key: 'status', header: '状态' },
+            { key: 'code', header: '卷号' },
+            { key: 'count', header: '题量', numeric: true },
+            { key: 'created', header: '创建时间' },
+            { key: 'actions', header: '操作' },
+          ] satisfies TableColumn[]
+        }
+        rows={
+          query.isError
+            ? []
+            : (data?.papers ?? []).map((paper) => ({
+                key: paper.id,
+                testAttrs: { 'data-paper-id': String(paper.id), 'data-paper-title': paper.title },
+                cells: [
+                  <Link to={`/teacher/paper/${paper.id}`}>{paper.title}</Link>,
+                  paper.status === 'draft' ? '草稿' : '已发布',
+                  paper.code ?? '—',
+                  String(paper.item_count),
+                  formatTime(paper.created_at),
+                  <Link className="btn btn-mini" to={`/teacher/paper/${paper.id}`}>
+                    打开
+                  </Link>,
+                ],
+              }))
+        }
+        // 错误态走**独立槽位**：wrapper 的 data-state 必须是 `error` 而不是 `empty`。
+        // 「请求失败了」与「库里确实没有数据」是两件不同的事，对外必须说实话
+        // （与 D59「界面谎报已保存」、D65「静默拿到第一页」同一条原则）。
+        errorAction={
+          query.isError ? (
+            <ErrorState
+              testId="library-error"
+              title="读不到卷库"
+              what={readError(query.error)}
+              how="先确认后端已启动（uvicorn 一条命令即可托管本页面），然后点「重试」。"
+              code={query.error instanceof ApiError ? query.error.code : null}
+              actions={
+                <Button variant="primary" onClick={() => void query.refetch()}>
+                  重试
+                </Button>
+              }
+            />
+          ) : null
+        }
+        emptyAction={
+          q.trim() !== '' || statusFilter !== 'all' ? (
+            <EmptyState
+              testId="library-empty"
+              title="没有符合条件的卷子"
+              hint={`当前筛选：${q.trim() !== '' ? `搜索「${q.trim()}」` : ''}${statusFilter !== 'all' ? ` 状态=${statusFilter === 'draft' ? '草稿' : '已发布'}` : ''}`}
+              action={
+                <Button
+                  onClick={() => {
+                    setSearchInput('');
+                    setStatusFilter('all');
+                  }}
+                >
+                  清空筛选条件
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              testId="library-empty"
+              title="还没有任何卷子"
+              hint="卷库会列出你生成过的每一套卷，可随时回来重新打开、打印。"
+              action={
+                <Link className="btn btn-primary" to="/teacher">
+                  去出题配置生成一套
+                </Link>
+              }
+            />
+          )
+        }
+      />
+
+      {!query.isLoading && !query.isError ? (
+        <div className="library-pager">
+          <Button
+            data-testid="library-prev"
+            disabled={!canPrev}
+            onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
+          >
+            上一页
+          </Button>
+          <span className="library-pager-info" data-testid="library-page-info">
+            每页 {PAGE_SIZE} 套 · 第 {Math.floor(offset / PAGE_SIZE) + 1} 页
+          </span>
+          <Button
+            data-testid="library-next"
+            disabled={!canNext}
+            onClick={() => setOffset((current) => current + PAGE_SIZE)}
+          >
+            下一页
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

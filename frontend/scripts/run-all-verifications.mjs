@@ -3,12 +3,14 @@
  *
  * 用法：& $NODE $PNPM --dir frontend verify      （等价于 node scripts/run-all-verifications.mjs）
  *
- * 依次跑五个脚本，任一失败即整体失败，最后打印汇总与产物路径：
+ * 依次跑七个脚本，任一失败即整体失败，最后打印汇总与产物路径：
  *   1. scripts/verify-no-cdn.mjs           产物无外部资源引用（位置感知：只看资源位）
  *   2. scripts/verify-contract.py          前端类型 ↔ backend/app/contracts/{api,layout}.py
  *   3. scripts/verify-layout-css-vars.mjs  排版面板六控件实时驱动预览区 CSS 变量
  *   4. scripts/verify-teacher-ui.mjs       六维表单 / 打印版式 / 后端未就绪降级
  *   5. scripts/verify-library-m3.mjs       M3 卷库（分页/搜索/筛选/按卷号）与第六维落库
+ *   6. scripts/verify-tokens.mjs           M3.5 判据 A1：令牌之外没有颜色字面量
+ *   7. scripts/verify-structure.mjs        M3.5 判据 A2/A3/A4/A7/A8：组件状态与骨架几何
  */
 
 import { spawnSync } from 'node:child_process';
@@ -46,6 +48,16 @@ const steps = [
     name: '⑤ M3 卷库与第六维（分页 / 搜索 / 按卷号 / answer-layout 落库）',
     cmd: process.execPath,
     args: [path.join(__dirname, 'verify-library-m3.mjs')],
+  },
+  {
+    name: '⑥ M3.5 判据 A1（令牌之外没有颜色字面量）',
+    cmd: process.execPath,
+    args: [path.join(__dirname, 'verify-tokens.mjs')],
+  },
+  {
+    name: '⑦ M3.5 判据 A2/A3/A4/A7/A8（组件状态 / 键盘 / 几何 / 视口）',
+    cmd: process.execPath,
+    args: [path.join(__dirname, 'verify-structure.mjs')],
   },
 ];
 

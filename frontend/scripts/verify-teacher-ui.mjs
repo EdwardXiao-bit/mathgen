@@ -208,8 +208,14 @@ with sync_playwright() as p:
     # 仅在卷页面真的渲染出排版面板时采集（后端不可用的场景没有面板）
     panel_ready = page.locator(".layout-panel").count() > 0
     result["has_layout_panel"] = panel_ready
+    # M3.5 结构调整：开关从「<input type=checkbox> + .layout-control-value」
+    # 换成组件层的 Switch（取值为 .mg-switch-value）。
+    # **这条断言守的是什么**：面板上两个布尔开关旁边显示的是**人话**（保留 / 显示），
+    # 而不是 CSS 关键字（block / none / grid / 1 / 0）—— D59 的教训是老师看不懂关键字。
+    # 换选择器不改变含义：两者都取「开关当前值的那段文本」，只是组件换了 class 名；
+    # 断言里「必须含中文」「不得等于 none/block/grid/1/0」这两条判据完全没动。
     result["panel_bool_values"] = page.eval_on_selector_all(
-        '[data-control="answer_line"] .layout-control-value, [data-control="header_bar"] .layout-control-value',
+        '[data-control="answer_line"] .mg-switch-value, [data-control="header_bar"] .mg-switch-value',
         "els => els.map(e => e.textContent.trim())") if panel_ready else []
     result["panel_visible_text"] = page.eval_on_selector(
         ".layout-panel", "el => el.innerText") if panel_ready else ""

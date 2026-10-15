@@ -30,12 +30,17 @@ import {
 } from '../../shared/api';
 import { ApiError, teacherApi } from '../../shared/apiClient';
 import { queryKeys } from '../../shared/queryKeys';
+import { Card, EmptyState, ErrorState, FloatingPanel, List, StatusBar, Toolbar, ToolbarDivider } from '../../ui';
+import type { StatusBarState } from '../../ui';
 import { AnswerLayoutEditor } from '../AnswerLayoutEditor';
 import { LayoutPanel } from '../LayoutPanel';
 import { SheetFrame, applyLayoutToDocument } from '../SheetFrame';
 
 export type PreviewMode = 'question' | 'answer';
 export type PrintMode = 'question' | 'answer';
+
+/** 排版持久化的状态机（在 PaperPage 顶部声明，状态条组件也要用同一套类型） */
+export type PersistState = 'idle' | 'saving' | 'refreshing' | 'refreshed' | 'error';
 
 const PERSIST_DEBOUNCE_MS = 400;
 
@@ -87,9 +92,7 @@ export function PaperPage() {
   }, [serverPaper]);
 
   // ---- ② 持久化：debounce 一次 PATCH，成功后再重载卷面（D59 兜底）-----------
-  const [persistState, setPersistState] = useState<
-    'idle' | 'saving' | 'refreshing' | 'refreshed' | 'error'
-  >('idle');
+  const [persistState, setPersistState] = useState<PersistState>('idle');
   const [persistError, setPersistError] = useState<string | null>(null);
   /**
    * 自增即让 `SheetFrame` 重新加载卷面。
@@ -375,8 +378,12 @@ export function PaperPage() {
 
   if (paperQuery.isLoading) {
     return (
-      <div className="loading-card" data-testid="paper-loading">
-        正在读取卷 #{paperId} …
+      <div className="paper-page" data-testid="paper-loading">
+        <div className="config-page">
+          <Card title={`正在读取卷 #${paperId} …`}>
+            <p className="dim-hint">稍候片刻。如果长时间没有响应，页面会给出错误原因与下一步。</p>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -384,26 +391,33 @@ export function PaperPage() {
   if (paperQuery.isError || !serverPaper) {
     const error = paperQuery.error;
     const offline = error instanceof ApiError && error.isOffline;
+    // `data-testid="paper-error"` + 「读不到卷」标题 + `.error-code` 都保留：
+    // 门禁④按它们断言「后端 500 / 代理 502 时渲染错误卡片而不是白屏，并带错误码」。
+    // 换成 ErrorState 只是把「说人话 + 给下一步」这件事统一到组件层，语义不变。
     return (
-      <div className="error-card" data-testid="paper-error">
-        <h1>读不到卷 #{paperId}</h1>
-        <p className="error-code">
-          {error instanceof ApiError ? `${error.code}（HTTP ${error.status}）` : 'UNKNOWN'}
-        </p>
-        <p>{readError(error)}</p>
-        {offline ? (
-          <p className="error-hint">
-            后端还没启动。请先执行：
-            <code>uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend</code>
-          </p>
-        ) : null}
-        <div className="error-actions">
-          <button type="button" className="btn btn-primary" onClick={() => void paperQuery.refetch()}>
-            重试
-          </button>
-          <Link className="btn btn-ghost" to="/teacher">
-            回到出题配置
-          </Link>
+      <div className="paper-page">
+        <div className="config-page">
+          <ErrorState
+            testId="paper-error"
+            title={`读不到卷 #${paperId}`}
+            what={readError(error)}
+            how={
+              offline
+                ? '后端还没启动。请先执行：uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend'
+                : '如果是刚重启过后端，点「重试」；仍然失败请把错误码报给维护者。'
+            }
+            code={error instanceof ApiError ? `${error.code}（HTTP ${error.status}）` : 'UNKNOWN'}
+            actions={
+              <>
+                <button type="button" className="btn btn-primary" onClick={() => void paperQuery.refetch()}>
+                  重试
+                </button>
+                <Link className="btn btn-ghost" to="/teacher">
+                  回到出题配置
+                </Link>
+              </>
+            }
+          />
         </div>
       </div>
     );
@@ -422,7 +436,7 @@ export function PaperPage() {
             <span data-testid="paper-status">
               状态：{paper.status === 'draft' ? '草稿（可改题）' : '已发布（只读）'}
             </span>
-            <span>种子：{paper.seed}</span>
+            <span className="meta-secondary">种子：{paper.seed}</span>
             <span>题目：{paper.items.length} 道</span>
             {paper.code ? <span>卷号：{paper.code}</span> : null}
           </p>
@@ -446,24 +460,6 @@ export function PaperPage() {
               {copyMutation.isPending ? '正在另存…' : '另存为可编辑副本'}
             </button>
           )}
-          <button
-            type="button"
-            className="btn btn-primary"
-            data-testid="print-question"
-            onClick={() => handlePrint('question')}
-          >
-            打印题目版
-          </button>
-          <button
-            type="button"
-            className="btn"
-            data-testid="print-answer"
-            disabled={!answerAllowed}
-            title={answerAllowed ? undefined : '本卷的答案版形式选了「只要题目版」'}
-            onClick={() => handlePrint('answer')}
-          >
-            打印答案版
-          </button>
         </div>
       </header>
 
@@ -480,34 +476,117 @@ export function PaperPage() {
         </div>
       ) : null}
 
-      <div className="paper-body">
-        <div className="paper-preview-column">
-          <div className="preview-toolbar" role="tablist" aria-label="卷面版本">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={previewMode === 'question'}
-              className={`tab ${previewMode === 'question' ? 'tab-on' : ''}`}
-              data-testid="preview-tab-question"
-              onClick={() => setPreviewMode('question')}
+      {/* C1 三栏工作台（§7）：左题目列表 / 中画布 / 右排版面板。
+          三栏由**卷页**排（外壳只负责顶栏与状态条）——只有卷页知道每栏放什么。 */}
+      <div className="paper-workbench">
+        {/* 左：题目列表（改题是最高频动作，所以常驻而不是抽屉） */}
+        <FloatingPanel
+          ariaLabel="题目列表"
+          layer="item-list"
+          className="item-editor"
+          testId="item-editor"
+        >
+          <div className="mg-float-head">
+            <h2 className="mg-float-title">改题（{paper.items.length} 道）</h2>
+          </div>
+          <div className="mg-float-body">
+            <List
+              ariaLabel="题目列表"
+              isEmpty={paper.items.length === 0}
+              emptyAction={
+                <EmptyState
+                  title="题目已全部删除"
+                  hint="这张卷子已经没有题了，无法打印。"
+                  action={
+                    <Link className="btn btn-primary" to="/teacher">
+                      回去重新生成一套
+                    </Link>
+                  }
+                />
+              }
             >
-              题目版
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={previewMode === 'answer'}
-              className={`tab ${previewMode === 'answer' ? 'tab-on' : ''}`}
-              data-testid="preview-tab-answer"
-              disabled={!answerAllowed}
-              onClick={() => setPreviewMode('answer')}
-            >
-              答案版
-            </button>
-            <span className="preview-toolbar-note">
+              {paper.items.map((item) => (
+                <li className="item-row" key={item.seq} data-item-seq={item.seq}>
+                  <span className="item-seq">{item.seq}</span>
+                  <span className="item-expr" title={item.expr}>
+                    {item.display || item.expr}
+                  </span>
+                  <span className="item-answer">= {item.answer}</span>
+                  <button
+                    type="button"
+                    className="btn btn-mini"
+                    data-testid={`regenerate-${item.seq}`}
+                    disabled={!editable || busy}
+                    onClick={() => regenerateMutation.mutate(item.seq)}
+                  >
+                    换一题
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-mini btn-danger"
+                    data-testid={`delete-${item.seq}`}
+                    disabled={!editable || busy}
+                    onClick={() => deleteMutation.mutate(item.seq)}
+                  >
+                    删除
+                  </button>
+                </li>
+              ))}
+            </List>
+          </div>
+        </FloatingPanel>
+
+        {/* 中：画布。工具栏是画布列的**第一行**（文档流），不是绝对定位盖上去 ——
+            这样「工具栏不压住纸面」是布局的自然结果（判据 A7），不用调 top 数值去凑。 */}
+        <div className="mg-canvas mg-canvas-column">
+          <Toolbar ariaLabel="卷面工具栏" testId="paper-toolbar">
+            <div className="preview-toolbar" role="tablist" aria-label="卷面版本">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={previewMode === 'question'}
+                className={`tab ${previewMode === 'question' ? 'tab-on' : ''}`}
+                data-testid="preview-tab-question"
+                onClick={() => setPreviewMode('question')}
+              >
+                题目版
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={previewMode === 'answer'}
+                className={`tab ${previewMode === 'answer' ? 'tab-on' : ''}`}
+                data-testid="preview-tab-answer"
+                disabled={!answerAllowed}
+                onClick={() => setPreviewMode('answer')}
+              >
+                答案版
+              </button>
+            </div>
+            <ToolbarDivider />
+            <span className="mg-toolbar-meta">
               卷面由后端渲染（D56）：预览、打印、PDF 是同一份 HTML
             </span>
-          </div>
+            <ToolbarDivider />
+            <button
+              type="button"
+              className="btn btn-primary"
+              data-testid="print-question"
+              onClick={() => handlePrint('question')}
+            >
+              打印题目版
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="print-answer"
+              disabled={!answerAllowed}
+              title={answerAllowed ? undefined : '本卷的答案版形式选了「只要题目版」'}
+              onClick={() => handlePrint('answer')}
+            >
+              打印答案版
+            </button>
+          </Toolbar>
 
           {sheetError ? (
             <div className="notice notice-error" role="alert" data-testid="sheet-error">
@@ -515,7 +594,10 @@ export function PaperPage() {
             </div>
           ) : null}
 
-          <div className="preview-scroll" data-testid="print-area" data-css-vars={previewVars}>
+          {/* 纸面：A4 真实比例 210/297（判据在门禁 ⑥ 里量比例）。
+              iframe 里的卷面 HTML 来自后端 `/sheet`，前端不自己画（D56 / I6）。
+              `data-css-vars` 挂在纸面容器上，`data-testid="print-area"` 保留原语义。 */}
+          <div className="mg-paper-frame" data-testid="print-area" data-css-vars={previewVars}>
             <SheetFrame
               src={sheetSrc}
               layout={layout}
@@ -526,13 +608,9 @@ export function PaperPage() {
               onError={handleSheetError}
             />
           </div>
-
-          <details className="css-var-debug" data-testid="css-var-debug" open>
-            <summary>当前生效的 CSS 变量（已写到 iframe 文档根元素，供验收核对）</summary>
-            <pre data-testid="css-var-dump">{JSON.stringify(JSON.parse(previewVars || '{}'), null, 2)}</pre>
-          </details>
         </div>
 
+        {/* 右：排版面板 + 答案版形式 + 验收用的变量 dump */}
         <div className="paper-side-column">
           <LayoutPanel
             layout={layout}
@@ -591,44 +669,95 @@ export function PaperPage() {
             ) : null}
           </section>
 
-          <section className="item-editor" aria-label="改题">
-            <h2>改题（{paper.items.length} 道）</h2>
-            {paper.items.length === 0 ? (
-              <p className="item-editor-empty">题目已全部删除。</p>
-            ) : (
-              <ul className="item-list">
-                {paper.items.map((item) => (
-                  <li className="item-row" key={item.seq} data-item-seq={item.seq}>
-                    <span className="item-seq">{item.seq}</span>
-                    <span className="item-expr" title={item.expr}>
-                      {item.display || item.expr}
-                    </span>
-                    <span className="item-answer">= {item.answer}</span>
-                    <button
-                      type="button"
-                      className="btn btn-mini"
-                      data-testid={`regenerate-${item.seq}`}
-                      disabled={!editable || busy}
-                      onClick={() => regenerateMutation.mutate(item.seq)}
-                    >
-                      换一题
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-mini btn-danger"
-                      data-testid={`delete-${item.seq}`}
-                      disabled={!editable || busy}
-                      onClick={() => deleteMutation.mutate(item.seq)}
-                    >
-                      删除
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          {/* 验收用的变量 dump：**默认收起**。
+              为什么从画布挪到侧栏：它常开时占掉约 160px 高度，而纸面按剩余高度缩放，
+              结果 A4 纸被压到 329×465（D62 明确要求「纸面按剩余高度缩放、不要扁块」）。
+              放到侧栏并收起后，画布高度全部给纸面。
+              `data-testid="css-var-dump"` 保留：门禁③读的是它的 `textContent`（不是可见性），
+              所以收起不影响那条断言的语义 —— 它守的仍是「前端写进 iframe 的六个变量是哪些」。 */}
+          <details className="css-var-debug" data-testid="css-var-debug">
+            <summary>当前生效的 CSS 变量（已写到 iframe 文档根元素，供验收核对）</summary>
+            <pre data-testid="css-var-dump">{JSON.stringify(JSON.parse(previewVars || '{}'), null, 2)}</pre>
+          </details>
         </div>
       </div>
+
+      <PaperStatusBar
+        layout={layout}
+        itemCount={paper.items.length}
+        persistState={persistState}
+        persistError={persistError}
+        answerLayoutState={answerLayoutState}
+      />
     </div>
+  );
+}
+
+/**
+ * C1 底部状态条（34px）：题目数 / 页码 / 每行几题共几行 / 种子 / 保存状态 / 纸面尺寸。
+ *
+ * 抽成独立组件而不是塞进主 return：主 return 已经很长，而状态条的内容完全由
+ * 「当前 layout + 题目数 + 持久化状态」决定，与三栏骨架无关。
+ */
+function PaperStatusBar({
+  layout,
+  itemCount,
+  persistState,
+  persistError,
+  answerLayoutState,
+}: {
+  layout: LayoutIn;
+  itemCount: number;
+  persistState: PersistState;
+  persistError: string | null;
+  answerLayoutState: 'idle' | 'saving' | 'saved' | 'error';
+}) {
+  // 状态条只说**真的发生过**的事（I2）：
+  //   saving/refreshing → 正在保存；refreshed → 已保存且预览已刷新；error → 保存失败（并给出下一步）
+  const state: StatusBarState =
+    persistState === 'error' || answerLayoutState === 'error'
+      ? 'error'
+      : persistState === 'saving' || persistState === 'refreshing' || answerLayoutState === 'saving'
+        ? 'saving'
+        : persistState === 'refreshed' || answerLayoutState === 'saved'
+          ? 'saved'
+          : 'idle';
+
+  const message =
+    persistState === 'error'
+      ? `排版保存失败：${persistError ?? '未知原因'}。预览仍可调参，但没落库——请重试或检查后端。`
+      : answerLayoutState === 'error'
+        ? '答案版形式保存失败（预览仍按后端渲染）。请重试或检查后端。'
+        : persistState === 'refreshing'
+          ? '已保存，正在按后端渲染结果刷新预览…'
+          : persistState === 'saving'
+            ? '正在保存排版到后端…'
+            : persistState === 'refreshed'
+              ? '已保存，预览已刷新（当前显示 = 后端渲染结果）'
+              : answerLayoutState === 'saved'
+                ? '已保存，答案版预览已刷新'
+                : '拖动或拨动开关时预览立刻变化';
+
+  const rows = Math.ceil(itemCount / Math.max(1, layout.cols_per_row));
+  return (
+    <StatusBar
+      state={state}
+      testId="paper-statusbar"
+      items={[
+        <>
+          题目 <b>{itemCount}</b> 道
+        </>,
+        <>
+          页码 <b>1 / 1</b>
+        </>,
+        <>
+          每行 <b>{layout.cols_per_row}</b> 题 · 共 <b>{rows}</b> 行
+        </>,
+        <span className="meta-secondary" key="seed">
+          纸面 <b>210 × 297 mm</b>（A4）
+        </span>,
+      ]}
+      message={message}
+    />
   );
 }

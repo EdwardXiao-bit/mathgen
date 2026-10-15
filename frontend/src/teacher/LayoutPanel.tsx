@@ -7,6 +7,10 @@
  *
  * 控件的 id / 标签 / CSS 变量名与 `shared/api.ts` 的 `CSS_VAR_NAMES`、`LAYOUT_BOUNDS` 绑定，
  * 保证「界面控件 ↔ 契约字段 ↔ CSS 变量」三者不会各自漂移。
+ *
+ * M3.5：控件改用组件层（`Slider` / `Switch`），状态（disabled / focus-visible / dragging）
+ * 与其它页面统一 —— 面板不再自己写一套 `<input type="range">` 样式。
+ * 面板状态（保存中 / 已保存 / 失败）也改走组件层语义，见底部的 `PanelStatusLine`。
  */
 
 import {
@@ -17,6 +21,7 @@ import {
   type LayoutIn,
   type LayoutNumberField,
 } from '../shared/api';
+import { Slider, Switch } from '../ui';
 
 interface NumberControl {
   kind: 'number';
@@ -163,24 +168,20 @@ export function LayoutPanel({
           if (control.kind === 'bool') {
             const checked = layout[control.field];
             return (
-              <div className="layout-control" key={control.field} data-control={control.field}>
-                <div className="layout-control-head">
-                  <label htmlFor={`layout-${control.field}`}>{control.label}</label>
-                  <span className="layout-control-value">{checked ? control.onLabel : control.offLabel}</span>
-                </div>
-                <label className="switch">
-                  <input
-                    id={`layout-${control.field}`}
-                    data-testid={`layout-${control.field}`}
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(event) => onChange({ [control.field]: event.target.checked })}
-                  />
-                  <span className="switch-track" aria-hidden="true" />
-                </label>
+              <div className="layout-control" key={control.field}>
+                {/* 人话文案（「保留 / 不留」「显示 / 隐藏」）由 Switch 的 onLabel/offLabel 承载；
+                    CSS 关键字（block/none）只出现在下面的调试小字里，不怼给老师看（D59）。 */}
+                <Switch
+                  control={control.field}
+                  checked={checked}
+                  onLabel={control.onLabel}
+                  offLabel={control.offLabel}
+                  label={control.label}
+                  ariaLabel={control.label}
+                  testId={`layout-${control.field}`}
+                  onChange={(next) => onChange({ [control.field]: next })}
+                />
                 <p className="layout-control-hint">
-                  {/* 不要把 CSS 关键字（none/block/grid）怼给老师看：先给人类可读的状态，
-                      变量名与取值放在小字里，供老师端排查 / 与后端核对（D59） */}
                   {control.hint} · <code className="var-chip">{cssVar}</code>
                   <code className="var-chip">
                     {checked ? control.cssOn : control.cssOff}
@@ -192,31 +193,22 @@ export function LayoutPanel({
 
           const [min, max] = LAYOUT_BOUNDS[control.field];
           const value = layout[control.field];
+          // §4：Slider 必须显示当前数值与量纲（`4 题/行`、`2.0 cm`）
+          const valueText = `${control.decimals === 0 ? value.toFixed(0) : value.toFixed(control.decimals)} ${control.unit}`;
           return (
-            <div className="layout-control" key={control.field} data-control={control.field}>
-              <div className="layout-control-head">
-                <label htmlFor={`layout-${control.field}`}>{control.label}</label>
-                <span className="layout-control-value">
-                  {control.decimals === 0 ? value.toFixed(0) : value.toFixed(control.decimals)} {control.unit}
-                </span>
-              </div>
-              <input
-                id={`layout-${control.field}`}
-                data-testid={`layout-${control.field}`}
-                type="range"
+            <div className="layout-control" key={control.field}>
+              <Slider
+                control={control.field}
+                testId={`layout-${control.field}`}
+                label={control.label}
                 min={min}
                 max={max}
                 step={control.step}
                 value={value}
-                onChange={(event) =>
-                  onChange({ [control.field]: Number(event.target.value) })
-                }
+                valueText={valueText}
+                scaleLabels={[String(min), String(max)]}
+                onChange={(next) => onChange({ [control.field]: next })}
               />
-              <div className="layout-control-range">
-                <span>{min}</span>
-                <span>…</span>
-                <span>{max}</span>
-              </div>
               <p className="layout-control-hint">
                 {control.hint}
                 {control.screenNote ? (

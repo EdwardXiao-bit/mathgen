@@ -1,4 +1,13 @@
-/** 老师端外壳：顶部导航 + 后端可用性横幅 + 路由出口（契约 §7 的路由在 App.tsx 声明）。 */
+/**
+ * 老师端外壳 —— C1「工作台」骨架（D62）。
+ *
+ * 骨架：顶栏 44px（品牌 / 导航 / 后端连接状态）+ 主体。
+ * **底部状态条 34px 由卷页自己渲染**（C1 状态条要显示题目数、页码、行数、种子、保存状态，
+ * 这些只有卷页知道）。外壳不渲染它，是为了避免出现两条状态条。
+ *
+ * 后端可用性：顶栏的圆点 + 一条横幅。横幅文案按 I3 给「发生了什么 + 怎么办」，
+ * 不是丢一个 `Error` 出来。
+ */
 
 import { NavLink, Outlet } from 'react-router-dom';
 
@@ -12,7 +21,7 @@ export function TeacherShell() {
       <header className="app-header">
         <div className="app-brand">
           <span className="app-brand-mark">mathgen</span>
-          <span className="app-brand-sub">老师端 · M2</span>
+          <span className="app-brand-sub">老师端</span>
         </div>
         <nav className="app-nav">
           <NavLink to="/teacher" end className={({ isActive }) => (isActive ? 'nav-on' : '')}>
