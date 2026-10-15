@@ -33,9 +33,11 @@ backend/tests/e2e_m2/artifacts/
 backend/tests/e2e_m3/artifacts/
 backend/tests/e2e_*/artifacts/
 
-# 前端验收脚本的截图同理（可随时重跑生成）
-frontend/shot-*.png
-frontend/verify-*.png
+# 前端验收脚本的截图同理（可随时重跑生成）。
+# 规则按**目录**判定而不是按文件名前缀：frontend 根目录下的 png 一律是生成物。
+# （早先按 shot-* / verify-* 前缀写，fe-teacher 换个 vis-* 前缀就又漏进来了。）
+# 需要入库的样张截图在 frontend/mockups/ 子目录里，不受这条影响。
+frontend/*.png
 
 # ---------- 编辑器 / 操作系统 ----------
 .vscode/
