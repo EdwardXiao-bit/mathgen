@@ -284,12 +284,16 @@ code {
   /* width / height / transform / transform-origin 由组件按可用区算完写内联样式 */
 }
 
-/* 键盘 Tab 进入卷面时的焦点指示。
-   为什么用 `:focus-within` 而不是 iframe 自己的 `:focus-visible`：
-   Chromium **不渲染 iframe 的 outline**（实测规则命中、computed outline 仍是 none），
-   所以焦点环画在**包裹层**上 —— 视觉上等价于「卷面获得焦点」。
-   （判据 A3 的允许清单里写明了这一点。） */
-.mg-paper-stage:focus-within {
+/* 键盘 Tab 到卷面时的焦点指示（task-19）。
+   为什么环画在**包裹层**上、而且**不再用 `:focus-within`**：
+   Chromium 不把 `iframe` 当作 `:focus` / `:focus-within` 的触发者 —— 实测程序化 `.focus()`
+   时 `:focus-within` 会命中，但**真实 Tab 键走到 iframe 时 `iframe.matches(':focus') === false`**，
+   `:focus-within` 不命中，键盘用户看不到任何指示。
+   所以改由包裹层自己 `tabindex="0"` 接收焦点（iframe 设 `tabindex="-1"` 退出 Tab 顺序）；
+   它就是一个普通的可聚焦元素，`:focus-visible` 在这里**正常生效**，不受 iframe 特殊行为影响。
+   卷面是只读内容，键盘用户没有「进入它」的需求；保留 iframe 当独立 Tab 停靠点只会制造
+   一个**没有焦点指示的死停靠点** —— 那本身就是无障碍缺陷。 */
+.mg-paper-stage:focus-visible {
   outline: 2px solid var(--mg-primary);
   outline-offset: -2px;
   box-shadow: var(--mg-focus-ring);

@@ -49,10 +49,19 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 | `verify-structure.mjs` | **判据 A2/A3/A4/A7/A8**：组件必备状态（样式表规则 + 运行时测 `disabled` / `invalid` 文字原因 / Slider 量纲 / Switch 人话）、键盘可达与焦点环、状态条不谎报、空态与错误态分离、浮动层几何（不互压、不压纸面）、两个视口不横向溢出、纸面 A4 比例、顶栏 44 / 状态条 34 / 1280 侧栏收窄 | 交互类断言用 Playwright 真点真读（`data-state`、`aria-*`、`getBoundingClientRect`），不是看源码里有没写某个 class |
 | `verify-preview-scale.mjs` | **A9**：预览必须是**打印几何的等比缩小**。进到 iframe 文档里量：`.sheet` 计算宽度 = 793.7px ± 2（210mm@96dpi）、`padding-left/宽度 ≈ 0.0952`、`scaleX == scaleY`、题块高度一致（= 不换行）、两种视口下纸内几何不变 | **实测**从渲染结果反推缩放比（`rect.width / offsetWidth`），而不是读我们自己写进去的内联 `scale(k)` —— 后者只证明「我们写了 k」，不证明「浏览器按 k 渲染了」 |
 
-> **A3 的一处例外是逐条的**：Chromium **不渲染 iframe 的 outline**（实测规则命中但 computed outline 仍是 none）。
-> 所以把焦点环画在**包裹层 `.mg-paper-stage` 的 `:focus-within`** 上，判据拆成
-> 「除允许清单外每个 tab 到的元素都要有可见环」+「卷面真的获得焦点时包裹层出现可见环（功能断言）」，
-> 允许清单里写明是哪个元素与理由 —— 而不是把「必须可见」放宽成恒真。
+> **A3 焦点环（task-19 更正）**：环画在**包裹层 `.mg-paper-stage` 的 `:focus-visible`** 上，
+> 该层带 `tabindex="0"`，iframe 设 `tabindex="-1"` 退出 Tab 顺序。
+> **不要改回 `:focus-within`**：Chromium 不把 `iframe` 当作 `:focus` / `:focus-within` 的触发者 ——
+> 实测程序化 `.focus()` 时 `:focus-within` 会命中，但**真实 Tab 键走到 iframe 时不会**
+> （`iframe.matches(':focus') === false`），键盘用户会 Tab 到一个没有任何焦点指示的死停靠点。
+> 现在卷面这一站由包裹层正常承担，所以「每个 Tab 停靠点都要有可见环」可以**无豁免**成立
+> （33/33，比原先带 iframe 豁免的版本更强）。
+
+> **V9 · 断言必须能失败（负对照）**：任何新断言都要举出一个让它失败的输入，并在报告里给出实测结果。
+> 教训来自 task-17：我曾把 `(stage.outlineWidth ?? 0) > 0` 说成「功能断言、判据更强」——
+> 它其实**恒真**：`outline-width` 的 CSS 初值就是 `medium` = 3px，**与是否聚焦无关**
+> （实测未聚焦元素同样读到 `outlineStyle: none` + `outlineWidth: 3px`）。
+> 现在门禁⑦ 与门禁⑧ 里都跑了**负对照**，并把「该输入下断言为红」也打印出来。
 
 > **空态与错误态是两个状态，不共用槽位**（Lead 裁决）。`Table` 有独立的 `emptyAction` 与 `errorAction`：
 > 后者一旦传入，wrapper 的 `data-state` 就是 `error`。把 `ErrorState` 塞进 `emptyAction` 会让一个**错误**

@@ -182,48 +182,67 @@ with sync_playwright() as p:
     # ---- A3 / A2：键盘焦点 + 组件状态（在 1440 视口下做）----
     page = open_paper({"width": 1440, "height": 900})
 
-    # A3-a：Tab 走一遍，每条聚焦元素都要有可见焦点环
-    focus_ring = page.evaluate("""() => {
-        const out = [];
-        const seen = [];
-        for (let i = 0; i < 40; i++) {
-            const el = document.activeElement;
-            if (!el || el === document.body) break;
-            const cs = getComputedStyle(el);
-            const hasRing = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0;
-            const boxRing = cs.boxShadow && cs.boxShadow !== 'none';
-            seen.push({
-                tag: el.tagName.toLowerCase(),
-                cls: (el.className || '').toString().split(' ')[0],
-                testid: el.getAttribute && el.getAttribute('data-testid'),
-                outline: cs.outlineStyle + ' ' + cs.outlineWidth,
-                boxShadow: boxRing,
-                hasRing: Boolean(hasRing || boxRing),
-            });
-            break;
-        }
-        return seen;
-    }""")
-    # 逐个 Tab 收集
+    # A3-a：**用真实 Tab 键**走一遍，量**每个停靠点自己**的焦点环。
+    #
+    # 两条纪律（task-19 / V9）：
+    #   ① 不用 .focus() 程序化聚焦 —— 真实 Tab 与程序化聚焦在 iframe 上的行为**不同**
+    #      （实测：程序化聚焦会让包裹层 :focus-within 命中，真实 Tab 不会）。
+    #      拿程序化聚焦去证明「键盘可用」是错的。
+    #   ② 量的是 activeElement **自己的** computed 样式，不是某个固定容器 ——
+    #      否则每个停靠点都会量到同一个元素，看起来全都有环/全都没环。
     tab_focus = []
-    page.keyboard.press("Tab")
-    for _ in range(24):
+    page.evaluate("() => { document.activeElement && document.activeElement.blur(); document.body.focus(); }")
+    for _ in range(40):
+        page.keyboard.press("Tab")
+        page.wait_for_timeout(40)
         info = page.evaluate("""() => {
             const el = document.activeElement;
             if (!el || el === document.body) return null;
             const cs = getComputedStyle(el);
             const hasOutline = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0;
-            const hasShadow = cs.boxShadow && cs.boxShadow !== 'none';
-            return {tag: el.tagName.toLowerCase(),
-                    testid: el.getAttribute('data-testid'),
-                    cls: (el.className || '').toString().split(' ')[0],
-                    focusVisible: el.matches(':focus-visible'),
-                    hasRing: Boolean(hasOutline || hasShadow)};
+            const hasShadow = Boolean(cs.boxShadow && cs.boxShadow !== 'none');
+            return {
+                tag: el.tagName.toLowerCase(),
+                testid: el.getAttribute && el.getAttribute('data-testid'),
+                cls: (el.className || '').toString().split(' ')[0],
+                focusVisible: el.matches(':focus-visible'),
+                outlineStyle: cs.outlineStyle,
+                outlineWidth: cs.outlineWidth,
+                boxShadow: cs.boxShadow,
+                hasRing: Boolean(hasOutline || hasShadow),
+            };
         }""")
-        if info:
-            tab_focus.append(info)
-        page.keyboard.press("Tab")
+        if not info:
+            break
+        tab_focus.append(info)
     result["tab_focus"] = tab_focus
+    result["tab_stop_count"] = len(tab_focus)
+    result["tab_stops_without_ring"] = [
+        {k: v for k, v in s.items() if k in ("tag", "testid", "outlineStyle", "outlineWidth", "boxShadow", "hasRing")}
+        for s in tab_focus if not s["hasRing"]
+    ]
+
+    # A3-a 的**负对照**：断言必须是「聚焦 AND 有可见环」的合取，并且**在未聚焦时确实为红**。
+    # 这条负对照是本轮新增的硬要求（V9）——只写「outlineWidth > 0」会**恒真**，
+    # 因为 'outline-width' 的 CSS 初值就是 'medium' = 3px，与是否聚焦无关。
+    page.evaluate("() => { document.activeElement && document.activeElement.blur(); }")
+    page.wait_for_timeout(80)
+    result["focus_negative_control"] = page.evaluate("""() => {
+        const stage = document.querySelector('.mg-paper-stage');
+        const cs = getComputedStyle(stage);
+        const visibleRing = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0;
+        return {
+            activeIsStage: document.activeElement === stage,
+            outlineStyle: cs.outlineStyle,
+            outlineWidth: cs.outlineWidth,
+            boxShadow: cs.boxShadow,
+            visibleRing,
+            // 旧写法（只看宽度）在未聚焦时也成立 → 恒真
+            legacyCheck: (parseFloat(cs.outlineWidth) || 0) > 0,
+            // 新写法（聚焦 AND 可见环）在未聚焦时为 false → 会红
+            newCheck: (document.activeElement === stage) && visibleRing,
+        };
+    }""")
 
     # A3-b：Switch 的键盘可达（role=switch 用 Space 切换）。
     # 注意：data-testid 挂在 Switch 的外层行上，真正可聚焦的是里面的 [role=switch] 按钮，
@@ -323,34 +342,47 @@ with sync_playwright() as p:
         return {
             hasFocusVisibleRule: styles.some(t => t.includes(':focus-visible')),
             hasFocusRingToken: styles.some(t => t.includes('--mg-focus-ring')),
-            // 卷面焦点环的规则是否已定义。
-            // task-17 起改成**包裹层 :focus-within**：verify 实测 Chromium 不渲染 iframe
-            // 自身的 outline，所以把环画在 .mg-paper-stage 上（见 styles.css 注释）。
-            // 字段名保留 iframeRule 是为了不改动消费端；它断言的含义没变 ——
-            // 「键盘 Tab 到卷面时有可见焦点指示」。
-            iframeRule: styles.some(t => t.includes('.mg-paper-stage') && t.includes(':focus-within')),
+            // 卷面焦点环的规则是否已定义（task-19：包裹层 tabindex=0 + 自己的 :focus-visible）
+            iframeRule: styles.some(t => t.includes('.mg-paper-stage') && t.includes(':focus-visible')),
         };
     }""")
 
-    # A3：卷面焦点环的**功能**验证（不只是「样式表里有这条规则」）。
-    # task-17：环画在包裹层 .mg-paper-stage 上（iframe 自身 outline 在 Chromium 不渲染）。
-    # 做法：让包裹层进入 :focus-within（聚焦 iframe），再量包裹层的 computed outline。
-    page.eval_on_selector("#sheet-frame", "el => el.focus()")
-    page.wait_for_timeout(150)
-    result["iframe_focus_ring"] = page.evaluate("""() => {
-        const stage = document.querySelector('.mg-paper-stage');
-        const iw = document.querySelector('#sheet-frame');
-        if (!stage) return {note: '未找到 .mg-paper-stage'};
-        const cs = getComputedStyle(stage);
-        return {
-            focusedTag: document.activeElement ? document.activeElement.tagName.toLowerCase() : null,
-            stageMatchesFocusWithin: stage.matches(':focus-within'),
-            outlineStyle: cs.outlineStyle,
-            outlineWidth: parseFloat(cs.outlineWidth) || 0,
-            outlineColor: cs.outlineColor,
-            iframeOwnOutline: iw ? parseFloat(getComputedStyle(iw).outlineWidth) || 0 : null,
-        };
-    }""")
+    # A3：卷面焦点环 —— 用**真实 Tab 键**走到卷面，量包裹层自己的 computed 环。
+    #
+    # task-19 的更正：task-17 那版用 '.focus()' 程序化聚焦 iframe，量到 'stage :focus-within' 为真，
+    # 于是写出「功能断言」。但那是**假绿**：
+    #   ① 真实 Tab 时 Chromium 不把 iframe 当 ':focus' 触发者，':focus-within' 不命中；
+    #   ② 那条断言用的是 'outlineWidth > 0'，而 'outline-width' 的初值是 'medium'=3px，
+    #      未聚焦时同样为真 —— **恒真**（负对照见 result["focus_negative_control"]）。
+    # 现在：环由包裹层 'tabindex="0"' + ':focus-visible' 承担，且用真实 Tab 验证。
+    page.evaluate("() => { document.activeElement && document.activeElement.blur(); document.body.focus(); }")
+    stage_reached = None
+    for _ in range(40):
+        page.keyboard.press("Tab")
+        page.wait_for_timeout(40)
+        probe = page.evaluate("""() => {
+            const stage = document.querySelector('.mg-paper-stage');
+            if (document.activeElement !== stage) {
+                return {isStage: false,
+                        activeTag: document.activeElement ? document.activeElement.tagName.toLowerCase() : null};
+            }
+            const cs = getComputedStyle(stage);
+            return {
+                isStage: true,
+                activeIsStage: true,
+                stageMatchesFocus: stage.matches(':focus'),
+                stageMatchesFocusVisible: stage.matches(':focus-visible'),
+                outlineStyle: cs.outlineStyle,
+                outlineWidth: cs.outlineWidth,
+                outlineColor: cs.outlineColor,
+                boxShadow: cs.boxShadow,
+                hasVisibleRing: cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0,
+            };
+        }""")
+        if probe.get("isStage"):
+            stage_reached = probe
+            break
+    result["iframe_focus_ring"] = stage_reached or {"isStage": False, "note": "Tab 40 次未到达 .mg-paper-stage"}
 
     page.close()
     browser.close()
@@ -535,30 +567,41 @@ async function main() {
     'A3 焦点环使用 --mg-focus-ring 令牌',
     result.focus_ring_used?.hasFocusRingToken === true,
   );
-  // Chromium 对 iframe **不渲染** outline（实测：即使规则命中，computed outline 仍是 none）。
-  // 这是浏览器行为，不是样式缺失，所以判据拆成两条而不是放宽成「允许没有环」：
-  //   ① 除豁免清单外，每个 tab 到的元素都必须有可见环；
-  //   ② iframe 那条豁免**不能只是「不写」** —— task-17 起把环画在包裹层 `.mg-paper-stage`
-  //      上（`:focus-within`），并且**实测它在卷面获得焦点时真的有 outline**（下面第二条断言）。
-  //      「豁免」在这里的含义是「不画在 iframe 自身」，不是「可以不画」。
-  const RING_EXEMPT = new Set(['sheet-frame']); // 理由：Chromium 不渲染 iframe 的 outline
+  // 焦点环的画法（task-19 更正）：
+  //   Chromium 不把 `iframe` 当作 `:focus` / `:focus-within` 的触发者 —— **真实 Tab** 走到 iframe 时
+  //   `iframe.matches(':focus') === false`，所以 task-17 的 `:focus-within` 方案对键盘**永远不生效**。
+  //   现在由包裹层 `.mg-paper-stage` 自己 `tabindex="0"` 接收焦点（iframe 设 `tabindex="-1"` 退出 Tab 顺序），
+  //   环是它自己的 `:focus-visible`。
+  //
+  // 判据**不再需要 iframe 豁免**：卷面这一站现在是一个正常的可聚焦元素，
+  // 所以「每个 Tab 停靠点都要有可见环」可以**无例外**地成立。这比原来带豁免的版本更强。
   const withRing = tabFocus.filter((f) => f.hasRing).length;
   const ringMissing = tabFocus.filter((f) => !f.hasRing);
-  const unexpectedMissing = ringMissing.filter((f) => !RING_EXEMPT.has(f.testid));
   check(
-    'A3 除允许清单外，每个 tab 到的元素都有可见焦点环',
-    tabFocus.length > 0 && unexpectedMissing.length === 0,
-    `有环 ${withRing}/${tabFocus.length}；豁免 ${JSON.stringify(ringMissing.map((f) => f.testid))}（理由：Chromium 不渲染 iframe 的 outline）`,
+    'A3 每个 Tab 停靠点都有可见焦点环（无豁免 —— 卷面这一站由包裹层承担）',
+    tabFocus.length > 0 && ringMissing.length === 0,
+    `有环 ${withRing}/${tabFocus.length}；无环的是 ${JSON.stringify(result.tab_stops_without_ring ?? [])}`,
   );
   check(
-    'A3 卷面焦点环改成包裹层 :focus-within 规则（豁免不等于不写）',
+    'A3 卷面焦点环由包裹层 :focus-visible 规则承担',
     result.focus_ring_used?.iframeRule === true,
     JSON.stringify(result.focus_ring_used),
   );
   check(
-    'A3 卷面真的获得焦点时，包裹层出现可见焦点环（功能断言，不只是「规则存在」）',
-    (result.iframe_focus_ring?.outlineWidth ?? 0) > 0,
+    'A3 用**真实 Tab** 走到卷面时，包裹层出现可见焦点环（:focus + 可见 outline 的合取）',
+    result.iframe_focus_ring?.isStage === true
+      && result.iframe_focus_ring?.stageMatchesFocus === true
+      && result.iframe_focus_ring?.hasVisibleRing === true,
     JSON.stringify(result.iframe_focus_ring),
+  );
+  // V9（负对照，硬要求）：断言必须能失败。这里直接构造「未聚焦」的输入，
+  // 并同时给出**旧写法**在同一输入下的结果 —— 旧写法在未聚焦时也为真，即恒真。
+  const neg = result.focus_negative_control ?? {};
+  check(
+    'A3 负对照：未聚焦时该断言为红（旧的 outlineWidth>0 写法在同样输入下为真 = 恒真）',
+    neg.newCheck === false,
+    `未聚焦：activeIsStage=${neg.activeIsStage} outlineStyle=${neg.outlineStyle} outlineWidth=${neg.outlineWidth} ` +
+      `visibleRing=${neg.visibleRing} → 旧写法=${neg.legacyCheck}（恒真）新写法=${neg.newCheck}（应为 false）`,
   );
   check(
     'A3 开关键盘可达：Space 能切换 aria-checked',

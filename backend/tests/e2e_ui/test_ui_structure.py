@@ -486,12 +486,15 @@ class TestA3Keyboard(UiRuntimeCase):
                          return {outline: cs.outlineStyle + ' ' + cs.outlineWidth,
                                  shadow: cs.boxShadow,
                                  focusVisible: el.matches(':focus-visible')}; }""")
-                # 「豁免不等于不写」：` .sheet-frame:focus-visible` 规则必须真的存在
-                iframe_rule_exists = any(".sheet-frame" in sel and ":focus-visible" in sel
-                                         for sel, _body in parse_rules(
-                                             open(STYLES, encoding="utf-8").read()))
+                # 「豁免不等于不写」：环改画在包裹层 `.mg-paper-stage:focus-within` 上
+                # （task-17 起），规则必须真的存在。**注意**：该规则对 iframe 聚焦**不会触发**
+                # （Chromium 不把 iframe 元素当 `:focus` 触发者）——功能判定见
+                # `test_ui_a9.py::TestA9FocusRingClosed`。
+                iframe_rule_exists = any(
+                    ".mg-paper-stage" in sel and ":focus-within" in sel
+                    for sel, _body in parse_rules(open(STYLES, encoding="utf-8").read()))
                 self.assertTrue(iframe_rule_exists,
-                                "A3：iframe 已获豁免，但 .sheet-frame:focus-visible 规则不存在")
+                                "A3：卷面焦点环的包裹层 :focus-within 规则不存在")
                 # 豁免的理由（Chromium 不匹配 iframe 的 :focus-visible）由我独立复测并记录：
                 # 键盘 Tab **确实**到达了 iframe，但浏览器不给 :focus-visible —— 逐条、有理由。
                 with open(os.path.join(ARTIFACTS, "a3-iframe-focus.json"), "w",

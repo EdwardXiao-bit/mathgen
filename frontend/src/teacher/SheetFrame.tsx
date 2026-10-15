@@ -170,8 +170,17 @@ export function SheetFrame({
   const scaledH = A4_HEIGHT_PX * scale;
 
   return (
-    // 测量层：始终占满可用区（不随缩放变化），缩放后的纸面在其中居中
-    <div className="mg-paper-stage" ref={stageRef}>
+    // 测量层：始终占满可用区（不随缩放变化），缩放后的纸面在其中居中。
+    //
+    // 焦点（task-19）：**由这一层自己接收键盘焦点**（`tabindex="0"`），iframe 退出 Tab 顺序
+    // （`tabindex="-1"`）。为什么不继续用 `:focus-within`：
+    // 实测（Playwright + Chromium）——程序化 `.focus()` iframe 时 `:focus-within` 会命中，
+    // 但**真实 Tab 键走到 iframe 时 `iframe.matches(':focus') === false`**，`:focus-within` 不命中，
+    // 于是键盘用户 Tab 到卷面看不到任何焦点指示（verify 在 task-18 实测到这一点）。
+    // 卷面是**只读内容**（像一张图片），键盘用户没有「进入它」的需求；
+    // 把它留作独立 Tab 停靠点只会制造一个**没有焦点指示的死停靠点** —— 那本身就是无障碍缺陷。
+    // 所以：Tab 停在包裹层上并显环，iframe 不再单独参与 Tab。
+    <div className="mg-paper-stage" ref={stageRef} tabIndex={0} aria-label="卷面预览（只读）">
       {/* 缩放后的占位盒：明确给出缩放后的尺寸，让「居中」按真实视觉尺寸算
           （若直接居中未缩放的 793.7px 元素，居中结果会偏） */}
       <div className="mg-paper-scaler" style={{ width: `${scaledW}px`, height: `${scaledH}px` }}>
@@ -182,6 +191,8 @@ export function SheetFrame({
           className="sheet-frame"
           title="卷面预览（后端渲染）"
           src={src}
+          // 退出 Tab 顺序：焦点由外层包裹层承担（见上）
+          tabIndex={-1}
           // iframe 的内容视口 = 真实 A4（不再被容器钳制），这是 A9 的根修
           style={{
             width: `${A4_WIDTH_PX}px`,
