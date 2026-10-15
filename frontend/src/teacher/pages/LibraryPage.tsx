@@ -116,7 +116,7 @@ export function LibraryPage() {
     <div className="library-page">
       <header className="page-intro">
         <h1>卷库</h1>
-        <p>生成过的卷都在这里，可再次打开、重打印（FR-T14）。也可以直接用卷号打开历史卷（FR-T15）。</p>
+        <p>生成过的卷都在这里，可以再次打开、重新打印，也可以直接用卷号打开一套历史卷。</p>
       </header>
 
       <div className="library-toolbar">

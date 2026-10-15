@@ -331,15 +331,22 @@ export const OP_OPTIONS: ReadonlyArray<OptionMeta<OpName>> = [
   { value: '÷', label: '除法 ÷' },
 ];
 
-/** 数值范围档位 —— 与 `docs/00-决策记录.md` D16《数值范围档位表》逐条对应。 */
+/**
+ * 数值范围档位 —— 与 `docs/00-决策记录.md` D16《数值范围档位表》逐条对应。
+ *
+ * ⚠️ `value` 是**接口取值**（`PaperConfigIn.ranges` 里的 `R1`…`R7`），一个字都不能改；
+ * 而 `label` 是**给老师看的**，不得再带 `R1 · ` 这种内部档位编号 ——
+ * 那是决策文档里的表编号，和 `D56` 属于同一类内部标识，对老师是纯噪音（用户反馈，D70）。
+ * 判据 A10 会扫渲染后的可见文本，`R\d+` 现在也在黑名单里。
+ */
 export const RANGE_OPTIONS: ReadonlyArray<OptionMeta<RangeName>> = [
-  { value: 'R1', label: 'R1 · 20 以内加减法', hint: '一年级' },
-  { value: 'R2', label: 'R2 · 100 以内加减法（含进位 / 退位）', hint: '一~二年级' },
-  { value: 'R3', label: 'R3 · 表内乘除法（九九表范围内）', hint: '二~三年级' },
-  { value: 'R4', label: 'R4 · 两位数 × 一位数、两位数 ÷ 一位数', hint: '三~四年级' },
-  { value: 'R5', label: 'R5 · 三位数 × 两位数、三位数 ÷ 两位数', hint: '四年级以上' },
-  { value: 'R6', label: 'R6 · 四位数及以上多位数加减', hint: '四年级以上' },
-  { value: 'R7', label: 'R7 · 老师自定义上限（最大不超过 N）', hint: '分层教学用' },
+  { value: 'R1', label: '20 以内加减法', hint: '一年级' },
+  { value: 'R2', label: '100 以内加减法（含进位 / 退位）', hint: '一~二年级' },
+  { value: 'R3', label: '表内乘除法（九九表范围内）', hint: '二~三年级' },
+  { value: 'R4', label: '两位数 × 一位数、两位数 ÷ 一位数', hint: '三~四年级' },
+  { value: 'R5', label: '三位数 × 两位数、三位数 ÷ 两位数', hint: '四年级以上' },
+  { value: 'R6', label: '四位数及以上多位数加减', hint: '四年级以上' },
+  { value: 'R7', label: '老师自定义上限（最大不超过 N）', hint: '分层教学用' },
 ];
 
 /** 题型 —— 与 D17「口算横式 / 脱式（递等式）/ 填空求未知数」对应。 */
@@ -391,10 +398,11 @@ export function validateConfig(config: PaperConfigIn): string[] {
     problems.push('「除法必须整除」与「允许有余数」互斥，只能选一个');
   }
   if (config.ranges.includes('R7')) {
+    // 文案里说的是**老师勾的那一项**的名字（「老师自定义上限」），不是内部档位编号 `R7`。
     if (config.max_value === null || Number.isNaN(config.max_value)) {
-      problems.push('选了 R7 就必须填「最大不超过 N」');
+      problems.push('勾了「老师自定义上限」就必须填一个最大不超过的数');
     } else if (config.max_value < CONFIG_BOUNDS.max_value_min) {
-      problems.push(`R7 的自定义上限必须 ≥ ${CONFIG_BOUNDS.max_value_min}`);
+      problems.push(`自定义上限必须 ≥ ${CONFIG_BOUNDS.max_value_min}`);
     }
   }
   if (config.count < CONFIG_BOUNDS.count[0] || config.count > CONFIG_BOUNDS.count[1]) {

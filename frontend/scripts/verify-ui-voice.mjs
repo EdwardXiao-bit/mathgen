@@ -152,16 +152,50 @@ DEV_SCAN = """() => {
         if (!own) continue;
         if (!vis(el)) continue;
         const f = [];
-        const dec = own.match(/\bD\d+\b/g);
-        if (dec) f.push('决策编号:' + dec.join(','));
+        // ---- 内部编号族：不靠枚举「我记得的那些」，而是按**形状**覆盖本项目全部编号族 ----
+        // D=决策、R=数值范围档、Q=需求问答、NFR=非功能需求、FR=功能需求、M=里程碑。
+        // 教训：A10 第一版是**枚举黑名单**（只列了 D\d+ / --xxx / FR-xx），
+        // 于是漏掉了 R1–R7（数值范围档位），被 Lead 看图抓到。枚举永远不完整。
+        const families = [
+            ['决策编号', /\\bD\\d+\\b/g],
+            ['数值范围档', /\\bR\\d+\\b/g],
+            ['需求问答', /\\bQ\\d+\\b/g],
+            ['非功能需求', /\\bNFR-\\d+/g],
+            ['功能需求', /\\bFR-[A-Z]?\\d+/g],
+            ['里程碑', /\\bM\\d+\\b/g],
+            // 判据编号族（A1..A11 是我们自己的验收判据编号）。
+            // 单列出来不是为了"抓更多"，而是为了让下面那条 A4 例外**有意义** ——
+            // 例外必须以「这一族确实会被检查」为前提；否则「放行 A4」就是空放行，
+            // 而负对照（注入 A9 应被抓）会立刻把这种空放行暴露出来。
+            ['判据编号', /\\bA\\d+\\b/g],
+        ];
+        for (const [label, re] of families) {
+            const m = own.match(re);
+            if (m) f.push(label + ':' + m.join(','));
+        }
         const cssvar = own.match(/--[a-z][a-z0-9-]*/g);
         if (cssvar) f.push('CSS变量:' + cssvar.join(','));
         const kw = own.match(/\b(none|block|grid|flex|inline)\b/g);
         if (kw) f.push('CSS关键字:' + kw.join(','));
-        const fr = own.match(/\bFR-[A-Z]?\d+/g);
-        if (fr) f.push('需求编号:' + fr.join(','));
         if (/uvicorn|\/api\/|http:\/\/127\.|SQLite|JSON|stepwise|paper\.[a-z_]/.test(own)) f.push('内部实现');
         if (/\b(undefined|null|NaN)\b/.test(own)) f.push('未定义值');
+
+        // ---- 具名例外（不是把整类放过）----
+        // 'A4' 是**纸型**，老师需要看到（"打印成 A4 卷子"是正确信息）。
+        // 它与 'R1' 形状相同（单字母 + 数字），所以必须有一个例外，
+        // 但例外写成「精确匹配哪些串」的白名单，而不是把 'A\\d+' 整类放过 ——
+        // 否则 'A9'（我们自己的判据编号）漏到界面上也不会被发现。
+        const PAPER_SIZE_ALLOW = ['A4'];
+        const filtered = f.map((item) => {
+            const idx = item.indexOf(':');
+            if (idx === -1) return item;
+            const label = item.slice(0, idx);
+            const values = item.slice(idx + 1).split(',').filter((v) => !PAPER_SIZE_ALLOW.includes(v));
+            return values.length ? label + ':' + values.join(',') : null;
+        }).filter(Boolean);
+        f.length = 0;
+        f.push(...filtered);
+
         if (f.length) hits.push({cls: (typeof el.className === 'string' ? el.className : el.tagName).slice(0, 44),
                                  text: own.slice(0, 110), found: f});
     }

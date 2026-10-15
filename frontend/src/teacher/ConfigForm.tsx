@@ -134,7 +134,7 @@ export function ConfigForm({
 
       <section className="dim-card" data-dimension="ranges">
         <h2>
-          <span className="dim-index">②</span> 数值范围（R1–R7，可多选）
+          <span className="dim-index">②</span> 数值范围（可多选）
         </h2>
         <div className="range-list">
           {RANGE_OPTIONS.map((option) => (

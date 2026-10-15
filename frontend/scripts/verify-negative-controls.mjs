@@ -162,12 +162,39 @@ DEV_SCAN = """() => {
         if (!own) continue;
         if (!vis(el)) continue;
         const f = [];
-        const dec = own.match(/\\bD\\d+\\b/g);
-        if (dec) f.push('决策编号:' + dec.join(','));
+        // 与门禁⑩ 逐字一致：按**编号族形状**覆盖，而不是枚举我想到的那几个。
+        // 教训：第一版只列了 D\\d+ / --xxx / FR-xx，漏掉了 R1-R7；扩的时候又发现
+        // 旧的正则 [A-Z]? 只允许一个字母，抓不到 fr-t14 这类三字母写法。
+        const families = [
+            ['决策编号', /\\bD\\d+\\b/g],
+            ['数值范围档', /\\bR\\d+\\b/g],
+            ['需求问答', /\\bQ\\d+\\b/g],
+            ['非功能需求', /\\bNFR-\\d+/g],
+            ['功能需求', /\\bFR-[A-Z]?\\d+/g],
+            ['里程碑', /\\bM\\d+\\b/g],
+            ['判据编号', /\\bA\\d+\\b/g],
+        ];
+        for (const [label, re] of families) {
+            const m = own.match(re);
+            if (m) f.push(label + ':' + m.join(','));
+        }
         const cssvar = own.match(/--[a-z][a-z0-9-]*/g);
         if (cssvar) f.push('CSS变量:' + cssvar.join(','));
         const kw = own.match(/\\b(none|block|grid|flex|inline)\\b/g);
         if (kw) f.push('CSS关键字:' + kw.join(','));
+
+        // 具名例外：A4 是纸型，老师需要看到。只放行精确串，不放过整个 A\\d+ 族。
+        const PAPER_SIZE_ALLOW = ['A4'];
+        const filtered = f.map((item) => {
+            const idx = item.indexOf(':');
+            if (idx === -1) return item;
+            const label = item.slice(0, idx);
+            const values = item.slice(idx + 1).split(',').filter((v) => !PAPER_SIZE_ALLOW.includes(v));
+            return values.length ? label + ':' + values.join(',') : null;
+        }).filter(Boolean);
+        f.length = 0;
+        f.push(...filtered);
+
         if (f.length) hits.push({cls: (typeof el.className === 'string' ? el.className : el.tagName).slice(0, 44),
                                  text: own.slice(0, 110), found: f});
     }
@@ -304,6 +331,29 @@ with sync_playwright() as p:
     }""")
     dev_page.wait_for_timeout(200)
     result["a10"]["with_keyword"] = dev_page.evaluate(DEV_SCAN)
+    # 哨兵 2b：数值范围档编号（R1）—— 这是 Lead 看图抓到的那一类，必须有负对照兜住，
+    # 否则将来有人为了变绿把 R\\d+ 从黑名单删掉，门禁不会红。
+    dev_page.evaluate("""() => {
+        const s = document.getElementById('negative-control-devtext');
+        s.textContent = 'R1 · 20 以内加减法';
+    }""")
+    dev_page.wait_for_timeout(200)
+    result["a10"]["with_range_id"] = dev_page.evaluate(DEV_SCAN)
+    # 哨兵 2c：**例外项** A4 —— 纸型是老师要看的信息，检测器**不应**报。
+    # 这条与上一条成对：证明「按形状覆盖 + 具名例外」既抓得住 R1，又不会误伤 A4。
+    dev_page.evaluate("""() => {
+        const s = document.getElementById('negative-control-devtext');
+        s.textContent = '打印成 A4 卷子';
+    }""")
+    dev_page.wait_for_timeout(200)
+    result["a10"]["with_a4_allowed"] = dev_page.evaluate(DEV_SCAN)
+    # 哨兵 2d：同形状但**不在**例外清单里的 A9 —— 必须被抓（证明例外是"具名"而非"整类放过"）
+    dev_page.evaluate("""() => {
+        const s = document.getElementById('negative-control-devtext');
+        s.textContent = '判据 A9 未通过';
+    }""")
+    dev_page.wait_for_timeout(200)
+    result["a10"]["with_a9_not_allowed"] = dev_page.evaluate(DEV_SCAN)
     # 哨兵 3：仅视觉隐藏（display:none）→ 检测器**不应**报（证明判据看的是"可见"而不是"存在"）
     dev_page.evaluate("""() => {
         const s = document.getElementById('negative-control-devtext');
@@ -485,6 +535,20 @@ async function main() {
   console.log(
     `  把哨兵改成 display:none：命中 ${(a10.hidden_sentinel ?? []).length} 处  ← 应为 0（判据看"可见"而非"存在"）`,
   );
+  const rangeIdHit = (a10.with_range_id ?? []).find((h) => (h.text ?? '').includes('R1'));
+  const a9Hit = (a10.with_a9_not_allowed ?? []).find((h) => (h.text ?? '').includes('A9'));
+  console.log(
+    `  注入「R1 · 20 以内加减法」：命中 ${(a10.with_range_id ?? []).length} 处` +
+      `  → ${rangeIdHit ? JSON.stringify(rangeIdHit.found) : '(未抓到！)'}   ← 必须抓到`,
+  );
+  console.log(
+    `  注入「打印成 A4 卷子」（**例外项**）：命中 ${(a10.with_a4_allowed ?? []).length} 处` +
+      `   ← 必须为 0（A4 是纸型，老师要看）`,
+  );
+  console.log(
+    `  注入「判据 A9 未通过」（同形状但**不在**例外清单）：命中 ${(a10.with_a9_not_allowed ?? []).length} 处` +
+      `  → ${a9Hit ? JSON.stringify(a9Hit.found) : '(未抓到！)'}   ← 必须抓到（证明例外是具名的，不是整类放过）`,
+  );
   record(
     'A10 基线：真实页面可见文本里 0 处开发者文本',
     (a10.baseline ?? []).length === 0,
@@ -501,6 +565,21 @@ async function main() {
     'A10 负对照：注入裸 CSS 关键字（block）→ 判据变红',
     Boolean(keywordHit) && keywordHit.found.some((f) => f.startsWith('CSS关键字')),
     keywordHit ? JSON.stringify(keywordHit.found) : '未抓到',
+  );
+  record(
+    'A10 负对照：注入数值范围档编号（R1）→ 判据变红（这类曾被枚举黑名单漏掉）',
+    Boolean(rangeIdHit) && rangeIdHit.found.some((f) => f.startsWith('数值范围档')),
+    rangeIdHit ? JSON.stringify(rangeIdHit.found) : '未抓到',
+  );
+  record(
+    'A10 例外项：「A4」（纸型）**不**被判为违规 —— 老师需要看到它',
+    (a10.with_a4_allowed ?? []).length === 0,
+    `命中 ${(a10.with_a4_allowed ?? []).length} 处`,
+  );
+  record(
+    'A10 例外是**具名**的：同形状的「A9」仍会被抓（不是把 A\\d+ 整类放过）',
+    Boolean(a9Hit),
+    a9Hit ? JSON.stringify(a9Hit.found) : '未抓到',
   );
   record(
     'A10 负对照有效性：把哨兵 display:none 后**不再**命中（证明判据看的是可见性，不是「源码里有」）',

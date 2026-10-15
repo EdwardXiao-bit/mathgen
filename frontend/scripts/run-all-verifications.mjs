@@ -91,6 +91,36 @@ if (!existsSync(PYTHON)) {
   process.exit(2);
 }
 
+// ---- 前置自检：门禁脚本自身的健康 ----
+// 这门禁脚本用 String.raw 承载内联 Python，体内一个反引号就会让模板提前终止，
+// 报出与真实原因毫不相关的 SyntaxError。M3.5 期间连踩五次，所以做成**前置检查**：
+// 与其等到某条门禁神秘报错，不如在这里明说。
+{
+  const preflight = [
+    {
+      name: '门禁脚本自检：内联 Python 模板块里没有反引号',
+      cmd: process.execPath,
+      args: [path.join(__dirname, 'fix-inline-python-backticks.mjs')],
+    },
+    {
+      name: '门禁脚本自检：修复工具本身通过自检（只改体内、不动界定符与体外 JS）',
+      cmd: process.execPath,
+      args: [path.join(__dirname, 'fix-inline-python-backticks.mjs'), '--self-test'],
+    },
+  ];
+  for (const step of preflight) {
+    console.log(`\n${'='.repeat(72)}\n${step.name}\n${'='.repeat(72)}`);
+    const proc = spawnSync(step.cmd, step.args, { cwd: FRONTEND_DIR, stdio: 'inherit' });
+    if (proc.status !== 0) {
+      console.error(
+        `\n前置自检未通过：${step.name}\n` +
+          `修复内联 Python 里的反引号：node scripts/fix-inline-python-backticks.mjs --write`,
+      );
+      process.exit(2);
+    }
+  }
+}
+
 const results = [];
 for (const step of steps) {
   console.log(`\n${'='.repeat(72)}\n${step.name}\n${'='.repeat(72)}`);
