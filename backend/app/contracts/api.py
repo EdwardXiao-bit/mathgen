@@ -36,6 +36,11 @@ ROUTES = {
     "sheet": "/api/papers/{paper_id}/sheet",
     "export": "/api/papers/{paper_id}/export",
     "qr": "/api/papers/{paper_id}/qr",
+    # ---- M4 学生端（D74 / D75 / D76）----
+    "create_student": "/api/students",
+    "student_paper": "/api/student/paper/{code}",
+    "student_practice": "/api/student/practice",
+    "submit_attempt": "/api/attempts",
 }
 
 PaperStatus = Literal["draft", "published"]
