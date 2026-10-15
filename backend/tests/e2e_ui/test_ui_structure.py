@@ -18,12 +18,11 @@ import asyncio
 import json
 import os
 import re
-import socket
 import subprocess
 import sys
 import threading
-import time
 import unittest
+import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,6 +47,7 @@ if not os.path.exists(VPY):
 # 指给 Playwright，并把产品的 `browser_session` / `session` 原样 re-export 出来）。
 if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
+from tests._uvicorn_boot import boot_uvicorn, free_port  # noqa: E402,F401
 from tests.e2e_m2._browser import browser_session, session  # noqa: E402
 
 
@@ -79,28 +79,33 @@ def ensure_dist_fresh() -> str:
 # 服务与浏览器工具
 # --------------------------------------------------------------------------
 
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
-
-
 class RealServer:
     """真实后端 + 静态产物（M3 起一条命令即托管界面）。
 
     `static_dir` 可指向**另一份构建产物副本**（用于「不改产品源码」的负对照实验）。
+
+    端口**不再事先用 `free_port()` 留位**（那是 TOCTOU：探测到的端口可能被别的套接字
+    在这之后抢走，Windows 上表现为误导性的 `WinError 10013`）。改用 `boot_uvicorn`：
+    bind 失败（有证据）就换端口重试，其它失败一次都不重试。
     """
 
     def __init__(self, static_dir: str | None = None, db_path: str | None = None):
-        self.port = free_port()
+        self.port = None                    # 起服务时才定（见 boot_uvicorn）
+        self.attempts: list = []
         self.static_dir = static_dir
         self.db_path = db_path
         self.process = None
 
+    def _command(self, port: int) -> list[str]:
+        return [VPY, "-m", "uvicorn", "app.main:app", "--app-dir", "backend",
+                "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"]
+
     def __enter__(self):
         env = dict(os.environ)
         env.update({
-            "MATHGEN_DB": self.db_path or os.path.join(ARTIFACTS, f"ui-{self.port}.db"),
+            # 端口要等 boot 完才知道，所以库名用随机后缀（多次尝试共享同一个库）
+            "MATHGEN_DB": self.db_path or os.path.join(
+                ARTIFACTS, f"ui-{uuid.uuid4().hex[:8]}.db"),
             "MATHGEN_PW_TMP": os.path.join(REPO, ".tmp-pw"),
             "PYTHONIOENCODING": "utf-8",
         })
@@ -108,30 +113,9 @@ class RealServer:
             env["MATHGEN_STATIC_DIR"] = self.static_dir
         else:
             env.pop("MATHGEN_STATIC_DIR", None)
-        self.process = subprocess.Popen(
-            [VPY, "-m", "uvicorn", "app.main:app", "--app-dir", "backend",
-             "--host", "127.0.0.1", "--port", str(self.port), "--log-level", "warning"],
-            cwd=REPO, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding="utf-8", errors="replace")
-        self._wait()
+        self.process, self.port, self.attempts = boot_uvicorn(
+            self._command, cwd=REPO, env=env, timeout=40.0)
         return self
-
-    def _wait(self, timeout=40):
-        import httpx
-
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if self.process.poll() is not None:
-                raise AssertionError(
-                    f"uvicorn 提前退出：{(self.process.stdout.read() or '')[-400:]}")
-            try:
-                if httpx.get(f"http://127.0.0.1:{self.port}/api/papers",
-                             timeout=2.0).status_code == 200:
-                    return
-            except Exception:
-                pass
-            time.sleep(0.3)
-        raise AssertionError("服务未就绪")
 
     def __exit__(self, *exc):
         if self.process:

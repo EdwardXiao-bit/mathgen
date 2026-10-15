@@ -21,11 +21,10 @@ import io
 import json
 import os
 import re
-import socket
 import subprocess
 import sys
-import time
 import unittest
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BACKEND = os.path.dirname(os.path.dirname(HERE))
@@ -47,6 +46,7 @@ os.makedirs(ARTIFACTS, exist_ok=True)
 from fastapi.testclient import TestClient          # noqa: E402
 
 from app.main import create_app                    # noqa: E402
+from tests._uvicorn_boot import boot_uvicorn       # noqa: E402
 
 VPY = os.path.join(BACKEND, ".venv", "Scripts", "python.exe")
 if not os.path.exists(VPY):                        # 非 Windows / 非常规布局时退回当前解释器
@@ -167,12 +167,6 @@ def db_payloads(paper_id: int) -> list[dict]:
             text("SELECT seq, payload FROM paper_item WHERE paper_id = :pid ORDER BY seq"),
             {"pid": paper_id}).fetchall()
     return [{"seq": row[0], "payload": json.loads(row[1])} for row in rows]
-
-
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
 
 
 def _step_marker(item: dict) -> str:
@@ -484,45 +478,39 @@ class TestAnswerLayoutSwitches(M3Case):
 # 判据 3：一条命令启动（无 Vite）
 # --------------------------------------------------------------------------
 
-class TestSingleCommandStartup(unittest.TestCase):
-    """只用 `uvicorn app.main:app --app-dir backend`（不借助 Vite）验证四条路径。"""
+def startup_command(port: int) -> list[str]:
+    """「一条命令启动」用的命令行（`--app-dir backend`，不借助 Vite）。
 
-    def _start(self, port: int, extra_env: dict | None = None):
-        db = os.path.join(ARTIFACTS, f"startup-{port}.db")
+    单独抽出来是因为 `report_evidence.part_c()` 也要打印同一条命令 —— 两处必须同源，
+    否则证据里贴的命令和真正跑的命令会漂移。
+    """
+    return [VPY, "-m", "uvicorn", "app.main:app", "--app-dir", "backend",
+            "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"]
+
+
+class TestSingleCommandStartup(unittest.TestCase):
+    """只用 `uvicorn app.main:app --app-dir backend`（不借助 Vite）验证四条路径。
+
+    端口不再事先 `free_port()` 留位（TOCTOU，task-33）：交给 `boot_uvicorn`
+    边起边定，bind 失败（有证据）就换端口重试，其它失败一次都不重试。
+    """
+
+    def _command(self, port: int) -> list[str]:
+        return startup_command(port)
+
+    def _boot(self, extra_env: dict | None = None):
+        """起一个真实 uvicorn，返回 `(process, port)`。库名用随机后缀（端口起来后才知道）。"""
         env = dict(os.environ)
         env.update({
-            "MATHGEN_DB": db,
+            "MATHGEN_DB": os.path.join(ARTIFACTS, f"startup-{uuid.uuid4().hex[:8]}.db"),
             "PYTHONIOENCODING": "utf-8",
             "MATHGEN_PW_TMP": os.path.join(REPO, ".tmp-pw"),
         })
         env.pop("MATHGEN_STATIC_DIR", None)
         if extra_env:
             env.update(extra_env)
-        process = subprocess.Popen(
-            [VPY, "-m", "uvicorn", "app.main:app", "--app-dir", "backend",
-             "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-            cwd=REPO, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding="utf-8", errors="replace")
-        return process
-
-    def _wait_ready(self, port: int, process, timeout=40.0):
-        import httpx
-
-        deadline = time.time() + timeout
-        last = None
-        while time.time() < deadline:
-            if process.poll() is not None:
-                output = process.stdout.read() if process.stdout else ""
-                self.fail(f"uvicorn 提前退出（rc={process.returncode}）：{output[-800:]}")
-            try:
-                response = httpx.get(f"http://127.0.0.1:{port}/api/papers", timeout=2.0)
-                if response.status_code == 200:
-                    return
-                last = response.status_code
-            except Exception as exc:                       # noqa: BLE001
-                last = type(exc).__name__
-            time.sleep(0.4)
-        self.fail(f"服务未在 {timeout}s 内就绪（最后一次：{last}）")
+        process, port, _attempts = boot_uvicorn(self._command, cwd=REPO, env=env, timeout=40.0)
+        return process, port
 
     def _stop(self, process):
         process.terminate()
@@ -534,10 +522,8 @@ class TestSingleCommandStartup(unittest.TestCase):
     def test_one_command_serves_ui_api_and_docs(self):
         import httpx
 
-        port = free_port()
-        process = self._start(port)
+        process, port = self._boot()
         try:
-            self._wait_ready(port, process)
             base = f"http://127.0.0.1:{port}"
             with httpx.Client(base_url=base, timeout=15.0, follow_redirects=False) as client:
                 for path, check in self._checks():
@@ -576,11 +562,9 @@ class TestSingleCommandStartup(unittest.TestCase):
         """静态目录缺失时**照常启动**（只提供 API）—— 用 MATHGEN_STATIC_DIR 指向不存在的目录。"""
         import httpx
 
-        port = free_port()
         missing = os.path.join(ARTIFACTS, "no-such-dist")
-        process = self._start(port, {"MATHGEN_STATIC_DIR": missing})
+        process, port = self._boot({"MATHGEN_STATIC_DIR": missing})
         try:
-            self._wait_ready(port, process)
             with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=15.0) as client:
                 self.assertEqual(client.get("/api/papers").status_code, 200)
                 ui = client.get("/teacher")

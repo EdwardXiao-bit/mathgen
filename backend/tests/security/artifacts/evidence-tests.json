@@ -1,0 +1,363 @@
+[
+  {
+    "name": "real_path_http_boundary",
+    "injected": [
+      "tags",
+      "answer"
+    ],
+    "http_body_item_keys": [
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ]
+    ],
+    "conclusion": "response_model 过滤掉了越权键 → 只查 HTTP 体查不出『投影多写键』"
+  },
+  {
+    "name": "constructed_http_leak",
+    "violation": "构造：真实外壳 + 真实被改宽的题目对象: $.items[0] 键集=['answer', 'display', 'question_type', 'seq', 'tags']，多出=['answer', 'tags']、缺少=[]（白名单恰好 ['display', 'question_type', 'seq']）",
+    "result": "HTTP 层判据会红"
+  },
+  {
+    "name": "real_path_http_dropped_item",
+    "violation": "真实 HTTP 响应（路由少发一题）: expected_items=4，但只探测到 3 个题目对象（数量对不上说明投影缺题或判据漏看）",
+    "result": "HTTP 层判据变红"
+  },
+  {
+    "name": "real_path_service_projection",
+    "violation": "真实服务层投影（注入 tags+answer）: $.items[0] 键集=['answer', 'display', 'question_type', 'seq', 'tags']，多出=['answer', 'tags']、缺少=[]（白名单恰好 ['display', 'question_type', 'seq']）",
+    "result": "守卫变红"
+  },
+  {
+    "name": "synthetic_negative_controls",
+    "cases": 10,
+    "result": "全部按预期拒绝"
+  },
+  {
+    "name": "student_paper_response",
+    "where": "GET /api/student/paper/{code}",
+    "code": "2610-0001",
+    "paper_id": 1,
+    "top_keys": [
+      "items",
+      "paper_id",
+      "title",
+      "total"
+    ],
+    "total": 6,
+    "item_keys": [
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ]
+    ],
+    "raw": {
+      "paper_id": 1,
+      "title": "安全契约验收卷",
+      "total": 6,
+      "items": [
+        {
+          "seq": 1,
+          "display": "45 + 3 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 2,
+          "display": "66 - 33 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 3,
+          "display": "91 + 8 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 4,
+          "display": "95 - 53 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 5,
+          "display": "56 + 9 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 6,
+          "display": "63 - 45 = ____",
+          "question_type": "oral"
+        }
+      ]
+    }
+  },
+  {
+    "name": "d74_recursive_walk",
+    "where": "POST /api/student/practice",
+    "item_paths": [
+      "$.items[0]",
+      "$.items[1]",
+      "$.items[2]",
+      "$.items[3]",
+      "$.items[4]"
+    ],
+    "all_item_keys": [
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ]
+    ],
+    "result": "pass"
+  },
+  {
+    "name": "mutated_real_response",
+    "tampered": "items 少一题（数量与 total 对不上）",
+    "violation": "真实响应副本（items 少一题（数量与 total 对不上））: expected_items=6，但只探测到 5 个题目对象（数量对不上说明投影缺题或判据漏看）"
+  },
+  {
+    "name": "teacher_reverse_assertion",
+    "where": "GET /api/papers/{id}",
+    "answers": {
+      "1": "48",
+      "2": "33",
+      "3": "99",
+      "4": "42",
+      "5": "65",
+      "6": "18"
+    },
+    "result": "pass"
+  },
+  {
+    "name": "student_practice_response",
+    "where": "POST /api/student/practice",
+    "top_keys": [
+      "items",
+      "seed",
+      "total"
+    ],
+    "total": 5,
+    "seed": 7,
+    "item_keys": [
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ],
+      [
+        "display",
+        "question_type",
+        "seq"
+      ]
+    ],
+    "raw": {
+      "seed": 7,
+      "total": 5,
+      "items": [
+        {
+          "seq": 1,
+          "display": "33 + 30 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 2,
+          "display": "54 - 22 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 3,
+          "display": "66 + 22 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 4,
+          "display": "76 - 72 = ____",
+          "question_type": "oral"
+        },
+        {
+          "seq": 5,
+          "display": "48 + 46 = ____",
+          "question_type": "oral"
+        }
+      ]
+    }
+  },
+  {
+    "name": "practice_seed_reproduction",
+    "seed": 7,
+    "identical": true
+  },
+  {
+    "name": "suite_independence",
+    "scanned": [
+      "__init__.py",
+      "_harness.py",
+      "_whitelist.py",
+      "test_attempt_boundary.py",
+      "test_negative_controls.py",
+      "test_student_whitelist.py"
+    ],
+    "offenders": []
+  },
+  {
+    "name": "nested_leak_contrast",
+    "naive_result": "放行",
+    "recursive_result": "嵌套泄漏（meta.questions[0].answer）: $.meta.questions[0] 键集=['answer', 'display', 'question_type', 'seq']，多出=['answer']、缺少=[]（白名单恰好 ['display', 'question_type', 'seq']）"
+  },
+  {
+    "name": "attempt_result_boundary",
+    "where": "POST /api/attempts（判分结果）",
+    "top_keys": [
+      "attempt_id",
+      "correct",
+      "items",
+      "total"
+    ],
+    "item_keys": [
+      "answer",
+      "display",
+      "is_correct",
+      "question_type",
+      "seq",
+      "student_answer"
+    ],
+    "answers_in_response": {
+      "1": "48",
+      "2": "33",
+      "3": "99"
+    },
+    "teacher_answers": {
+      "1": "48",
+      "2": "33",
+      "3": "99"
+    },
+    "answers_match_teacher": true,
+    "correct": 1,
+    "result": "pass（判分结果含答案，白名单不适用于此）"
+  },
+  {
+    "name": "attempt_result_forbidden_keys",
+    "where": "POST /api/attempts",
+    "scanned": [
+      "explanation",
+      "steps",
+      "tags",
+      "difficulty",
+      "signature",
+      "origin",
+      "expr",
+      "payload"
+    ],
+    "offenders": [],
+    "result": "pass"
+  },
+  {
+    "name": "attempt_boundary_whitelist_not_applicable",
+    "where": "POST /api/attempts",
+    "whitelist_verdict": "拒绝（预期如此）",
+    "whitelist_reason": "POST /api/attempts（判分结果，白名单不适用）: $.items[0] 键集=['answer', 'display', 'is_correct', 'question_type', 'seq', 'student_answer']，多出=['answer', 'is_correct', 'student_answer']、缺少=[]（白名单恰好 ['display', 'question_type', 'seq']）",
+    "answer_paths": [
+      "$.items[0]",
+      "$.items[1]",
+      "$.items[2]"
+    ],
+    "result": "pass（白名单边界画在取题接口，未越界到判分接口）"
+  },
+  {
+    "name": "attempt_practice_mode_boundary",
+    "where": "POST /api/attempts（config+seed）",
+    "total": 4,
+    "item_keys": [
+      "answer",
+      "display",
+      "is_correct",
+      "question_type",
+      "seq",
+      "student_answer"
+    ],
+    "result": "pass"
+  },
+  {
+    "name": "attempt_duplicate_replay",
+    "first_status": 201,
+    "second_status": 200,
+    "bodies_identical": true,
+    "error_envelope_present": false,
+    "result": "pass（重放 200 + 正常响应体）"
+  }
+]

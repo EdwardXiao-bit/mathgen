@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -91,34 +92,26 @@ def part_c() -> None:
     print("\n=== C. 一条命令启动（只用 uvicorn，无 Vite）===")
     import httpx
 
-    port = T.free_port()
-    cmd = [T.VPY, "-m", "uvicorn", "app.main:app", "--app-dir", "backend",
-           "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"]
     env = dict(os.environ)
-    env["MATHGEN_DB"] = os.path.join(ARTIFACTS, f"evidence-{port}.db")
+    env["MATHGEN_DB"] = os.path.join(ARTIFACTS, f"evidence-{uuid.uuid4().hex[:8]}.db")
     env.pop("MATHGEN_STATIC_DIR", None)
     env["PYTHONIOENCODING"] = "utf-8"
-    print("命令：" + " ".join(cmd[1:]))
 
     def run(extra_env, label):
         child_env = dict(env)
         child_env.update(extra_env)
-        process = subprocess.Popen(cmd, cwd=T.REPO, env=child_env,
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   text=True, encoding="utf-8", errors="replace")
         try:
-            deadline = __import__("time").time() + 40
-            while __import__("time").time() < deadline:
-                if process.poll() is not None:
-                    print(f"[{label}] 提前退出 rc={process.returncode}")
-                    return
-                try:
-                    if httpx.get(f"http://127.0.0.1:{port}/api/papers",
-                                 timeout=2.0).status_code == 200:
-                        break
-                except Exception:
-                    pass
-                __import__("time").sleep(0.4)
+            # task-33：不再 free_port() 留位（TOCTOU）；bind 失败会换端口重试
+            process, port, attempts = T.boot_uvicorn(
+                T.startup_command, cwd=T.REPO, env=child_env, timeout=40.0)
+        except AssertionError as exc:            # 启动失败：把证据打出来，不静默
+            print(f"[{label}] 启动失败：{exc}")
+            return
+        try:
+            print("命令：" + " ".join(T.startup_command(port)[1:]))
+            if len(attempts) > 1:
+                tried = " -> ".join(str(item["port"]) for item in attempts)
+                print(f"[{label}] 端口竞争：换过端口 {tried}")
             with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=15.0) as client:
                 for path in ("/teacher", "/teacher/paper/1", "/api/papers", "/docs"):
                     response = client.get(path)

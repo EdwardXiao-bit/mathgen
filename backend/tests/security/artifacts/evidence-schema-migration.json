@@ -1,0 +1,148 @@
+{
+  "probe": "old-db migration / DB-level unique index",
+  "production_before": {
+    "attempt_like_tables": [
+      "attempt",
+      "attempt_item"
+    ],
+    "attempt_exists": true,
+    "columns": [
+      "id",
+      "student_id",
+      "paper_id",
+      "config_json",
+      "total",
+      "correct",
+      "duration_ms",
+      "submitted_at"
+    ],
+    "has_attempt_uuid_column": false,
+    "unique_sets": [],
+    "has_target_unique_index": false,
+    "attempt_rows": 0
+  },
+  "production_path": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\data\\mathgen.db",
+  "production_mtime": 1792061332.274741,
+  "copy_before": {
+    "attempt_like_tables": [
+      "attempt",
+      "attempt_item"
+    ],
+    "attempt_exists": true,
+    "columns": [
+      "id",
+      "student_id",
+      "paper_id",
+      "config_json",
+      "total",
+      "correct",
+      "duration_ms",
+      "submitted_at"
+    ],
+    "has_attempt_uuid_column": false,
+    "unique_sets": [],
+    "has_target_unique_index": false,
+    "attempt_rows": 0
+  },
+  "copy_after_migration": {
+    "attempt_like_tables": [
+      "attempt",
+      "attempt_item"
+    ],
+    "attempt_exists": true,
+    "columns": [
+      "id",
+      "student_id",
+      "paper_id",
+      "config_json",
+      "total",
+      "correct",
+      "duration_ms",
+      "submitted_at",
+      "attempt_uuid"
+    ],
+    "has_attempt_uuid_column": true,
+    "unique_sets": [
+      {
+        "name": "uq_attempt_student_uuid",
+        "columns": [
+          "student_id",
+          "attempt_uuid"
+        ],
+        "origin": "c"
+      }
+    ],
+    "has_target_unique_index": true,
+    "attempt_rows": 0
+  },
+  "copy_after_second_run": {
+    "attempt_like_tables": [
+      "attempt",
+      "attempt_item"
+    ],
+    "attempt_exists": true,
+    "columns": [
+      "id",
+      "student_id",
+      "paper_id",
+      "config_json",
+      "total",
+      "correct",
+      "duration_ms",
+      "submitted_at",
+      "attempt_uuid"
+    ],
+    "has_attempt_uuid_column": true,
+    "unique_sets": [
+      {
+        "name": "uq_attempt_student_uuid",
+        "columns": [
+          "student_id",
+          "attempt_uuid"
+        ],
+        "origin": "c"
+      }
+    ],
+    "has_target_unique_index": true,
+    "attempt_rows": 0
+  },
+  "migration_idempotent": true,
+  "fresh_after_create_all": {
+    "attempt_like_tables": [
+      "attempt",
+      "attempt_item"
+    ],
+    "attempt_exists": true,
+    "columns": [
+      "id",
+      "student_id",
+      "attempt_uuid",
+      "paper_id",
+      "config_json",
+      "total",
+      "correct",
+      "duration_ms",
+      "submitted_at"
+    ],
+    "has_attempt_uuid_column": true,
+    "unique_sets": [
+      {
+        "name": "sqlite_autoindex_attempt_1",
+        "columns": [
+          "student_id",
+          "attempt_uuid"
+        ],
+        "origin": "u"
+      }
+    ],
+    "has_target_unique_index": true,
+    "attempt_rows": 0
+  },
+  "verdict": {
+    "orm_metadata_only": "be-paper 的用例断言的是 ORM 元数据，本探针补 DB 层",
+    "old_db_needed_migration": true,
+    "old_db_fixed_by_ensure_attempt_schema": true,
+    "fresh_db_has_unique_index_at_db_level": true,
+    "migration_idempotent": true
+  }
+}
