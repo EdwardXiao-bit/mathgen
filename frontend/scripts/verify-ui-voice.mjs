@@ -254,7 +254,61 @@ LIB_STATE_SCAN = """() => {
 def parse_rgb_unused(text):
     return None
 
-# 老师端 5 条 + 学生端 5 条（M4 扩 mock 后补齐答题页与交卷结果页）。
+# M5 成绩页的**结构**证据（D80）。
+#
+# 为什么不能只靠 A10：A10 能证明成绩页没有开发者术语，但证明不了「显示的分数来自后端」。
+# 界面若自己用 Math.round(correct / total * 100) 算一遍，A10 一样干净 —— 而两个口径
+# 在 (40, 23) 上分别是 57 / 58（23/40*100 在 IEEE754 里是 57.49999999999999）。
+# 所以这里把**渲染出来的分数文本**与**同一行上的 data-score 属性（后端原值）**一起抓回来，
+# 在 JS 侧比对：两者必须相等，且必须等于契约值 58。
+ATT_STATE_SCAN = """() => {
+    const all = (sel) => Array.from(document.querySelectorAll(sel));
+    const rows = all("[data-testid='attempts-rows'] tr");
+    return {
+        rows: rows.length,
+        // 逐行带走 id / 渲染文本 / data-score：**不能只看第一行** ——
+        // student-paper-flow 用例会真的交一次卷，那条新成绩的 submitted_at 最新，
+        // 于是排在第一行；只看首行就会把"刚交的那份"当成夹具去断言（本判据第一版
+        // 就是这么红的：文本="0"）。
+        cells: rows.map((tr) => ({
+            id: tr.getAttribute('data-attempt-id'),
+            attr: tr.getAttribute('data-score'),
+            text: (tr.querySelector("[data-testid='attempts-score']") || {}).innerText ?? null,
+            paperCode: tr.getAttribute('data-paper-code'),
+            practice: Boolean(tr.querySelector("[data-testid='attempts-practice-label']")),
+            hasNullText: /(^|\\s)(undefined|null|NaN)(\\s|$)/.test(tr.innerText),
+        })),
+        practiceLabels: all("[data-testid='attempts-practice-label']").length,
+        nullTexts: rows.filter((tr) =>
+            /(^|\\s)(undefined|null|NaN)(\\s|$)/.test(tr.innerText)).length,
+        exportButtons: all("[data-testid='attempts-export-csv']").length
+            + all("[data-testid='attempts-export-xlsx']").length,
+        // 空态：卡片要求成绩页「含空态」。空态**不能靠没有人报错**来证明 ——
+        // 一个白屏页面同样「没有报错」。所以把空态标题抓回来，由 JS 侧断言它非空、
+        // 且说的是人话（还有一个世界是「有数据」，用来证明这条判据不是恒真）。
+        emptyTitle: (document.querySelector("[data-testid='attempts-empty']") || {}).innerText
+            ?.split('\\n')[0] ?? null,
+    };
+}"""
+
+# 逐题明细页：行数必须等于 summary 里的「总题数」，且每行都带对错标记与两个答案。
+ATT_DETAIL_SCAN = """() => {
+    const all = (sel) => Array.from(document.querySelectorAll(sel));
+    const rows = all("[data-testid='attempt-detail-rows'] tr");
+    return {
+        rows: rows.length,
+        scoreText: (document.querySelector("[data-testid='attempt-detail-score']") || {}).innerText
+            ?? null,
+        correct: Array.from(rows).filter((tr) => tr.getAttribute('data-correct') === 'true').length,
+        studentAnswers: all("[data-testid='attempt-detail-row-student-answer']").length,
+        rightAnswers: all("[data-testid='attempt-detail-row-answer']").length,
+        verdicts: all("[data-testid='attempt-detail-row-verdict']").length,
+        seqs: rows.map((tr) => tr.getAttribute('data-seq')).slice(0, 3),
+    };
+}"""
+
+# 老师端 9 条（配置 / 卷库在用 / 卷库已归档 / 卷预览 / 卷预览-答案页 / 发布 / M5 成绩 /
+# M5 逐题明细 / M5 空态）+ 学生端 5 条（M4 扩 mock 后补齐答题页与交卷结果页）。
 #
 # 学生端这几条**都带身份预置**（见下面的 STUDENT_IDENTITY/_seed_identity）：
 # 不预置的话每条都会停在「先填一下姓名和学号」的身份门槛，只见得到表单；
@@ -284,6 +338,14 @@ CASES = [
     ("student-paper", "/student/paper/2610-0001", ".st-screen #st-answer"),
     ("student-paper-flow", "/student/paper/2610-0001", ".st-screen #st-answer"),
     ("student-result", "/student/result", ".st-screen"),
+    # M5 成绩（FR-T11 列表 / FR-T12 逐题明细）。明细用夹具 id 500：它是刻意挑的
+    # (total, correct) = (40, 23) 分叉点（契约 58 / 旧浮点口径 57），所以这条用例
+    # 顺手把「页面渲染的是后端 score 还是自己算的」也钉住了（见 ATT_STATE_SCAN）。
+    ("attempts", "/teacher/attempts", "[data-testid='attempts-rows'] tr"),
+    ("attempt-detail", "/teacher/attempts/500", "[data-testid='attempt-detail-rows'] tr"),
+    # 空态：卷 id 999999 在库里不存在 —— 不是「卷存在但没人做」，是「筛选条件一条都不命中」。
+    # 空态必须说人话、且**不能是白屏**（白屏同样没有 error、也没有开发者文本）。
+    ("attempts-empty", "/teacher/paper/999999/attempts", "[data-testid='attempts-empty']"),
 ]
 
 # 学生端「做卷子 → 交卷 → 结果页」的流程驱动。
@@ -444,6 +506,16 @@ with sync_playwright() as p:
         result["pages"][name] = {"devHits": page.evaluate(DEV_SCAN), "bg": page.evaluate(BG_SCAN)}
         if name.startswith("library"):
             result["pages"][name]["lib"] = page.evaluate(LIB_STATE_SCAN)
+        # M5 成绩页的**结构**证据（D80）：分数文本 / data-score / 自主练习文案 / 逐题行。
+        # 这一条与 A10 是两件事：A10 判「没有开发者术语」，这里判「显示的分数就是后端
+        # 给的那个数」——界面若自己算一遍，A10 一样干净（见 ATT_STATE_SCAN 的注释）。
+        if name == "attempts":
+            result["pages"][name]["att"] = page.evaluate(ATT_STATE_SCAN)
+        # 空态世界与有数据世界用**同一个**扫描函数 —— 两个世界要能给出不同结论。
+        if name == "attempts-empty":
+            result["pages"][name]["att"] = page.evaluate(ATT_STATE_SCAN)
+        if name == "attempt-detail":
+            result["pages"][name]["attDetail"] = page.evaluate(ATT_DETAIL_SCAN)
         if name == "library-archived":
             result["pages"][name]["tab_switch"] = archived_tab_switch
         # 卷库归档的**行为**证据（D78）：点第一行的「归档」，看三件事同时发生 ——
@@ -747,6 +819,89 @@ async function main() {
       (flow.devHits ?? []).map((h) => `"${h.text}"`).join(' ; ') || '0 处',
     );
   }
+
+  // ---- M5 成绩：得分只有一个来源（D80）------------------------------------
+  //
+  // 判据的形状：`渲染出来的分数文本` 必须等于 `接口给的 score`。单说这一句还不够 ——
+  // 若夹具的 (total, correct) 恰好让两种口径算出同一个数，这条判据对"界面自己算分"
+  // 完全不敏感（恒真）。所以夹具刻意选 (40, 23)：契约口径 58、旧浮点口径 57。
+  const att = result.pages?.attempts?.att ?? {};
+  const attDetail = result.pages?.['attempt-detail']?.attDetail ?? {};
+  const CONTRACT_SCORE = 58;
+  const NAIVE_SCORE = 57;
+  console.log('\n—— 成绩页与逐题明细（M5）：得分只有一个来源（D80）——');
+  console.log(`  成绩列表：${JSON.stringify(att)}`);
+  const fixture = (att.cells ?? []).find((row) => row.id === '500') ?? null;
+  const fresh = (att.cells ?? []).find((row) => row.id !== '500') ?? null;
+  check('成绩列表渲染出夹具行（>= 3 行）', (att.rows ?? 0) >= 3, `rows=${att.rows}`);
+  check(
+    '夹具行（id=500，total=40 / correct=23）渲染的分数 == 接口给的 score（58，契约口径）',
+    fixture !== null && fixture.text === String(CONTRACT_SCORE) && fixture.attr === String(CONTRACT_SCORE),
+    `文本=${JSON.stringify(fixture?.text)} data-score=${JSON.stringify(fixture?.attr)}`,
+  );
+  check(
+    '该夹具确实是两个口径的分叉点（旧浮点口径得到 57）—— 否则上面那条是恒真的',
+    Math.round((23 / 40) * 100) === NAIVE_SCORE && NAIVE_SCORE !== CONTRACT_SCORE,
+    `本地口径=${Math.round((23 / 40) * 100)} 契约=${CONTRACT_SCORE}`,
+  );
+  check(
+    '（合成负对照）把「界面自己算分」的世界喂进同一个判定必须变红 —— 证明上面那条判据在承重',
+    (fixture?.text === String(NAIVE_SCORE)) === false,
+    `若页面显示 ${NAIVE_SCORE} 而接口给 ${CONTRACT_SCORE}，判据会红`,
+  );
+  check(
+    '成绩列表确实排在夹具行之前（证明上面找的是夹具、不是碰巧的第一行）',
+    fresh === null || (att.cells ?? []).indexOf(fresh) < (att.cells ?? []).indexOf(fixture),
+    `最新一条 id=${JSON.stringify(fresh?.id)} 分数=${JSON.stringify(fresh?.text)}；夹具 id=500 在其后`,
+  );
+  check(
+    '自主练习行显示界面补的文案「自主练习」，不是空卷名',
+    (att.practiceLabels ?? 0) >= 1,
+    `标签数=${att.practiceLabels}`,
+  );
+  check(
+    '成绩行里没有 undefined/null/NaN 这类开发者文本（A10 明令）',
+    (att.nullTexts ?? 0) === 0,
+    `命中 ${att.nullTexts} 行`,
+  );
+  check('成绩页给出导出入口（CSV + xlsx）', (att.exportButtons ?? 0) >= 2, `按钮数=${att.exportButtons}`);
+  console.log(`  逐题明细：${JSON.stringify(attDetail)}`);
+  check('明细页逐题行数 == 总题数（夹具 40 题）', attDetail.rows === 40, `rows=${attDetail.rows}`);
+  check(
+    '明细页答对行数 == 接口的 correct（23）—— 逐题数据与汇总自洽',
+    attDetail.correct === 23,
+    `correct=${attDetail.correct}`,
+  );
+  check(
+    '每一行都同时给出「学生答案」与「正确答案」（复用学生端结果页的作答行结构）',
+    attDetail.studentAnswers === attDetail.rows && attDetail.rightAnswers === attDetail.rows,
+    `学生答案=${attDetail.studentAnswers} 正确答案=${attDetail.rightAnswers} 行=${attDetail.rows}`,
+  );
+  check(
+    '明细页的分数文本同样来自后端 score',
+    attDetail.scoreText === String(CONTRACT_SCORE),
+    JSON.stringify(attDetail.scoreText),
+  );
+
+  // ---- M5 空态（卡片明写「含空态」）-------------------------------------
+  //
+  // 空态**不能靠「没有报错」证明**：白屏同样不报错、同样没有开发者文本。
+  // 所以判据是「0 行 **且** 给出了一句人话标题」，并且用**有数据的那个世界**
+  // 再喂一次同一个谓词 —— 两态必须给出相反结论，否则这条是恒真的。
+  const attEmpty = result.pages?.['attempts-empty']?.att ?? {};
+  const emptyWorldLooksRight = (scan) =>
+    scan?.rows === 0 && typeof scan?.emptyTitle === 'string' && scan.emptyTitle.trim() !== '';
+  console.log(`  成绩页空态：${JSON.stringify(attEmpty)}`);
+  check(
+    '空态世界（卷 id 999999 无成绩）：0 行 + 一句人话标题（不是白屏）',
+    emptyWorldLooksRight(attEmpty),
+    `rows=${attEmpty.rows} title=${JSON.stringify(attEmpty.emptyTitle)}`,
+  );
+  check(
+    'V11 判别力：同一个谓词喂「有数据」的世界必须为假 —— 两态结论相反，判据不是恒真',
+    emptyWorldLooksRight(att) === false && att.rows > 0,
+    `有数据世界 rows=${att.rows} 空态谓词=${emptyWorldLooksRight(att)}`,
+  );
 
   // ---- --self-test：两条自带负对照的断言 ----
   if (result.self_test) {

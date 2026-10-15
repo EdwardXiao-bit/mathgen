@@ -31,6 +31,10 @@ export function asStoredResult(value: unknown): StoredResult | null {
   if (typeof value !== 'object' || value === null) return null;
   const parsed = value as Partial<StoredResult>;
   if (!parsed.result || !Array.isArray(parsed.result.items)) return null;
+  // D80：得分只能来自后端。升级前交的卷存在会话里的结果没有 `score`，
+  // 这里**不补算** —— 补算就等于把旧口径又留了一份，两条路会各自漂移。
+  // 返回 null 让结果页走「这里暂时没有结果」的说明，而不是渲染出 `undefined`。
+  if (typeof parsed.result.score !== 'number') return null;
   return {
     title: typeof parsed.title === 'string' ? parsed.title : '练习结果',
     source: parsed.source === 'paper' ? 'paper' : 'practice',

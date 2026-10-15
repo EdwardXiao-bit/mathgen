@@ -69,6 +69,15 @@ export interface AttemptResult {
   attempt_id: number | null;
   total: number;
   correct: number;
+  /**
+   * 得分（0..100 整数），**唯一来源是后端**（D80）。
+   *
+   * M5 前结果页自己用 `Math.round(correct / total * 100)` 算，与契约的
+   * `score_of(total, correct)` 是两套口径：`(40, 23)` 精确值 57.5，旧口径给 57、
+   * 契约给 58。两套算法并存就会出现「同一份成绩两个分数」而且**不会自己报错**，
+   * 所以这里只接受后端给的值，缺了就报错（见 `submitAttempt`）。
+   */
+  score: number;
   items: AttemptResultItem[];
 }
 
@@ -275,8 +284,22 @@ export async function submitAttempt(input: SubmitAttemptInput): Promise<AttemptR
     attempt_id: typeof value.attempt_id === 'number' ? value.attempt_id : null,
     total: typeof value.total === 'number' ? value.total : items.length,
     correct: typeof value.correct === 'number' ? value.correct : items.filter((i) => i.is_correct).length,
+    // D80：得分**不在这里算**。旧实现在结果页用 `correct / total` 复算了一遍，
+    // 那是一套独立的口径；缺字段时宁可报错，也不要悄悄换回旧算法。
+    score: readScore(value.score),
     items,
   };
+}
+
+function readScore(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    throw new StudentApiError(
+      'BAD_RESPONSE',
+      '判分响应缺少得分（score）：得分只能由后端给出（D80），前端不会自己算一遍',
+      200,
+    );
+  }
+  return raw;
 }
 
 /** 每次进入答题生成一个新的 UUID；**同一次提交重试必须复用同一个**（D76 幂等）。 */

@@ -43,6 +43,12 @@ export const ROUTES = {
   student_paper: '/api/student/paper/{code}',
   student_practice: '/api/student/practice',
   submit_attempt: '/api/attempts',
+  // ---- M5 成绩（FR-T11 / FR-T12 / FR-T13）----
+  // 与 `api.py` 的 ROUTES 同序。注意 `export_attempts` 与 `get_attempt` 只差一段路径，
+  // 后端靠**注册顺序**（字面量路由排在参数路由前）区分，前端这边只是常量，不参与匹配。
+  export_attempts: '/api/attempts/export',
+  list_attempts: '/api/attempts',
+  get_attempt: '/api/attempts/{attempt_id}',
 } as const;
 
 export type RouteName = keyof typeof ROUTES;
@@ -238,6 +244,120 @@ export interface PaperListQuery {
 
 /** 卷库分页的边界（与后端 Query 约束一致）。 */
 export const LIST_BOUNDS = {
+  limitMin: 1,
+  limitMax: 100,
+  defaultLimit: 20,
+} as const;
+
+// ---------------------------------------------------------------------------
+// M5 成绩（FR-T11 / FR-T12 / FR-T13）
+// 对应 api.py 的 AttemptItemOut / AttemptSummary / AttemptListOut / AttemptDetailOut
+// ---------------------------------------------------------------------------
+
+/**
+ * 一次作答里的**单题明细**（`AttemptItemOut`）。
+ *
+ * 与 `PaperItemOut` 的区别：这里回答的是「这题他答了什么、对不对」，没有
+ * `expr` / `difficulty` / `tags` / `steps`。`answer` 是**正确答案**，教师端明细页要显示它。
+ */
+export interface AttemptItemOut {
+  seq: number;
+  display: string;
+  question_type: QuestionTypeName;
+  answer: string;
+  /** 学生填的答案；后端没记下来时为 `null`（渲染成「未作答」，不要渲染 `undefined`）。 */
+  student_answer: string | null;
+  is_correct: boolean;
+}
+
+/**
+ * 成绩行（`AttemptSummary`）。
+ *
+ * **自主练习（D75）**：没有挂卷时 `paper_id` / `paper_code` / `paper_title`
+ * **三者都是 `null`**，接口**不返回**「自主练习」这类显示文案 —— 那几个字由界面层补齐。
+ *
+ * `score` 的唯一来源是后端 `score_of(total, correct)`（D80）。界面**不得**自己用
+ * `correct / total` 再算一遍：两套口径真的会分叉（旧浮点口径在 `(40, 23)` 给 57、
+ * 契约口径给 58），而分叉不会自己报错，只会让同一份成绩出现两个分数。
+ */
+export interface AttemptSummary {
+  id: number;
+  student_id: number;
+  student_name: string;
+  student_no: string;
+  paper_id: number | null;
+  paper_code: string | null;
+  paper_title: string | null;
+  total: number;
+  correct: number;
+  score: number;
+  duration_ms: number;
+  submitted_at: string;
+}
+
+/** 对应 `AttemptListOut`。 */
+export interface AttemptListOut {
+  /** 符合筛选条件的总数（不受 limit/offset 影响） */
+  total: number;
+  limit: number;
+  offset: number;
+  attempts: AttemptSummary[];
+}
+
+/**
+ * 对应 `AttemptDetailOut`：概要在前，逐题在 `items`。
+ *
+ * `items` 按 `seq` 升序，且 `total == items.length`（后端写路径保证）。
+ *
+ * 字段是**逐个写全**的，不是 `extends AttemptSummary`：契约门禁 ② 用
+ * `export interface (\w+) \{` 逐字匹配接口头，带 `extends` 的那行匹配不上，
+ * 会让「后端有这个模型、前端有没有对应接口」的判据报红。写全反而更直白：
+ * 这个接口就是 `AttemptSummary` 的十二个字段再加一个 `items`。
+ */
+export interface AttemptDetailOut {
+  id: number;
+  student_id: number;
+  student_name: string;
+  student_no: string;
+  paper_id: number | null;
+  paper_code: string | null;
+  paper_title: string | null;
+  total: number;
+  correct: number;
+  score: number;
+  duration_ms: number;
+  submitted_at: string;
+  items: AttemptItemOut[];
+}
+
+/** 成绩列表的查询参数 —— 契约 §5.3 的 `limit` / `offset` / `paper_id` / `q`。 */
+export interface AttemptListQuery {
+  limit: number;
+  offset: number;
+  /** 只看某套卷的成绩 */
+  paper_id?: number;
+  /** 姓名或学号模糊匹配；空串 = 不筛选（后端把空白当成没有筛选，不会 422） */
+  q?: string;
+}
+
+/** 成绩导出的格式（契约 §5.5：`csv` 默认 | `xlsx`）。 */
+export type AttemptExportFormat = 'csv' | 'xlsx';
+
+/**
+ * 导出的查询参数 —— **故意只有筛选，没有 `limit` / `offset`**。
+ *
+ * 导出导的是「当前筛选下的**全部**记录」，不是当前页（契约 §5.5）。分页字段在类型里
+ * 根本不存在，所以「顺手把当前页参数传下去」在编译期就无从发生 —— 这条是结构性的，
+ * 不是靠记得别写。
+ */
+export interface AttemptExportQuery {
+  format: AttemptExportFormat;
+  paper_id?: number;
+  q?: string;
+}
+
+/** 成绩分页的边界（与后端 Query 约束一致：`ge=1, le=100`，默认 20）。 */
+export const ATTEMPT_BOUNDS = {
   limitMin: 1,
   limitMax: 100,
   defaultLimit: 20,

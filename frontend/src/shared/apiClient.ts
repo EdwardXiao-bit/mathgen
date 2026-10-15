@@ -12,6 +12,12 @@
 import {
   route,
   type AnswerLayoutIn,
+  type AttemptDetailOut,
+  type AttemptExportQuery,
+  type AttemptItemOut,
+  type AttemptListOut,
+  type AttemptListQuery,
+  type AttemptSummary,
   type ErrorResponse,
   type LayoutIn,
   type PaperConfigIn,
@@ -274,6 +280,184 @@ function normalizePaperList(
   };
 }
 
+// ---------------------------------------------------------------------------
+// M5 成绩（FR-T11 / FR-T12 / FR-T13）的响应归一
+// ---------------------------------------------------------------------------
+
+/**
+ * 把一行成绩归一成 `AttemptSummary`。
+ *
+ * 两条规矩：
+ * 1. **`null` 不许变成 `undefined`**（A10 明令禁止渲染 `undefined`）。`paper_id` /
+ *    `paper_code` / `paper_title` 为 `null` 是**合法状态**（自主练习，D75），
+ *    界面据此显示「自主练习」；后端若整个键缺失（旧后端），补齐成同样的 `null`，
+ *    语义与契约默认值一致。
+ * 2. **`score` 缺失时抛错，不兜底算一遍**。兜底就意味着前端保留第二套得分算法，
+ *    而那正是 D80 要消灭的东西（两套口径会在 `(40, 23)` 这类点上分叉出 57 / 58，
+ *    且不会自己报错）。宁可让页面显示一条可读的错误。
+ */
+function normalizeAttempt(raw: unknown): AttemptSummary {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new ApiError('BAD_RESPONSE', '成绩行不是对象', 200);
+  }
+  const row = raw as Partial<AttemptSummary>;
+  if (typeof row.score !== 'number') {
+    throw new ApiError(
+      'BAD_RESPONSE',
+      '成绩行缺少 score 字段：得分只能由后端给出（D80），前端不会自己算一遍',
+      200,
+    );
+  }
+  return {
+    ...(row as AttemptSummary),
+    paper_id: row.paper_id ?? null,
+    paper_code: row.paper_code ?? null,
+    paper_title: row.paper_title ?? null,
+  };
+}
+
+/** 把列表响应归一成 `AttemptListOut`；缺 `attempts` 数组一律抛错，不让界面崩在 `.map` 上。 */
+function normalizeAttemptList(
+  payload: unknown,
+  limit: number,
+  offset: number,
+): AttemptListOut {
+  if (typeof payload !== 'object' || payload === null) {
+    throw new ApiError('BAD_RESPONSE', '成绩列表响应不是对象', 200);
+  }
+  const raw = payload as Partial<AttemptListOut>;
+  if (!Array.isArray(raw.attempts)) {
+    throw new ApiError('BAD_RESPONSE', '成绩列表响应缺少 attempts 数组', 200);
+  }
+  const attempts = raw.attempts.map(normalizeAttempt);
+  return {
+    total: typeof raw.total === 'number' ? raw.total : attempts.length,
+    limit: typeof raw.limit === 'number' ? raw.limit : limit,
+    offset: typeof raw.offset === 'number' ? raw.offset : offset,
+    attempts,
+  };
+}
+
+/** 把单题明细归一成 `AttemptItemOut`（`student_answer` 为 `null` = 未作答）。 */
+function normalizeAttemptItem(raw: unknown): AttemptItemOut {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new ApiError('BAD_RESPONSE', '成绩明细里的题目不是对象', 200);
+  }
+  const item = raw as Partial<AttemptItemOut>;
+  return {
+    ...(item as AttemptItemOut),
+    student_answer: item.student_answer ?? null,
+  };
+}
+
+/**
+ * 把明细响应归一成 `AttemptDetailOut`。
+ *
+ * 额外断言 `total === items.length`：契约说这条等式由后端**写路径**保证（不是用
+ * `len(items)` 凑出来的）。两处对不上时，页面上「答对 7/10」与列出的 10 行会自相矛盾，
+ * 而且**不会自己报错** —— 所以在这里变成一条可读的错误。
+ */
+function normalizeAttemptDetail(payload: unknown): AttemptDetailOut {
+  const summary = normalizeAttempt(payload);
+  const items = (payload as { items?: unknown }).items;
+  if (!Array.isArray(items)) {
+    throw new ApiError('BAD_RESPONSE', '成绩明细响应缺少 items 数组', 200);
+  }
+  const normalized = items.map(normalizeAttemptItem);
+  if (normalized.length !== summary.total) {
+    throw new ApiError(
+      'BAD_RESPONSE',
+      `成绩明细自相矛盾：总题数写的是 ${summary.total}，逐题明细却只有 ${normalized.length} 条`,
+      200,
+    );
+  }
+  return { ...summary, items: normalized };
+}
+
+/**
+ * 从 `Content-Disposition` 里取文件名。
+ *
+ * 后端**固定给两条**（`app/export/attempt_export.py:content_disposition`）：
+ * `filename="<ASCII 兜底>"` 与 `filename*=UTF-8''<百分号编码>`。因为文件名总是含中文
+ * （`成绩-YYYYMMDD-HHMM.csv`），ASCII 兜底会把「成绩」换成 `_`，所以**优先**用 `filename*`。
+ */
+function filenameFromDisposition(header: string | null): string {
+  if (!header) return '';
+  const extended = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (extended) {
+    try {
+      return decodeURIComponent(extended[1].trim());
+    } catch {
+      // 百分号编码坏了就走下面的 ASCII 兜底，不抛错
+    }
+  }
+  const plain = /filename="([^"]*)"/i.exec(header);
+  return plain ? plain[1] : '';
+}
+
+/**
+ * 取**文件流**（`GET /api/attempts/export`）。
+ *
+ * 不复用 `fetchRawDetails`：那个函数用 `response.text()` 读正文，而 xlsx 是二进制
+ * （ZIP 容器），按文本读一遍再编码回去会**直接损坏文件**。这里成功时取 `Blob`，
+ * 失败时仍按 JSON 错误体解析 —— 导出失败必须让人看见后端给的**真正原因**
+ * （D65：报错好过静默错；界面不许只弹一句「操作失败」）。
+ */
+async function fetchAttachment(
+  path: string,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<{ blob: Blob; filename: string; contentType: string }> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: { Accept: '*/*' },
+    });
+  } catch (error) {
+    const aborted = error instanceof DOMException && error.name === 'AbortError';
+    throw new ApiError(
+      'NETWORK_UNREACHABLE',
+      aborted
+        ? `导出超时（>${Math.round(timeoutMs / 1000)} 秒）：${path}`
+        : `导出时连接不上后端：${path}。请确认后端已启动后重试。`,
+      0,
+    );
+  } finally {
+    window.clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    let parsed: unknown = null;
+    if (text.length > 0) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = null;
+      }
+    }
+    if (isErrorResponse(parsed)) {
+      throw new ApiError(parsed.error.code, parsed.error.message, response.status);
+    }
+    throw new ApiError(
+      `HTTP_${response.status}`,
+      text.length > 0
+        ? `导出失败：后端返回 ${response.status}：${text.slice(0, 300)}`
+        : `导出失败：后端返回 ${response.status}，且没有给出原因`,
+      response.status,
+    );
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get('content-disposition')),
+    contentType: response.headers.get('content-type') ?? '',
+  };
+}
+
 export const teacherApi = {
   /** `POST /api/papers` —— 生成新卷（FR-T1 / FR-T2）。
    *
@@ -505,5 +689,55 @@ export const teacherApi = {
       method: 'POST',
     });
     return parsePaperDetail(payload);
+  },
+
+  // -------------------------------------------------------------------------
+  // M5 成绩（FR-T11 / FR-T12 / FR-T13）
+  // -------------------------------------------------------------------------
+
+  /**
+   * 成绩列表（FR-T11）。
+   *
+   * 分页 `limit` / `offset`，筛选 `paper_id`（只看某套卷）与 `q`（姓名或学号模糊匹配）。
+   * **排序由后端定**（`submitted_at` 倒序，同一时刻按 `id` 倒序保证稳定分页），
+   * 前端不再排一遍 —— 前端再排一次就会与后端的页边界打架，出现「同一行出现两次」
+   * 或「某一行谁也不显示」。
+   */
+  async listAttempts(query: AttemptListQuery): Promise<AttemptListOut> {
+    const params = new URLSearchParams();
+    params.set('limit', String(query.limit));
+    params.set('offset', String(query.offset));
+    if (query.paper_id !== undefined) params.set('paper_id', String(query.paper_id));
+    const q = query.q?.trim() ?? '';
+    if (q !== '') params.set('q', q);
+    const payload = await requestJson<unknown>(`${route('list_attempts')}?${params.toString()}`);
+    return normalizeAttemptList(payload, query.limit, query.offset);
+  },
+
+  /** 一次练习的逐题明细（FR-T12）：概要 + 每题对错与正确答案。 */
+  async getAttempt(attemptId: number): Promise<AttemptDetailOut> {
+    const payload = await requestJson<unknown>(route('get_attempt', { attempt_id: attemptId }));
+    return normalizeAttemptDetail(payload);
+  },
+
+  /**
+   * 导出**当前筛选下的全部记录**（FR-T13），返回文件字节交给界面自己触发下载。
+   *
+   * 只带 `format` / `paper_id` / `q`：**不传 `limit` / `offset`**。后端本来就不套用
+   * 分页（`export_attempts` 的签名里根本没有这两个参数），但前端传了就是把「当前页」
+   * 当成了「全部」——`AttemptExportQuery` 里根本没有分页字段，这里也不补。
+   *
+   * 不用「浏览器直接导航到该 URL」的写法：那样后端 500 时老师看到的是一屏 JSON，
+   * 而不是一句人话（D65）。取成 `Blob` 才能把失败渲染成提示。
+   */
+  async exportAttempts(
+    query: AttemptExportQuery,
+  ): Promise<{ blob: Blob; filename: string; contentType: string }> {
+    const params = new URLSearchParams();
+    params.set('format', query.format);
+    if (query.paper_id !== undefined) params.set('paper_id', String(query.paper_id));
+    const q = query.q?.trim() ?? '';
+    if (q !== '') params.set('q', q);
+    return fetchAttachment(`${route('export_attempts')}?${params.toString()}`, 60_000);
   },
 };

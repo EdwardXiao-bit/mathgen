@@ -1,0 +1,202 @@
+/*
+ * 成绩列表 / 逐题明细的**页面级**样式（FR-T11 / FR-T12 / FR-T13）。
+ *
+ * 为什么单独一个文件：`src/styles.css` 是全站样式表，且它不在本轮的写域内；
+ * 项目里已有先例 —— `student/student.css` 与 `teacher/pages/LibraryPage.css`
+ * 都是各自页面/端自己的样式文件。这里照同一条约定走。
+ *
+ * 两条必须守住的规矩（与 `src/ui/**` 相同）：
+ *   ① 颜色**只准**写 `var(--mg-*)`，不得出现颜色字面量（判据 A1 扫 `src/**`）；
+ *   ② 不给页面/`body` 换底色 —— 撞判据 A11「浅底铺满、灰底只留给画布」。
+ *
+ * 纯文字标签的排布（`page-intro` / `form-error` / 表格 / 按钮）已经由 `styles.css`
+ * 与 `ui/**` 负责，本文件只补这场页面新增的几块结构。
+ */
+
+.attempts-page {
+  display: block;
+}
+
+/* 卷子页跳过来时顶部的「当前卷子：…」——它是定位信息，不是正文。 */
+.attempts-paper-title {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12);
+}
+
+/* 工具栏：搜索 / 按卷号收窄 / 导出三组并排，窄屏换行。
+   （与 `.library-toolbar` 同一排布口径，但不去改全站样式表。） */
+.attempts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--mg-sp-6);
+  margin-bottom: var(--mg-sp-6);
+}
+
+.attempts-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.attempts-toolbar input {
+  padding: var(--mg-sp-3) var(--mg-sp-4);
+  border: 1px solid var(--mg-line-strong);
+  border-radius: var(--mg-radius);
+  background: var(--mg-surface);
+  color: var(--mg-ink);
+  font: inherit;
+  font-size: var(--mg-fs-12);
+}
+
+.attempts-search input {
+  width: 240px;
+}
+
+.attempts-code {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--mg-sp-4);
+}
+
+/* 导出按钮靠右，与左边两组筛选拉开距离 —— 它不是筛选，是动作。 */
+.attempts-export {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-3);
+  margin-left: auto;
+}
+
+/* 「导出的是全部还是当前页」是老师最需要先知道的一件事，所以放在按钮旁而不是 tooltip。 */
+.attempts-export-hint {
+  max-width: 260px;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+  line-height: 1.4;
+}
+
+.attempts-export-note,
+.attempts-filter-note {
+  margin-bottom: var(--mg-sp-4);
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12);
+}
+
+.attempts-summary {
+  margin-bottom: var(--mg-sp-4);
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12);
+}
+
+.attempts-summary b {
+  color: var(--mg-ink);
+  font-weight: 600;
+}
+
+.attempts-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-4);
+  margin-top: var(--mg-sp-5);
+}
+
+.attempts-pager-info {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+/* 姓名旁的学号 / 卷名旁的卷号：**补充**信息，压一档字号。 */
+.attempts-student-no,
+.attempts-paper-code {
+  margin-left: var(--mg-sp-3);
+  color: var(--mg-ink-faint);
+  font-size: var(--mg-fs-11);
+}
+
+.attempts-loading {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12);
+}
+
+/* ---------------------------------------------------------------------------
+ * 逐题明细
+ * ------------------------------------------------------------------------- */
+
+.attempt-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mg-sp-8);
+  margin-bottom: var(--mg-sp-8);
+}
+
+.attempt-detail-score-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mg-sp-1);
+  padding: var(--mg-sp-4) var(--mg-sp-8);
+  border: 1px solid var(--mg-line-strong);
+  border-radius: var(--mg-radius);
+  background: var(--mg-surface);
+}
+
+.attempt-detail-score-label {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.attempt-detail-score {
+  color: var(--mg-accent);
+  font-size: var(--mg-fs-16);
+  font-weight: 700;
+}
+
+.attempt-detail-pairs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--mg-sp-4) var(--mg-sp-8);
+  margin: 0;
+}
+
+.attempt-detail-pairs div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-1);
+}
+
+.attempt-detail-pairs dt {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.attempt-detail-pairs dd {
+  margin: 0;
+  color: var(--mg-ink);
+  font-size: var(--mg-fs-13);
+}
+
+/* 题目原文可能较长，允许换行而不是把表格撑出横向滚动。 */
+.attempt-detail-display {
+  display: inline-block;
+  max-width: 320px;
+  word-break: break-word;
+}
+
+/* 错的地方用错误色、对的地方用成功色 —— 对错是这张表存在的理由，不能被压成灰字。 */
+.attempt-detail-wrong {
+  color: var(--mg-danger);
+}
+
+.attempt-detail-ok {
+  color: var(--mg-success);
+}
+
+.attempt-detail-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mg-sp-4);
+  margin-top: var(--mg-sp-6);
+}

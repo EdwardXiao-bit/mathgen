@@ -442,6 +442,399 @@ let MOCK_CODE_SEQ = 20;
 //: 与 `app/routers/urls.py` 的 `STUDENT_PAPER_PATH` 一致（发布响应里拼 student_url 用）
 const STUDENT_PAPER_PATH = '/student/paper';
 
+// ---------------------------------------------------------------------------
+// M5 成绩（FR-T11 / FR-T12 / FR-T13）
+//
+// 这一段的形状来源是**真实实现**，不是记忆：
+//   · `backend/app/contracts/api.py` 的 `AttemptSummary` / `score_of`
+//   · `backend/app/export/attempt_export.py` 的列顺序 / BOM / 文件名 / Content-Disposition
+//     / `format_duration`
+// ---------------------------------------------------------------------------
+
+/**
+ * `contracts.api.score_of()` 的逐字复刻（D80）。
+ *
+ * 为什么 mock 必须**照抄契约公式**，而不是随手 `Math.round(correct / total * 100)`：
+ * 老口径在 `(40, 23)` 上给 **57**、契约口径给 **58**（`23/40*100` 在 IEEE754 里是
+ * `57.49999999999999`）。如果 mock 用老口径，前端「自己再算一遍分」的缺陷会被 mock
+ * 喂着跑而全绿 —— 判据和被测代码犯同一个错，是最难发现的一种错。
+ */
+function scoreOf(total, correct) {
+  if (!Number.isFinite(total) || total <= 0) return 0;
+  const clamped = Math.max(0, Math.min(correct, total));
+  return Math.floor((clamped * 200 + total) / (2 * total));
+}
+
+/**
+ * 用时文案，与 `attempt_export.py:format_duration` 逐条对齐：
+ * 只到「分/秒」两级、毫秒**截断**、`0`/负数 → `0秒`、超过 1 小时也只进「分」。
+ */
+function formatDuration(durationMs) {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return '0秒';
+  const totalSeconds = Math.trunc(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+}
+
+/** 卷子三件套；自主练习（D75）没有挂卷 → 三者都是 `null`。 */
+function paperInfoOf(paperId) {
+  if (!Number.isInteger(paperId)) return { paper_id: null, paper_code: null, paper_title: null };
+  const detail = MOCK_DETAILS.get(paperId);
+  if (!detail) return { paper_id: null, paper_code: null, paper_title: null };
+  return { paper_id: detail.id, paper_code: detail.code ?? null, paper_title: detail.title };
+}
+
+/** 学生 id → `{name, no}`。`MOCK_STUDENTS` 是「键 → id」，这里反查。 */
+function studentOf(studentId) {
+  for (const [key, id] of MOCK_STUDENTS.entries()) {
+    if (id === studentId) {
+      const [name, no] = key.split('\u0000');
+      return { name, no };
+    }
+  }
+  return { name: '未知学生', no: String(studentId ?? '') };
+}
+
+/**
+ * 造 `total` 道题，前 `correct` 道对；**最后一题若为错则故意留空**（`null` = 未作答）。
+ *
+ * `student_answer` 由正确答案派生（错的那道改成另一个数），所以「逐题明细」与
+ * 「答对几题」在数据里是自洽的 —— 判据可以独立复算一遍来交叉验证，而不是只能信 summary。
+ */
+function buildAttemptItems(total, correct, base) {
+  return Array.from({ length: total }, (_, index) => {
+    const seq = index + 1;
+    const left = base + index * 3;
+    const right = 20 + (index % 9);
+    const answer = String(left + right);
+    const isCorrect = index < correct;
+    let studentAnswer = isCorrect ? answer : String(left + right + (index % 3) + 1);
+    if (!isCorrect && index === total - 1) studentAnswer = null;
+    return {
+      seq,
+      display: `${left} + ${right} =`,
+      question_type: 'oral',
+      answer,
+      student_answer: studentAnswer,
+      is_correct: isCorrect,
+    };
+  });
+}
+
+/**
+ * 列表 / 明细用的行：`id` → `{summary, items}`。**预置 + 学生刚交上来的**。
+ *
+ * 与 `MOCK_ATTEMPTS`（交卷响应的重放缓存）**分开存**：交卷响应体的形状被逐键比对
+ * 脚本钉着（`{attempt_id,total,correct,items}`），往里加 `student_name` 之类的字段
+ * 会让门禁第 ⑫ 步报一条**并不存在的**差异。
+ *
+ * 第一条预置成绩**刻意**是 `(40, 23)`：这是 `score_of` 与旧浮点口径在真实题量
+ * 上限内仅有的两个分叉点之一（另一个是 `(80, 46)`），拿它当夹具，「前端自己算分」
+ * 才会被真的抓住（见 `scoreOf` 的注释）。
+ */
+const MOCK_ATTEMPT_ROWS = new Map();
+const MOCK_SEEDED_ATTEMPTS = [
+  {
+    id: 500,
+    student_name: '张三',
+    student_no: '9001',
+    // 卷库里 `has_attempts: seq === 6` 的那一套（id 105 / 卷号 2610-0006）。
+    // 两者指的是同一套卷：改这一条就必须同时改 `MOCK_LIBRARY` 里那个标记，
+    // 负对照第 12 组会断言两者一致，防止它们悄悄分叉。
+    paperId: LIBRARY_ID_BASE + 5,
+    total: 40,
+    correct: 23,
+    duration_ms: 83000,
+    submitted_at: '2026-10-15T09:12:00+08:00',
+  },
+  {
+    id: 501,
+    student_name: '李四',
+    student_no: '9002',
+    // 自主练习：没有挂卷，卷号 / 卷名都是 `null`（界面自己显示「自主练习」）。
+    paperId: null,
+    total: 10,
+    correct: 10,
+    duration_ms: 45000,
+    submitted_at: '2026-10-15T08:05:00+08:00',
+  },
+  {
+    id: 502,
+    student_name: '王五',
+    student_no: '9003',
+    paperId: LIBRARY_ID_BASE + 5,
+    total: 6,
+    correct: 4,
+    duration_ms: 0,
+    submitted_at: '2026-10-14T20:00:00+08:00',
+  },
+];
+MOCK_SEEDED_ATTEMPTS.forEach((spec, index) => {
+  MOCK_ATTEMPT_ROWS.set(spec.id, {
+    summary: {
+      id: spec.id,
+      student_id: 9000 + index,
+      student_name: spec.student_name,
+      student_no: spec.student_no,
+      ...paperInfoOf(spec.paperId),
+      total: spec.total,
+      correct: spec.correct,
+      score: scoreOf(spec.total, spec.correct),
+      duration_ms: spec.duration_ms,
+      submitted_at: spec.submitted_at,
+    },
+    items: buildAttemptItems(spec.total, spec.correct, 100 + index * 7),
+  });
+});
+
+/** 夹具 id 集合：`__reset-student-state` 靠它把「学生刚交的」与「预置的」分开。 */
+const MOCK_SEEDED_ATTEMPT_IDS = new Set(MOCK_ATTEMPT_ROWS.keys());
+
+/** 学生交卷成功后落一条成绩行（FR-T11 的活数据来源）。 */
+function recordSubmittedAttempt(body, graded) {
+  const student = studentOf(body.student_id);
+  const summary = {
+    id: MOCK_ATTEMPT_SEQ,
+    student_id: Number(body.student_id) || 0,
+    student_name: student.name,
+    student_no: student.no,
+    ...paperInfoOf(body.paper_id),
+    total: graded.total,
+    correct: graded.correct,
+    score: scoreOf(graded.total, graded.correct),
+    duration_ms: Number(body.duration_ms) || 0,
+    submitted_at: new Date().toISOString(),
+  };
+  MOCK_ATTEMPT_ROWS.set(summary.id, { summary, items: graded.items });
+}
+
+/** 当前全部成绩概要，按 `submitted_at` 倒序、同一时刻按 `id` 倒序（与后端排序一致）。 */
+function filteredAttemptRows(url) {
+  const paperIdRaw = url.searchParams.get('paper_id');
+  const paperId = paperIdRaw === null ? null : Number(paperIdRaw);
+  const q = (url.searchParams.get('q') ?? '').trim();
+  return [...MOCK_ATTEMPT_ROWS.values()]
+    .map((row) => row.summary)
+    .filter((row) => (Number.isInteger(paperId) ? row.paper_id === paperId : true))
+    .filter((row) =>
+      q === '' ? true : row.student_name.includes(q) || row.student_no.includes(q),
+    )
+    .sort((a, b) =>
+      a.submitted_at === b.submitted_at ? b.id - a.id : a.submitted_at < b.submitted_at ? 1 : -1,
+    );
+}
+
+/** 导出用的一行（`rows_of` 的字符串单元格，顺序即契约 §5.5 的列顺序）。 */
+function exportCells(row) {
+  return [
+    row.paper_code ?? '',
+    row.paper_title ?? '',
+    row.student_name,
+    row.student_no,
+    String(row.score),
+    String(row.correct),
+    String(row.total),
+    formatDuration(row.duration_ms),
+    row.submitted_at,
+  ];
+}
+
+const EXPORT_HEADER_LABELS = [
+  '卷号',
+  '卷名',
+  '姓名',
+  '学号',
+  '得分',
+  '答对题数',
+  '总题数',
+  '用时',
+  '提交时间',
+];
+
+const MEDIA_TYPE_CSV = 'text/csv; charset=utf-8';
+const MEDIA_TYPE_XLSX =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** CSV：UTF-8 **with BOM** + `\r\n`（与 `_export_csv` 逐字同规则，Excel 认 BOM）。 */
+function csvBytes(rows) {
+  const escapeCell = (value) =>
+    /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const lines = [EXPORT_HEADER_LABELS, ...rows.map(exportCells)].map((cells) =>
+    cells.map(escapeCell).join(','),
+  );
+  return Buffer.concat([
+    Buffer.from([0xef, 0xbb, 0xbf]),
+    Buffer.from(lines.join('\r\n') + '\r\n', 'utf8'),
+  ]);
+}
+
+// ---- 最小 OOXML 写入器（只给 mock 用） ------------------------------------
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let value = n;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[n] = value >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes) {
+  let value = 0xffffffff;
+  for (const byte of bytes) value = CRC32_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+  return (value ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * 只做 **store（不压缩）** 的最小 ZIP 写入器。
+ *
+ * 为什么值得写这几行：mock 的职责是「让前端的下载路径真的能跑完」。如果 xlsx 分支
+ * 回一串占位字节，门禁只能断言「非空」，而那正是「看起来对」——一个叫 `.xlsx` 的
+ * 垃圾文件同样非空。这里产出的是**结构完整的 OOXML 包**，可以用 `unzip` 打开、
+ * 也真的能被 Excel 打开；判据因此可以断言 ZIP 魔数与内部部件名。
+ *
+ * 已知边界（不掩饰）：字节与真实后端的 `openpyxl` 产物不同（deflate vs store、样式
+ * 部件更少）。导出形状的**真实**取证靠真后端，mock 只保证「能被解析」。
+ */
+function zipStore(entries) {
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const [name, text] of entries) {
+    const nameBytes = Buffer.from(name, 'utf8');
+    const data = Buffer.from(text, 'utf8');
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6); // 文件名按 UTF-8 解释
+    local.writeUInt16LE(0, 8); // method = 0 (store)
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0x21, 12); // DOS 日期 1980-01-01（固定值 → 产物可复现）
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBytes.length, 26);
+    local.writeUInt16LE(0, 28);
+    parts.push(local, nameBytes, data);
+
+    const dir = Buffer.alloc(46);
+    dir.writeUInt32LE(0x02014b50, 0);
+    dir.writeUInt16LE(20, 4);
+    dir.writeUInt16LE(20, 6);
+    dir.writeUInt16LE(0x0800, 8);
+    dir.writeUInt16LE(0, 10);
+    dir.writeUInt16LE(0, 12);
+    dir.writeUInt16LE(0x21, 14);
+    dir.writeUInt32LE(crc, 16);
+    dir.writeUInt32LE(data.length, 20);
+    dir.writeUInt32LE(data.length, 24);
+    dir.writeUInt16LE(nameBytes.length, 28);
+    dir.writeUInt32LE(offset, 42);
+    central.push(dir, nameBytes);
+    offset += local.length + nameBytes.length + data.length;
+  }
+  const centralBytes = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralBytes.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, centralBytes, end]);
+}
+
+const XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+
+function columnLetter(index) {
+  let value = index;
+  let letters = '';
+  while (value > 0) {
+    const rem = (value - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    value = Math.floor((value - 1) / 26);
+  }
+  return letters;
+}
+
+/** 最小 xlsx：一个工作表、表头在首行、字符串用 `inlineStr`（不需要 sharedStrings 部件）。 */
+function xlsxBytes(rows) {
+  const escapeXml = (value) =>
+    String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  const cellRef = (rowIndex, colIndex) => `${columnLetter(colIndex)}${rowIndex}`;
+  const sheetRows = [EXPORT_HEADER_LABELS, ...rows.map(exportCells)]
+    .map((cells, rowIdx) => {
+      const rowNumber = rowIdx + 1;
+      const cellsXml = cells
+        .map(
+          (value, colIdx) =>
+            `<c r="${cellRef(rowNumber, colIdx + 1)}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`,
+        )
+        .join('');
+      return `<row r="${rowNumber}">${cellsXml}</row>`;
+    })
+    .join('');
+
+  return zipStore([
+    [
+      '[Content_Types].xml',
+      `${XML_HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
+    ],
+    [
+      '_rels/.rels',
+      `${XML_HEAD}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    ],
+    [
+      'xl/workbook.xml',
+      `${XML_HEAD}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="成绩" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+    ],
+    [
+      'xl/_rels/workbook.xml.rels',
+      `${XML_HEAD}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+    ],
+    [
+      'xl/worksheets/sheet1.xml',
+      `${XML_HEAD}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`,
+    ],
+  ]);
+}
+
+/** `成绩-YYYYMMDD-HHMM.<ext>`（与 `filename_for` 同规则；用本地时间，与后端一致）。 */
+function exportFilename(format) {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  const stamp =
+    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `-${pad(now.getHours())}${pad(now.getMinutes())}`;
+  return `成绩-${stamp}.${format}`;
+}
+
+/** `Content-Disposition`：ASCII 兜底 + RFC 5987 `filename*`（与 `content_disposition` 同规则）。 */
+function contentDispositionFor(filename) {
+  const asciiFallback = [...filename]
+    .map((char) => (char.codePointAt(0) > 0x7f ? '_' : char))
+    .join('');
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+/** 直接写二进制响应体（`json()` 只能发文本 + JSON 头）。 */
+function sendBytes(res, status, contentType, filename, bytes) {
+  res.writeHead(status, {
+    'Content-Type': contentType,
+    'Content-Length': bytes.length,
+    'Content-Disposition': contentDispositionFor(filename),
+  });
+  res.end(bytes);
+}
+
 /**
  * 与真实后端 `student_service.paper_payload` 同样的三件套：`paper_id` / `title` / `total` / `items`。
  *
@@ -989,9 +1382,69 @@ function dispatchApi(req, res, url) {
       return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: 'mock：卷不存在' } });
     }
     MOCK_ATTEMPT_SEQ += 1;
-    const out = { attempt_id: MOCK_ATTEMPT_SEQ, ...graded };
+    // 契约 `AttemptResultOut` 有 `score`（M5 / D80）——mock 少这一键，学生端
+    // 「自己再算一遍分」就不需要改也能跑绿，等于把 D80 的缺陷藏起来。
+    const out = {
+      attempt_id: MOCK_ATTEMPT_SEQ,
+      ...graded,
+      score: scoreOf(graded.total, graded.correct),
+    };
     MOCK_ATTEMPTS.set(replayKey, out);
+    // 同时落进 M5 成绩库，让「刚交完卷 → 老师端成绩列表能看见」这条链路真的成立
+    // （只有夹具、没有活数据的话，成绩页永远在渲染一份跟操作无关的静态表）。
+    recordSubmittedAttempt(body, graded);
     return json(res, 201, out);
+  }
+
+  // ---- M5 成绩三条（FR-T11 / FR-T12 / FR-T13）-----------------------------
+  //
+  // 注册顺序是契约的一部分：`/api/attempts/export` **必须排在** `/api/attempts/{id}`
+  // 之前。反过来写的话，`attempt_id: int` 解析不了 `"export"`，请求会 422 而不是
+  // 继续匹配到导出分支——真实后端为此专门有一条判据
+  // （`test_export_route_is_declared_before_the_id_route`），mock 照抄这条顺序。
+  if (req.method === 'GET' && url.pathname === '/api/attempts/export') {
+    assertNoTamper('export_attempts');
+    const format = url.searchParams.get('format') ?? 'csv';
+    if (format !== 'csv' && format !== 'xlsx') {
+      return json(res, 422, {
+        error: { code: 'VALIDATION_ERROR', message: `不支持的导出格式：${format}` },
+      });
+    }
+    // 与真实后端一致：导出**只认筛选**（paper_id / q），不套用分页——前端若把
+    // limit/offset 传下来，这里也照抄真实行为（忽略），缺陷因此在前端侧才会暴露。
+    const rows = filteredAttemptRows(url);
+    const filename = exportFilename(format);
+    return format === 'csv'
+      ? sendBytes(res, 200, MEDIA_TYPE_CSV, filename, csvBytes(rows))
+      : sendBytes(res, 200, MEDIA_TYPE_XLSX, filename, xlsxBytes(rows));
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/attempts') {
+    assertNoTamper('list_attempts');
+    const rows = filteredAttemptRows(url);
+    const limit = Number(url.searchParams.get('limit') ?? 20);
+    const offset = Number(url.searchParams.get('offset') ?? 0);
+    return json(res, 200, {
+      total: rows.length,
+      limit,
+      offset,
+      attempts: rows.slice(offset, offset + limit),
+    });
+  }
+
+  const attemptDetailMatch = url.pathname.match(/^\/api\/attempts\/(\d+)$/);
+  if (req.method === 'GET' && attemptDetailMatch) {
+    assertNoTamper('get_attempt');
+    const found = MOCK_ATTEMPT_ROWS.get(Number(attemptDetailMatch[1]));
+    if (!found) {
+      return json(res, 404, {
+        error: {
+          code: 'ATTEMPT_NOT_FOUND',
+          message: `作答记录 ${attemptDetailMatch[1]} 不存在`,
+        },
+      });
+    }
+    return json(res, 200, { ...found.summary, items: found.items });
   }
 
   // 一次性探针用：把学生端可变状态复位，避免同一进程里多次跑验收互相污染
@@ -999,6 +1452,11 @@ function dispatchApi(req, res, url) {
     MOCK_STUDENTS.clear();
     MOCK_PRACTICE.clear();
     MOCK_ATTEMPTS.clear();
+    // 只清「本进程里学生交上来的」，夹具（id 500-502）保留 —— 否则第一次复位之后
+    // 成绩页就空了，后面的用例会对着空表断言。
+    for (const id of [...MOCK_ATTEMPT_ROWS.keys()]) {
+      if (!MOCK_SEEDED_ATTEMPT_IDS.has(id)) MOCK_ATTEMPT_ROWS.delete(id);
+    }
     MOCK_STUDENT_SEQ = 1000;
     MOCK_ATTEMPT_SEQ = 0;
     return json(res, 200, { ok: true });

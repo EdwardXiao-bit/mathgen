@@ -52,7 +52,10 @@ export function ResultPage() {
   const { result, title, source, paperCode } = stored;
   const total = result.total > 0 ? result.total : result.items.length;
   const correct = Math.max(0, Math.min(result.correct, total));
-  const score = total > 0 ? Math.round((correct / total) * 100) : 0;
+  // D80：得分**直接用后端给的 `score`**，不再用 `correct / total` 复算。
+  // 两套口径在 `(40, 23)`、`(80, 46)` 这类点上真的会分叉（旧口径 57、契约 58），
+  // 而分叉不会自己报错 —— 只会让老师那边和这边显示同一个成绩两个分数。
+  const score = result.score;
 
   return (
     <Screen>

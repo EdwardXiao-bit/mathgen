@@ -647,7 +647,7 @@ async function main() {
       : '(量不到)';
 
   const a9 = result.a9 ?? {};
-  console.log('\n—— 负对照 1/11：A9 纸内几何（判据见门禁⑧ verify-preview-scale.mjs）——');
+  console.log('\n—— 负对照 1/12：A9 纸内几何（判据见门禁⑧ verify-preview-scale.mjs）——');
   for (const [key, label] of [
     ['baseline', '基线（无注入）'],
     ['n1_margin3cm', '负对照 A9-N1：注入 --page-margin:3cm'],
@@ -663,7 +663,7 @@ async function main() {
     }
   }
 
-  console.log('\n—— 负对照 2/11：卷面焦点环（判据见门禁⑦ 的 A3）——');
+  console.log('\n—— 负对照 2/12：卷面焦点环（判据见门禁⑦ 的 A3）——');
   const fBase = result.focus?.baseline_unfocused;
   const fTab = result.focus?.after_real_tab;
   console.log('  基线（未聚焦）');
@@ -733,7 +733,7 @@ async function main() {
   const a10 = result.a10 ?? {};
   const sentinelHit = (a10.with_sentinel ?? []).find((h) => (h.text ?? '').includes('--page-margin'));
   const keywordHit = (a10.with_keyword ?? []).find((h) => (h.text ?? '').includes('block'));
-  console.log('\n—— 负对照 3/11：无开发者文本（判据见门禁⑨ verify-ui-voice.mjs）——');
+  console.log('\n—— 负对照 3/12：无开发者文本（判据见门禁⑨ verify-ui-voice.mjs）——');
   console.log(`  基线（真实页面）：命中 ${(a10.baseline ?? []).length} 处  ← 必须为 0`);
   console.log(
     `  注入哨兵「页边距 --page-margin（D56）」：命中 ${(a10.with_sentinel ?? []).length} 处` +
@@ -803,7 +803,7 @@ async function main() {
   const baseBg = a11.baseline ?? {};
   const injBg = a11.injected_desk ?? {};
   const restoredBg = a11.restored ?? {};
-  console.log('\n—— 负对照 4/11：灰底只用于画布（判据见门禁⑨）——');
+  console.log('\n—— 负对照 4/12：灰底只用于画布（判据见门禁⑨）——');
   console.log(`  基线：root=${baseBg.root?.bg} body=${baseBg.body?.bg}  ← 应为 #f7f8f9（rgb(247,248,249)）`);
   console.log(`  注入灰桌面色 #8e939a：root=${injBg.root?.bg} body=${injBg.body?.bg}  ← 应变成 rgb(142,147,154)`);
   console.log(`  还原后：root=${restoredBg.root?.bg} body=${restoredBg.body?.bg}`);
@@ -828,7 +828,7 @@ async function main() {
     `root=${restoredBg.root?.bg} body=${restoredBg.body?.bg}`,
   );
 
-  // ---------- 5/11：学生端覆盖（A10 + A11 的覆盖面真实性） ----------
+  // ---------- 5/12：学生端覆盖（A10 + A11 的覆盖面真实性） ----------
   // 这一组盯的是**覆盖面的真实性**，不是文案本身。历史坑有两个，都会"全绿但没查"：
   //   (a) verify-server.mjs 的 SPA 回落在 catch 分支里一律回 dist/index.html，于是
   //       /student/** 拿到的是**老师端**入口 —— 判据会拿学生端 URL 扫老师端页面；
@@ -845,7 +845,7 @@ async function main() {
   const sBase = a11s.baseline ?? {};
   const sInj = a11s.injected_desk ?? {};
   const sRestored = a11s.restored ?? {};
-  console.log('\n—— 负对照 5/11：学生端覆盖（判据见门禁⑨ 的 A10/A11）——');
+  console.log('\n—— 负对照 5/12：学生端覆盖（判据见门禁⑨ 的 A10/A11）——');
   console.log(`  A10 /student        根容器=${stuShell.rootChildCls} stScreen=${stuShell.stScreen} teacherShell=${stuShell.teacherShell}`);
   console.log(`  A10 /student/result 根容器=${stuResShell.rootChildCls} stScreen=${stuResShell.stScreen}`);
   console.log(`  A10 基线命中：/student ${(a10s.baseline ?? []).length} 处；/student/result ${(a10s.result_page_baseline ?? []).length} 处；注入哨兵后 ${(a10s.with_sentinel ?? []).length} 处`);
@@ -919,12 +919,12 @@ async function main() {
     `root=${sRestored.root?.bg}`,
   );
 
-  // ---------- 6/11：裸 /api 路径扫描（判据见门禁② verify-contract.py 的 ④） ----------
+  // ---------- 6/12：裸 /api 路径扫描（判据见门禁② verify-contract.py 的 ④） ----------
   // 这条判据历史上真的**空过**：排除条件按**文件名**（api.ts）写，把学生端同名的
   // src/student/api.ts 一起跳过，于是 4 处裸路径全部漏报、判据还显示 PASS。
   // 修法是按**文件路径**排除。下面直接把 verify-contract.py 的 --self-test 跑起来，
   // 它自己会注入一个真文件（走同一条 rglob）、断言转红且红得具名、最后删掉。
-  console.log('\n—— 负对照 6/11：裸 /api 路径扫描（判据见门禁② 的 ④）——');
+  console.log('\n—— 负对照 6/12：裸 /api 路径扫描（判据见门禁② 的 ④）——');
   const contractSelfTest = spawnSync(PYTHON, [path.join(__dirname, 'verify-contract.py'), '--self-test'], {
     encoding: 'utf8',
     cwd: FRONTEND_DIR,
@@ -951,7 +951,7 @@ async function main() {
     '无残留',
   );
 
-  // ---------- 7/11：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面） ----------
+  // ---------- 7/12：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面） ----------
   // 这一组守的是「**mock 自己**有没有照抄真实契约」，不是产品代码。
   //
   // 为什么需要它：本轮我把学生端三条接口补进 mock（`verify-server.mjs`），而门禁⑨
@@ -963,7 +963,7 @@ async function main() {
   //   ① 断言 mock 响应的**关键不变量**（D74 不泄答案、D76 幂等、状态码 201/200）；
   //   ② 证明这些断言守着的代码路径**真的会被执行** —— 用 `MATHGEN_MOCK_TAMPER`
   //      故意破坏钩子，若服务照旧返回 200 就说明钩子没接上、哨兵是摆设。
-  console.log('\n—— 负对照 7/11：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面）——');
+  console.log('\n—— 负对照 7/12：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面）——');
 
   record(
     'mock 契约（D74）：GET /api/student/paper/{code} 带 paper_id/title/total/items，且 items **不含** answer/steps',
@@ -1002,7 +1002,7 @@ async function main() {
     `status=${mockContract.tamperStatus} code=${mockContract.tamperCode}`,
   );
 
-  // ---------- 8/11：门禁入口的参数解析（判据见 run-all-verifications.mjs） ----------
+  // ---------- 8/12：门禁入口的参数解析（判据见 run-all-verifications.mjs） ----------
   // 守的是**门禁入口自己**的用法契约，不是产品代码。
   //
   // 为什么需要：`--list` 的卖点是「列出步骤但不执行」。如果用「输出里没有 PASS/FAIL
@@ -1016,7 +1016,7 @@ async function main() {
   // 「干净」。所以下面还有一条反向断言：--list 必须**列满 12 步**（task-32 起第 ⑫ 步是
   // mock↔真实后端逐字段比对）。
   // 两条合起来才能区分「正确地只列不跑」与「坏掉了什么都不说」。
-  console.log('\n—— 负对照 8/11：门禁入口的参数解析（判据见 run-all-verifications.mjs）——');
+  console.log('\n—— 负对照 8/12：门禁入口的参数解析（判据见 run-all-verifications.mjs）——');
 
   const RUNNER = path.join(__dirname, 'run-all-verifications.mjs');
   const EXEC_ONLY = ['门禁脚本自检', '源码夹逼', '汇总', '全部验收通过'];
@@ -1097,7 +1097,7 @@ async function main() {
     `合成转录命中 ${EXEC_ONLY.filter((m) => syntheticFullRun.includes(m)).length}/${EXEC_ONLY.length} 个标记`,
   );
 
-  // ---------- 9/11：task-32 —— 判据「不进默认门禁就不存在」（判据见 compare-mock-and-real.mjs） ----------
+  // ---------- 9/12：task-32 —— 判据「不进默认门禁就不存在」（判据见 compare-mock-and-real.mjs） ----------
   // 守的是 task-32(a) 新增的**第 ⑫ 步**：把 mock↔真实后端的逐字段比对接进默认门禁。
   //
   // 为什么需要：task-29 交付的比对本身很硬（它的自检 C 段证明了抓得住「少一个键」和
@@ -1109,7 +1109,7 @@ async function main() {
   // 所以这里对**同一个真实脚本**喂两种世界，断言它给出**相反**的结论：
   //   态 A 正常输入 → exit 0（绿）      态 B 前置缺失 → exit ≠ 0 且点名原因、且**不含 PASS**（红）
   // 两态的原始输出都打出来（V9.1：报告会过期，脚本不会 —— 别人要能在仓库里 grep 到它）。
-  console.log('\n—— 负对照 9/11：第 ⑫ 步「前置缺失时红、绝不静默绿」（判据见 compare-mock-and-real.mjs）——');
+  console.log('\n—— 负对照 9/12：第 ⑫ 步「前置缺失时红、绝不静默绿」（判据见 compare-mock-and-real.mjs）——');
 
   const PARITY = path.join(__dirname, 'compare-mock-and-real.mjs');
   const runParity = (env) =>
@@ -1180,7 +1180,7 @@ async function main() {
     console.log(`  | ${line}`);
   }
 
-  // ---------- 10/11：task-35 卷库归档 / 恢复 / 删除（判据见契约 D78 与门禁②/⑨） ----------
+  // ---------- 10/12：task-35 卷库归档 / 恢复 / 删除（判据见契约 D78 与门禁②/⑨） ----------
   //
   // 为什么需要：task-35 给卷库加了「归档 / 恢复 / 删除」，有实质风险的只有删除。
   // 用户裁决原话是「有成绩的可以归档，类似于软删除」——于是界面上「有成绩的卷」必须
@@ -1194,7 +1194,7 @@ async function main() {
   //   ① 同一个谓词分别喂**真实响应**与**合成响应**，证明它对两种世界给出相反结论（V11）；
   //   ② 用破坏钩子把 `has_attempts` 从响应里抹掉，证明上面那个绿**真的在看这个字段**（V9.2）；
   //   ③ 正面证明「有成绩的卷能归档」（用户要的正是这条出路）。
-  console.log('\n—— 负对照 10/11：卷库归档 / 恢复 / 删除（判据见契约 D78）——');
+  console.log('\n—— 负对照 10/12：卷库归档 / 恢复 / 删除（判据见契约 D78）——');
 
   // 谓词**只定义一次**，真实响应与合成响应共用 —— 另抄一份等于什么都没证明。
   const defaultViewHidesArchived = (payload) =>
@@ -1373,7 +1373,7 @@ async function main() {
   libTamper.child.kill();
   libMock.child.kill();
 
-  // —— 负对照 11/11：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——
+  // —— 负对照 11/12：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——
   // 为什么要有这一条（V13 同族）：门禁第 ③④⑤⑦⑨ 步加载 frontend/dist/**，而门禁**不构建**。
   // 改了 src 却忘了 build，那四个浏览器门禁测的是旧 bundle —— 会给出与源码无关的**绿**。
   // 这里用**合成目录树**构造两个世界（不碰真实 frontend/dist，也不依赖真实构建）：
@@ -1381,7 +1381,7 @@ async function main() {
   //   B 世界：dist 比源码旧 → 判据红，且必须**点名**那个更晚的源文件
   //   （V9.2：B 世界必须自证它真的制造了失败条件，而不只是"我们相信它会红"）
   console.log(
-    '\n—— 负对照 11/11：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——',
+    '\n—— 负对照 11/12：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——',
   );
   {
     const WORLDS = path.join(TMP_DIR, 'dist-freshness-worlds');
@@ -1521,6 +1521,193 @@ async function main() {
     );
 
     rmSync(WORLDS, { recursive: true, force: true });
+  }
+
+  // ---------- 12/12：task-40 —— M5 成绩的得分口径与导出（判据见契约 §5.5 / D80） ----------
+  console.log('\n—— 负对照 12/12：M5 成绩的得分口径与导出（判据见契约 §5.5 / D80）——');
+
+  // 谓词**只定义一次**，正常世界、注入故障世界与合成世界共用同一个 —— 另抄一份等于没证明。
+  //
+  // D80 说的是「得分只有一个来源」。这条判据查的就是那句话：
+  // **每一行都必须带着后端给的 score**。`length > 0` 是故意的：空世界必须红
+  // （「没得比」不等于「比过且一致」，task-32 的教训）。
+  const m5RowsCarryBackendScore = (payload) =>
+    Array.isArray(payload?.attempts) &&
+    payload.attempts.length > 0 &&
+    payload.attempts.every((row) => typeof row.score === 'number');
+
+  // 值判定：某一行的 score 必须**等于**契约算出来的那个数。
+  // 上面那条只看「有没有 number」，抓不住「前端自己算了一遍」—— 所以值判定是独立的一条。
+  const m5ScoreMatchesContract = (payload, id, expected) =>
+    (payload?.attempts ?? []).find((row) => row.id === id)?.score === expected;
+
+  // 旧前端口径（`Math.round(correct / total * 100)`）。它与契约口径在
+  // (40, 23) 上分别是 57 / 58 —— 这就是「两处各算一遍会出现两个分数」的那 2 个真实点之一。
+  const m5NaiveScore = (total, correct) => Math.round((correct / total) * 100);
+  const M5_FIXTURE = { total: 40, correct: 23 };
+  const M5_CONTRACT_SCORE = 58;
+  const M5_NAIVE_SCORE = m5NaiveScore(M5_FIXTURE.total, M5_FIXTURE.correct);
+
+  // 导出的两条硬要求（契约 §5.5）：UTF-8 **with BOM**（Excel 认它才不乱码）、表头人话且列序固定。
+  const m5CsvHasBom = (bytes) => bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  const M5_CSV_HEADER = '卷号,卷名,姓名,学号,得分,答对题数,总题数,用时,提交时间';
+
+  const m5Spawn = (env) => {
+    const child = spawn(NODE_EXE, [path.join(__dirname, 'verify-server.mjs')], {
+      cwd: FRONTEND_DIR,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, MATHGEN_VERIFY_MODE: 'online', ...env },
+    });
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    return new Promise((resolve, reject) => {
+      let buffer = '';
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error(`mock 服务没就绪。stderr:\n${stderr}`));
+      }, 15_000);
+      child.stdout.on('data', (chunk) => {
+        buffer += chunk;
+        const ports = buffer.match(/VERIFY_PORTS static=(\d+) api=(\d+)/);
+        if (ports && buffer.includes('VERIFY_SERVER_READY')) {
+          clearTimeout(timer);
+          // 直连 **api** 端口：静态服务的 `/api` 反代会把请求送去「请求的」端口而不是
+          // 「实际绑上的」端口（见组 10 的注释），直连即规避。
+          resolve({ child, base: `http://127.0.0.1:${Number(ports[2])}` });
+        }
+      });
+      child.on('exit', (code) => {
+        if (code !== null) {
+          clearTimeout(timer);
+          reject(new Error(`mock 服务提前退出（code=${code}）。stderr:\n${stderr}`));
+        }
+      });
+    });
+  };
+
+  const m5GetJson = async (base, apiPath) => {
+    const res = await fetch(base + apiPath);
+    return { status: res.status, body: await res.json() };
+  };
+
+  // ---- 世界 A：正常输入 → 绿 --------------------------------------------------
+  const m5Ok = await m5Spawn({});
+  let m5OkList = null;
+  let m5Csv = null;
+  try {
+    m5OkList = (await m5GetJson(m5Ok.base, '/api/attempts')).body;
+    const csvRes = await fetch(`${m5Ok.base}/api/attempts/export`);
+    m5Csv = { bytes: Buffer.from(await csvRes.arrayBuffer()), headers: csvRes.headers };
+
+    record(
+      '世界 A（正常）：成绩列表每一行都带后端给的 score（D80：得分只有一个来源）',
+      m5RowsCarryBackendScore(m5OkList),
+      `total=${m5OkList?.total} 行数=${m5OkList?.attempts?.length}`,
+    );
+
+    const fixtureRow = (m5OkList?.attempts ?? []).find((row) => row.id === 500);
+    record(
+      `世界 A：夹具 (${M5_FIXTURE.total}, ${M5_FIXTURE.correct}) 的 score = ${M5_CONTRACT_SCORE}（契约 score_of 的值）`,
+      fixtureRow?.score === M5_CONTRACT_SCORE,
+      `score=${fixtureRow?.score}`,
+    );
+    record(
+      `判别力前提：该夹具上旧浮点口径确实给出 ${M5_NAIVE_SCORE} ≠ ${M5_CONTRACT_SCORE} —— 否则「值对不对」那条判据对「前端自己算分」不敏感`,
+      M5_NAIVE_SCORE === 57 && M5_CONTRACT_SCORE === 58,
+      `naive=${M5_NAIVE_SCORE} contract=${M5_CONTRACT_SCORE}`,
+    );
+    record(
+      'V9.2 合成：把「前端自己算的 57」当成行内 score 喂给**值判定** → 必须为假（判据抓得住这个缺陷）',
+      m5ScoreMatchesContract(
+        { attempts: [{ id: 500, score: M5_NAIVE_SCORE }] },
+        500,
+        M5_CONTRACT_SCORE,
+      ) === false &&
+        m5ScoreMatchesContract(
+          { attempts: [{ id: 500, score: M5_CONTRACT_SCORE }] },
+          500,
+          M5_CONTRACT_SCORE,
+        ) === true,
+      `合成世界 score=${M5_NAIVE_SCORE}，契约值=${M5_CONTRACT_SCORE}`,
+    );
+
+    // ---- 导出（CSV）--------------------------------------------------------
+    const csvText = m5Csv.bytes.toString('utf8').replace(/^\uFEFF/, '');
+    const csvLines = csvText.trim().split('\r\n');
+    record(
+      'CSV 前 3 字节是 UTF-8 BOM（EF BB BF）—— Excel 认它才不乱码',
+      m5CsvHasBom(m5Csv.bytes),
+      [...m5Csv.bytes.subarray(0, 3)].map((b) => b.toString(16)).join(' '),
+    );
+    record(
+      'CSV 表头是人话中文且列序固定（契约 §5.5）',
+      csvLines[0] === M5_CSV_HEADER,
+      csvLines[0],
+    );
+    record(
+      'CSV 用 \\r\\n 断行（Excel 直接双击打开不会挤成一行）',
+      m5Csv.bytes.toString('binary').includes('\r\n') && csvLines.length >= 2,
+      `行数=${csvLines.length}`,
+    );
+    const filteredCsv = Buffer.from(
+      await (await fetch(`${m5Ok.base}/api/attempts/export?paper_id=105`)).arrayBuffer(),
+    ).toString('utf8');
+    const filteredLines = filteredCsv.replace(/^\uFEFF/, '').trim().split('\r\n');
+    record(
+      '导出只认筛选、不套分页：paper_id=105 → 表头 + 2 行',
+      filteredLines.length === 3 && filteredLines[0] === M5_CSV_HEADER,
+      `行数=${filteredLines.length}`,
+    );
+    record(
+      'V9.2 合成：无 BOM 的 CSV 必须被同一条判据判红（判据能红，不是恒真）',
+      m5CsvHasBom(Buffer.from([0x3c, 0x3f, 0x78])) === false &&
+        m5CsvHasBom(Buffer.from([0xef, 0xbb, 0xbf, 0x41])) === true,
+      '合成输入：<?x 判红 / EF BB BF A 判绿',
+    );
+
+    const detail = (await m5GetJson(m5Ok.base, '/api/attempts/500')).body;
+    record(
+      '明细：items 长度 == total，且每项恰有契约的六键（逐题行才画得出来）',
+      detail?.items?.length === detail?.total &&
+        detail.items.every(
+          (item) =>
+            Object.keys(item).sort().join(',') ===
+            'answer,display,is_correct,question_type,seq,student_answer',
+        ),
+      `total=${detail?.total} items=${detail?.items?.length}`,
+    );
+    const missing = await m5GetJson(m5Ok.base, '/api/attempts/999999');
+    record(
+      '不存在的作答记录 → 404 ATTEMPT_NOT_FOUND（不是 200 空对象）',
+      missing.status === 404 && missing.body?.error?.code === 'ATTEMPT_NOT_FOUND',
+      `status=${missing.status} code=${missing.body?.error?.code}`,
+    );
+  } finally {
+    m5Ok.child.kill();
+  }
+
+  // ---- 世界 B：注入故障（把列表响应里的 score 删掉）→ 必须红且点名 ----------
+  const m5Bad = await m5Spawn({ MATHGEN_MOCK_TAMPER_DELETE: 'attempts[].score' });
+  try {
+    const badList = (await m5GetJson(m5Bad.base, '/api/attempts')).body;
+    const badRows = badList?.attempts ?? [];
+    const missingScore = badRows.filter((row) => typeof row.score !== 'number').length;
+    record(
+      '世界 B（注入故障：删掉 attempts[].score）：同一条判据必须为假（V9.2 真世界的负对照）',
+      m5RowsCarryBackendScore(badList) === false,
+      `行数=${badRows.length} 缺 score 的行=${missingScore}（点名：字段 score）`,
+    );
+    record(
+      '世界 B：故障确实被制造出来了（不是「响应空了导致的假红」）—— 行还在，只是缺了 score',
+      badRows.length > 0 && missingScore === badRows.length,
+      `行数=${badRows.length} 缺 score=${missingScore}`,
+    );
+  } finally {
+    m5Bad.child.kill();
   }
 
   const failed = results.filter((r) => !r.ok);
