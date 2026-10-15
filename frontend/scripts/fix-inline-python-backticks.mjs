@@ -1,22 +1,38 @@
 /**
- * 把门禁脚本里内联 Python 模板块中的**反引号**替换掉。
+ * 内联 Python 模板块里的反引号 —— **代码整洁检查，不是语法判据**。
  *
- * ## 为什么需要这个工具
+ * ## ⚠️ 这个工具**不能**用来判断语法，它第一版的方向是反的
  *
- * 这些脚本用 `String.raw` 模板承载内联 Python。模板由**反引号**界定，所以
- * 只要 Python 那一段（**包括注释和 JS 字符串里的正则**）出现一个反引号，
- * 模板就被提前终止，报出看起来毫不相关的 `SyntaxError: Unexpected identifier`。
- * M3.5 期间这个坑连续踩了 **五次**（AGENTS.md 也记了这一条）。
+ * 我最初把它当成"能抓出会让 `String.raw` 模板提前终止的反引号"的语法判据，
+ * 并接进了门禁前置自检。**这个主张已被实验证伪**（Lead 用两个探针实测）：
  *
- * 靠人眼 review 是拦不住的：反引号通常在**中文注释**里，看起来完全无害。
- * 所以做成工具：改完脚本跑一次，先修再报错。
+ * | 输入 | `node --check` | 本工具（旧版主张） |
+ * | --- | --- | --- |
+ * | 体内含**裸**反引号 | **失败** | 报「没有反引号 ✅」→ **漏报** |
+ * | 体内含**转义**反引号 | 通过（语法合法） | 报「会导致模板提前终止」→ **假报红** |
+ *
+ * 根因是一条逻辑推论：`String.raw` 体内**不可能**有未转义反引号（那会被 JS 解析器
+ * 当成模板结束、文件直接语法错），所以**能活着到达体内扫描的反引号必然是转义过的**。
+ * 也就是说：这个工具在语法层面**只能看到无害形态**，永远看不到真问题。
+ *
+ * **真正的语法判据是 `node --check`** —— 见 `check-script-syntax.mjs`，
+ * 它带负对照与正对照，直接命中"模板提前终止"这**一整类**问题，
+ * 不依赖任何人去枚举坑的形状（与「枚举式判据永远不完整」是同一个教训）。
+ *
+ * ## 那这个工具还留着干什么
+ *
+ * 保留一条**可读性约定**：内联 Python 里不要出现反引号，**即使转义** ——
+ * 它正好与 JS 的模板语法同形，读代码的人容易看错，也确实让"模板到底在哪结束"
+ * 这类困惑反复发生（M3.5 期间踩了五次）。这是**约定**，不是**语法要求**。
+ *
+ * 因此默认行为是**告警**（exit=0），不阻断门禁 —— 转义反引号是合法代码，不该假报红。
  *
  * 用法：
- *   node scripts/fix-inline-python-backticks.mjs            # 检查全部门禁脚本
- *   node scripts/fix-inline-python-backticks.mjs --write     # 就地替换
- *   node scripts/fix-inline-python-backticks.mjs path.mjs    # 只处理一个
- *
- * 退出码：0 = 无反引号问题（或已成功修复）；1 = 只检查模式下发现问题。
+ *   node scripts/fix-inline-python-backticks.mjs             # 只告警（默认，exit=0）
+ *   node scripts/fix-inline-python-backticks.mjs --strict     # 有反引号即失败
+ *   node scripts/fix-inline-python-backticks.mjs --write      # 就地整洁化
+ *   node scripts/fix-inline-python-backticks.mjs --self-test  # 工具自检
+ *   node scripts/fix-inline-python-backticks.mjs path.mjs     # 只处理一个
  */
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -217,6 +233,7 @@ function selfTest() {
 
 const args = process.argv.slice(2);
 const write = args.includes('--write');
+const strict = args.includes('--strict');
 const explicit = args.filter((a) => !a.startsWith('--'));
 
 if (args.includes('--self-test')) {
@@ -248,8 +265,8 @@ for (const file of targets) {
     filesWithProblem += 1;
     totalReplaced += r.replaced;
     console.log(
-      `${write ? 'FIXED' : 'FOUND'}  ${path.basename(file)}  ` +
-        `模板体 ${r.bodies} 个，体内反引号 ${r.replaced} 处 → 替换为单引号`,
+      `${write ? 'FIXED' : 'WARN '}  ${path.basename(file)}  ` +
+        `模板体 ${r.bodies} 个，体内反引号 ${r.replaced} 处`,
     );
   }
 }
@@ -258,12 +275,22 @@ if (filesWithProblem === 0) {
   console.log('内联 Python 模板块里没有反引号 ✅');
   process.exit(0);
 }
-if (!write) {
-  console.log(
-    `\n共 ${totalReplaced} 处会导致 String.raw 模板被提前终止。` +
-      `\n这些反引号通常在中文注释里，人眼很难发现 —— 跑 --write 修复：` +
-      `\n  node scripts/fix-inline-python-backticks.mjs --write`,
-  );
+
+// 能走到这里的反引号，**语法上一定是转义过的**（裸的早就让文件语法错了，
+// 那种情况由 check-script-syntax.mjs 的 node --check 负责抓）。所以默认只告警。
+console.log(
+  `\n共 ${totalReplaced} 处“体内反引号”。` +
+    `\n注意：这些**都是转义形态**（裸的会让文件直接语法错，由 node --check 抓），` +
+    `\n所以它们不影响语法，只是可读性问题（与 JS 模板语法同形，容易看错）。` +
+    `\n整洁化：node scripts/fix-inline-python-backticks.mjs --write`,
+);
+if (write) {
+  console.log(`\n已处理 ${totalReplaced} 处。`);
+  process.exit(0);
+}
+if (strict) {
+  console.log('\n--strict 下把这条可读性约定当作失败。');
   process.exit(1);
 }
-console.log(`\n已替换 ${totalReplaced} 处反引号。请重新运行 node --check 确认语法。`);
+console.log('\n（默认只告警，exit=0 —— 合法代码不该被假报红。）');
+process.exit(0);

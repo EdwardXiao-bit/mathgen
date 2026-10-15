@@ -92,18 +92,29 @@ if (!existsSync(PYTHON)) {
 }
 
 // ---- 前置自检：门禁脚本自身的健康 ----
-// 这门禁脚本用 String.raw 承载内联 Python，体内一个反引号就会让模板提前终止，
-// 报出与真实原因毫不相关的 SyntaxError。M3.5 期间连踩五次，所以做成**前置检查**：
-// 与其等到某条门禁神秘报错，不如在这里明说。
+// 判据是**逐个 node --check**，而不是"扫描内联 Python 里有没有反引号"。
+//
+// 为什么不扫反引号（这是被实验证伪的一版，记在这里免得有人再走回去）：
+//   `String.raw` 的体内**不可能**有未转义反引号 —— 那会被 JS 解析器当成模板结束，
+//   文件直接语法错。所以"能活着到达体内扫描"的反引号**必然是转义过的、语法无害的**；
+//   反过来，真正让模板提前终止的裸反引号，扫描器恰恰看不到（它自己就被截断了）。
+//   实测对照（Lead 的探针）：
+//     体内裸反引号   → node --check 失败；反引号扫描器报「没有反引号 ✅」→ 漏报
+//     体内转义反引号 → node --check 通过；反引号扫描器报「会导致模板终止」→ 假报红
+//   即那个扫描器在语法层面**只能抓到无害形态**。
+//
+// `node --check` 直接命中"模板提前终止"这**一整类**问题，是通用硬判据，
+// 不依赖任何人去枚举坑的形状（与「枚举式判据永远不完整」同一个教训）。
+// 它自带负对照与正对照（现造语法坏文件与好文件，断言分别红/绿），所以不是恒真断言。
 {
   const preflight = [
     {
-      name: '门禁脚本自检：内联 Python 模板块里没有反引号',
+      name: '门禁脚本自检：frontend/scripts/*.mjs 逐个 node --check（含负/正对照）',
       cmd: process.execPath,
-      args: [path.join(__dirname, 'fix-inline-python-backticks.mjs')],
+      args: [path.join(__dirname, 'check-script-syntax.mjs')],
     },
     {
-      name: '门禁脚本自检：修复工具本身通过自检（只改体内、不动界定符与体外 JS）',
+      name: '门禁脚本自检：反引号整洁工具本身通过自检（只改体内、不动界定符与体外 JS）',
       cmd: process.execPath,
       args: [path.join(__dirname, 'fix-inline-python-backticks.mjs'), '--self-test'],
     },
@@ -114,7 +125,8 @@ if (!existsSync(PYTHON)) {
     if (proc.status !== 0) {
       console.error(
         `\n前置自检未通过：${step.name}\n` +
-          `修复内联 Python 里的反引号：node scripts/fix-inline-python-backticks.mjs --write`,
+          `语法问题看 node --check 的原始报错；可读性约定（内联 Python 里的反引号）用：\n` +
+          `  node scripts/fix-inline-python-backticks.mjs --write`,
       );
       process.exit(2);
     }
@@ -138,11 +150,18 @@ for (const r of results) {
   console.log(`  ${r.code === 0 ? 'PASS' : 'FAIL'}  ${r.name}`);
 }
 const failed = results.filter((r) => r.code !== 0);
-if (failed.length > 0 || results.length !== steps.length) {
-  console.log(`\n未通过：${failed.length} 项（未跑的用 (skipped) 表示）`);
-  for (const step of steps) {
-    if (!results.some((r) => r.name === step.name)) console.log(`  (skipped) ${step.name}`);
-  }
+const skipped = steps.filter((step) => !results.some((r) => r.name === step.name));
+// 注意这里必须**分别**报「失败的」与「没跑的」：
+// 主循环是 fail-fast（`if (proc.status !== 0) break;`），所以只要有一条红，
+// 后面的步骤就不会跑，于是 `results.length !== steps.length` 也同时成立。
+// 早期版本只打印 `未通过：${failed.length} 项` —— 在"一条红 + 若干没跑"时
+// 这个数字会**低估**实际受影响的范围，读的人容易以为只坏了一条。
+if (failed.length > 0 || skipped.length > 0) {
+  console.log(
+    `\n未通过：${failed.length} 项；未运行（因 fail-fast 中断）：${skipped.length} 项`,
+  );
+  for (const r of failed) console.log(`  (FAIL)    ${r.name}`);
+  for (const step of skipped) console.log(`  (skipped) ${step.name}`);
   process.exit(1);
 }
 console.log('\n全部验收通过。产物：');
