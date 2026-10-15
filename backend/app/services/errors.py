@@ -29,6 +29,7 @@ ERROR_HTTP_STATUS: Final[dict[str, int]] = {
     # 契约 §9 里也已同步删掉（Lead 改的），所以实现里不该再留这个码。
     "VALIDATION_ERROR": 422,
     "ITEM_NOT_FOUND": 404,          # 契约 §9（D53）
+    "ATTEMPT_NOT_FOUND": 404,       # 契约 §9（M5/D80）成绩明细细 id 不存在
     "RENDER_NOT_READY": 503,        # 契约 §9（D53）
     # ★ 扩展（D57）：Word 导出尚未实现 / 未匹配路由 / 导出通道不可用
     "NOT_IMPLEMENTED": 501,

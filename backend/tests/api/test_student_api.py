@@ -215,14 +215,44 @@ class PracticeTests(StudentApiTestCase):
 
 # ---- 装配护栏 -------------------------------------------------------------
 
-#: 给每条学生端路径配一个**它没有注册的方法**：路径存在 → 405，路径不存在 → 404。
-#: 这个差别才是「装配了没有」的判据（见 `RouterWiringTests` 的说明）。
+#: 装配探测的路径表（路由名 + 路径参数）。**方法刻意不在表里**——由真实 app 的
+#: OpenAPI 现算，见 `probe_methods_of_real_app()`：路径存在 → 405，路径不存在 → 404。
 WIRING_PROBES = (
-    ("create_student", "GET", {}),
-    ("student_paper", "POST", {"code": "0000-0000"}),
-    ("student_practice", "GET", {}),
-    ("submit_attempt", "GET", {}),
+    ("create_student", {}),
+    ("student_paper", {"code": "0000-0000"}),
+    ("student_practice", {}),
+    ("submit_attempt", {}),
 )
+
+#: 探测方法的候选池。**不含 HEAD**：starlette 的 `Route` 注册 GET 时会自动补上 HEAD，
+#: 拿它探测会拿到 200，判据就失去意义。
+_PROBE_METHODS = ("PUT", "PATCH", "DELETE", "GET", "POST")
+
+
+def probe_methods_of_real_app() -> dict[str, str]:
+    """真实 app 上每条路径的探测方法：**一个它没有注册的方法**。
+
+    判据是「路径在 → 405，路径不在 → 404」，所以方法必须真的没注册。
+    方法从 `/openapi.json`（公开产物，不是框架内部结构）**现算**，
+    而不是在表里写死：谁往这些路径上加新方法，这里会自动换一个没注册的。
+    写死过一次的代价就在眼前——M5/D80 给 `/api/attempts` 加了成绩列表（GET）之后，
+    表里原来写的 `GET /api/attempts` 变成了**合法请求**，探测直接返回 200：
+    判据没坏，是它手里的方法过期了。现算之后这条路不会再重演。
+    """
+    with make_client() as client:
+        paths = client.get("/openapi.json").json()["paths"]
+    chosen: dict[str, str] = {}
+    for name, params in WIRING_PROBES:
+        url = ROUTES[name].format(**params)
+        declared = {method.upper() for method in paths.get(url, {})}
+        method = next((m for m in _PROBE_METHODS if m not in declared), None)
+        if method is None:
+            raise AssertionError(
+                f"{url} 把探测候选方法全占了（已注册 {sorted(declared)}）——"
+                f"要么扩候选池，要么这条路径的方法多到不正常"
+            )
+        chosen[name] = method
+    return chosen
 
 
 class RouterWiringTests(unittest.TestCase):
@@ -237,16 +267,17 @@ class RouterWiringTests(unittest.TestCase):
     """
 
     def test_the_four_paths_are_routed_not_missing(self):
+        methods = probe_methods_of_real_app()
         with make_client() as client:
-            for name, method, params in WIRING_PROBES:
+            for name, params in WIRING_PROBES:
                 with self.subTest(route=name):
                     url = ROUTES[name].format(**params)
-                    response = client.request(method, url)
+                    response = client.request(methods[name], url)
                     self.assertEqual(
                         response.status_code,
                         405,
-                        f"{url} 没进真实 app（期望「方法不对」的 405，实得 "
-                        f"{response.status_code}）：{response.text}",
+                        f"{methods[name]} {url} 没进真实 app（期望「方法不对」的 "
+                        f"405，实得 {response.status_code}）：{response.text}",
                     )
                     self.assertEqual(response.json()["error"]["code"], "METHOD_NOT_ALLOWED")
 
@@ -314,14 +345,16 @@ class WiringProbeNegativeControlTests(unittest.TestCase):
         application = FastAPI()
         application.include_router(papers_router.router)  # 只有老师端，正是装配前的样子
 
+        # 与真实 app **同一批方法**，只换世界：那边 405，这边必须 404。
+        methods = probe_methods_of_real_app()
         with TestClient(application) as client:
-            for name, method, params in WIRING_PROBES:
+            for name, params in WIRING_PROBES:
                 with self.subTest(route=name):
                     url = ROUTES[name].format(**params)
                     self.assertEqual(
-                        client.request(method, url).status_code,
+                        client.request(methods[name], url).status_code,
                         404,
-                        f"{url} 在没装配的 app 里也给了 405——那 405 就什么都证明不了",
+                        f"{methods[name]} {url} 在没装配的 app 里也给了 405——那 405 就什么都证明不了",
                     )
             # 同一个 app 里，老师端路径换个不支持的方法就是 405：证明 404 不是「所有请求都 404」
             self.assertEqual(client.request("DELETE", ROUTES["list_papers"]).status_code, 405)

@@ -53,8 +53,10 @@ PAPER_TOP_KEYS = frozenset({"paper_id", "paper_code", "title", "total", "items"}
 #: 自主练习的顶层键：`seed` **必须**在（D75，学生要原样回传）。
 PRACTICE_TOP_KEYS = frozenset({"seed", "total", "items"})
 
-#: 提交作答的顶层键（§5.2 / Lead 裁决①）。
-ATTEMPT_TOP_KEYS = frozenset({"attempt_id", "total", "correct", "items"})
+#: 提交作答的顶层键（§5.2 / Lead 裁决①）。`score` 是 M5/D80 按契约加上的
+#: （`AttemptResultOut.score`，由冻结包 `score_of()` 算出）——判据是**相等**，
+#: 所以它必须出现在这里，否则「契约多给了一个字段」会悄悄漏过去。
+ATTEMPT_TOP_KEYS = frozenset({"attempt_id", "total", "correct", "score", "items"})
 
 #: 判分结果里每题允许的键——**不含 `steps`**（Lead 裁决①：FR-S8 只要求得分与对错）。
 ATTEMPT_ITEM_KEYS = STUDENT_ITEM_KEYS | {"answer", "student_answer", "is_correct"}

@@ -46,8 +46,9 @@ NEXT_SECTION_RE = re.compile(r"^## \d", re.MULTILINE)
 #: 行数本身由 `EXPECTED_DOC_ROWS` 在正例里锁死（契约加码要**刻意**上调它，同改哈希）。
 MIN_DOC_ROWS = 10
 
-#: 当前 §9 的真实行数（M4：D77 补 `EXPORT_NOT_READY`、D78 补 `PAPER_HAS_ATTEMPTS` → 14）。
-EXPECTED_DOC_ROWS = 14
+#: 当前 §9 的真实行数（M4：D77 补 `EXPORT_NOT_READY`、D78 补 `PAPER_HAS_ATTEMPTS` → 14；
+#: M5/D80 补 `ATTEMPT_NOT_FOUND` → 15）。
+EXPECTED_DOC_ROWS = 15
 
 _ROW_RE = re.compile(
     r"^\|\s*`(?P<code>[A-Z][A-Z0-9_]*)`\s*\|\s*(?P<status>\d{3})\s*\|(?P<desc>.*)\|\s*$"
@@ -153,13 +154,14 @@ class DocumentedErrorCodesAgreeTests(unittest.TestCase):
     def test_the_document_is_actually_being_parsed(self):
         """防退化（V11）：先证明判据**真的读到了表**，否则后面的相等都是空过。
 
-        这里的 `EXPECTED_DOC_ROWS` 是行数锁（14）：它是**刻意**常量，契约加/减码必须
+        这里的 `EXPECTED_DOC_ROWS` 是行数锁（15）：它是**刻意**常量，契约加/减码必须
         同步改它——改它的动作本身就是「我在改契约」的显式声明（同改契约哈希）。
         """
         self.assertEqual(len(self.doc), EXPECTED_DOC_ROWS)
         self.assertGreaterEqual(len(self.doc), MIN_DOC_ROWS)
         for code in ("CONFIG_INVALID", "PAPER_NOT_FOUND", "RENDER_NOT_READY",
-                     "EXPORT_NOT_READY", "PAPER_HAS_ATTEMPTS", "VALIDATION_ERROR"):
+                     "EXPORT_NOT_READY", "PAPER_HAS_ATTEMPTS", "ATTEMPT_NOT_FOUND",
+                     "VALIDATION_ERROR"):
             self.assertIn(code, self.doc, f"{code} 应该出现在 §9 表里")
 
     def test_document_copy_and_implementation_agree(self):
