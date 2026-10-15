@@ -14,7 +14,12 @@ _PYLIBS = os.path.join(os.path.dirname(HERE), "e2e_m2", ".pylibs")
 if os.path.isdir(_PYLIBS):
     sys.path.insert(0, _PYLIBS)
 
-from test_ui_structure import ARTIFACTS, RealServer, ensure_dist_fresh  # noqa: E402
+from test_ui_structure import (  # noqa: E402
+    ARTIFACTS,
+    RealServer,
+    browser_session,
+    ensure_dist_fresh,
+)
 
 PREVIEW_JS = r"""
 () => {
@@ -162,10 +167,8 @@ def main() -> int:
                 print(f"  列间距 / 页宽     = {pitch / page_w:.5f}  (pitch={pitch:.2f}pt)")
             print(f"  右留白 / 页宽     = {(page_w - top['x1_last']) / page_w:.5f}")
 
-        from playwright.sync_api import sync_playwright
-
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+        with browser_session() as chan:      # 走产品通道（task-22；裸 sync_playwright 会撞 asyncio 守卫）
+            browser = chan.browser()
             try:
                 page = browser.new_page(viewport={"width": 1440, "height": 900})
                 page.goto(f"{server.base_url}/teacher/paper/{pid}", wait_until="networkidle",

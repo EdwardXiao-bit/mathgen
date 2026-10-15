@@ -26,6 +26,7 @@ from test_ui_structure import (  # noqa: E402
     REPO,
     RealServer,
     browser_page,
+    browser_session,
     ensure_dist_fresh,
     parse_rules,
     STYLES,
@@ -200,11 +201,9 @@ class TestA9PreviewGeometry(A9Case):
     """A9-1/2/3：纸按真实 A4 渲染、边距比 = 2cm/210mm、宽高共用同一缩放系数。"""
 
     def test_a9_sheet_is_real_a4_and_uniform_scale(self):
-        from playwright.sync_api import sync_playwright
-
         pid = self.make_paper()
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 data, outer = self.measure(page, pid)
             finally:
@@ -256,11 +255,9 @@ class TestA9ReverseComparisonWithPdf(A9Case):
     """**反向验证**：预览内部量到的比值 == PDF 里量到的同一比值（缩放不改变比值）。"""
 
     def test_preview_ratios_match_pdf_ratios(self):
-        from playwright.sync_api import sync_playwright
-
         pid = self.make_paper()
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 preview, _outer = self.measure(page, pid)
             finally:
@@ -296,12 +293,10 @@ class TestA9ReverseComparisonWithPdf(A9Case):
 
     def test_instrument_detects_a_1cm_margin_error(self):
         """**正对照**：故意把纸内左边距改成 3cm，同一套比值必须报警（证明判据有区分力）。"""
-        from playwright.sync_api import sync_playwright
-
         pid = self.make_paper()
         pdf = pdf_question_row(self.export_pdf(pid))
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 frame = self.open_preview(page, pid)
                 frame.add_style_tag(content=".sheet{padding-left:3cm !important}")
@@ -317,11 +312,9 @@ class TestA9ReverseComparisonWithPdf(A9Case):
 
 class TestA9NoAbnormalWrapping(A9Case):
     def test_items_are_single_line_and_columns_wide_enough(self):
-        from playwright.sync_api import sync_playwright
-
         pid = self.make_paper()
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 frame = self.open_preview(page, pid)
                 data = frame.evaluate(PREVIEW_JS)
@@ -356,11 +349,9 @@ class TestA9FocusRingClosed(A9Case):
 
     def test_wrapper_shows_focus_ring_when_sheet_focused(self):
         """task-19 起焦点停靠点是**包裹层**（`tabindex="0"`，iframe `tabindex="-1"`）。"""
-        from playwright.sync_api import sync_playwright
-
         pid = self.make_paper()
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 page.goto(f"{self.server.base_url}/teacher/paper/{pid}",
                           wait_until="networkidle", timeout=60_000)
@@ -402,11 +393,9 @@ class TestA9FocusRingClosed(A9Case):
 
     def test_no_visible_ring_is_measured_while_sheet_focused(self):
         """独立复测：卷面停靠点聚焦时，**确实有元素画出可见环**。"""
-        from playwright.sync_api import sync_playwright
-
         pid = self.make_paper()
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 page.goto(f"{self.server.base_url}/teacher/paper/{pid}",
                           wait_until="networkidle", timeout=60_000)
@@ -469,7 +458,6 @@ class TestA9NegativeControlOnRealBuild(unittest.TestCase):
         import shutil
 
         import httpx
-        from playwright.sync_api import sync_playwright
 
         source = os.path.join(REPO, "frontend", "dist")
         target = os.path.join(ARTIFACTS, "dist-degraded")
@@ -497,8 +485,8 @@ class TestA9NegativeControlOnRealBuild(unittest.TestCase):
         degraded = RealServer(static_dir=target, db_path=db)
         degraded.__enter__()
         try:
-            with sync_playwright() as pw:
-                browser, page = browser_page(pw)
+            with browser_session() as chan:
+                browser, page = browser_page(chan)
                 try:
                     page.goto(f"{degraded.base_url}/teacher/paper/{pid}",
                               wait_until="networkidle", timeout=60_000)

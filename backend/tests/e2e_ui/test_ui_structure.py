@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+import ast
+import asyncio
 import json
 import os
 import re
@@ -40,6 +42,13 @@ os.makedirs(ARTIFACTS, exist_ok=True)
 VPY = os.path.join(BACKEND, ".venv", "Scripts", "python.exe")
 if not os.path.exists(VPY):
     VPY = sys.executable
+
+# 浏览器通道：**只走产品自己的** `app.export.browser`（task-22）。理由见 `browser_page`。
+# 复用 verify 侧已有的引导模块 `tests/e2e_m2/_browser.py`（它负责把仓库内的 `.playwright`
+# 指给 Playwright，并把产品的 `browser_session` / `session` 原样 re-export 出来）。
+if BACKEND not in sys.path:
+    sys.path.insert(0, BACKEND)
+from tests.e2e_m2._browser import browser_session, session  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -198,9 +207,66 @@ class ApiDownServer:
         return f"http://127.0.0.1:{self.port}"
 
 
-def browser_page(playwright, viewport=(1440, 900)):
-    browser = playwright.chromium.launch(headless=True)
+def browser_page(chan, viewport=(1440, 900)):
+    """用**产品自己的浏览器通道**开一个页面。
+
+    task-22 起不再自己 `sync_playwright()`：产品的 `app/export/browser.py` 有一个
+    **进程级常驻会话**（`_SESSION`），Playwright 的 sync API 用 greenlet 跑调度器 ——
+    两次 sync 调用之间它仍把事件循环标记为 running，于是**本线程之后再新建**
+    `PlaywrightContextManager` 会被守卫拒绝：
+
+        It looks like you are using Playwright Sync API inside the asyncio loop.
+        Please use the Async API instead.
+
+    （全量门禁里 `tests.e2e_m2` 的 PDF 路径先启动了那个常驻会话，因此 `tests.e2e_ui`
+    里所有裸 `sync_playwright()` 都撞上它 = 12 条 errors。）走产品通道则有两条安全路径：
+    已连上时 `_BrowserSession.browser()` **提前 return** 复用，需要新建时它自带
+    「停掉失败的旧 manager 再重试」的回退 —— 两条都不会撞守卫。
+    """
+    browser = chan.browser()
     return browser, browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
+
+
+# --------------------------------------------------------------------------
+# task-22 回归护栏：本套件**不得**再裸用 Playwright 的 sync API
+# --------------------------------------------------------------------------
+
+def bare_playwright_calls(source: str, filename: str = "<string>") -> list[tuple[int, str]]:
+    """裸调用 `sync_playwright(...)` 的清单：`(行号, 所在函数名；模块级为 "")`。
+
+    必须是 AST 而不是文本匹配：本文件的文档串里就写着 `sync_playwright()` 这个名字，
+    grep 会自伤；AST 只看真正的调用表达式。
+    """
+    def is_bare(node) -> bool:
+        if not isinstance(node, ast.Call):
+            return False
+        func = node.func
+        return ((isinstance(func, ast.Name) and func.id == "sync_playwright")
+                or (isinstance(func, ast.Attribute) and func.attr == "sync_playwright"))
+
+    hits: set[tuple[int, str]] = set()
+
+    def scan(node, owner: str) -> None:
+        if is_bare(node):
+            hits.add((node.lineno, owner))
+        for item in getattr(node, "items", []):        # `with ... as x:` 的上下文表达式
+            if is_bare(item.context_expr):
+                hits.add((node.lineno, owner))
+        for child in ast.iter_child_nodes(node):
+            scan(child, child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 else owner)
+
+    scan(ast.parse(source, filename=filename), "")
+    return sorted(hits)
+
+
+def running_loop_name() -> str:
+    """本线程当前是否有运行中的事件循环（Playwright sync API 的守卫看的就是它）。"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return ""
+    return type(loop).__name__ if loop.is_running() else ""
 
 
 def rects_intersect(a: dict, b: dict) -> bool:
@@ -430,11 +496,9 @@ class TestA3Keyboard(UiRuntimeCase):
     """全程只用键盘：Tab / Enter / Space / 方向键，且焦点始终有可见环。"""
 
     def test_keyboard_walkthrough_and_focus_ring(self):
-        from playwright.sync_api import sync_playwright
-
         pid = self.new_paper()
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 page.goto(f"{self.server.base_url}/teacher", wait_until="networkidle",
                           timeout=60_000)
@@ -539,11 +603,9 @@ class TestA4NoFalseStatus(unittest.TestCase):
     """后端 500 时不得出现「已保存 / 预览已刷新」，且错误态**不冒充空态**。"""
 
     def test_backend_500_shows_error_not_empty_state(self):
-        from playwright.sync_api import sync_playwright
-
         ensure_dist_fresh()
-        with ApiDownServer() as down, sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with ApiDownServer() as down, browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 page.goto(f"{down.base_url}/teacher/library", wait_until="networkidle",
                           timeout=60_000)
@@ -570,11 +632,9 @@ class TestA4NoFalseStatus(unittest.TestCase):
 
 class TestA6PreviewFromBackend(UiRuntimeCase):
     def test_iframe_src_is_backend_sheet(self):
-        from playwright.sync_api import sync_playwright
-
         pid = self.new_paper()
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 sheet_requests = []
                 page.on("request", lambda r: sheet_requests.append(r.url)
@@ -612,11 +672,9 @@ class TestA6PreviewFromBackend(UiRuntimeCase):
 
 class TestA7Geometry(UiRuntimeCase):
     def test_floating_layers_do_not_overlap_paper(self):
-        from playwright.sync_api import sync_playwright
-
         pid = self.new_paper()
-        with sync_playwright() as pw:
-            browser, page = browser_page(pw)
+        with browser_session() as chan:
+            browser, page = browser_page(chan)
             try:
                 page.goto(f"{self.server.base_url}/teacher/paper/{pid}",
                           wait_until="networkidle", timeout=60_000)
@@ -653,11 +711,9 @@ class TestA7Geometry(UiRuntimeCase):
 
 class TestA8Viewports(UiRuntimeCase):
     def test_no_horizontal_overflow(self):
-        from playwright.sync_api import sync_playwright
-
         pid = self.new_paper()
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
+        with browser_session() as chan:
+            browser = chan.browser()
             try:
                 for width, height in ((1440, 900), (1280, 900)):
                     page = browser.new_page(viewport={"width": width, "height": height})
@@ -676,6 +732,69 @@ class TestA8Viewports(UiRuntimeCase):
                     page.close()
             finally:
                 browser.close()
+
+
+class TestZPlaywrightChannelGuard(unittest.TestCase):
+    """task-22：把「12 条 errors」的根因与本修法固定成可复跑的判据。
+
+    ① 静态：AST 扫描本目录，任何裸 `sync_playwright()` 调用即失败（附正对照，证明检测器有牙）；
+    ② 机理：在产品常驻会话活着时，裸新建 `PlaywrightContextManager` **必然**被 Playwright 拒绝
+       （本线程一直「有运行中的 loop」），而同一状态走产品通道正常 —— 修前 12 条 errors 由此而来。
+    """
+
+    SNIPPET = ("from playwright.sync_api import sync_playwright\n"
+               "with sync_playwright() as pw:\n"
+               "    browser = pw.chromium.launch()\n")
+
+    #: 唯一豁免：下面那条测试**本身就是实验**（验证「裸调用必被拒」），它的裸调用是刺激、
+    #: 不是误用。豁免按「函数名 + 恰好 1 处」记账 —— 函数被删/改名或处数变化都会让本测试失败，
+    #: 因此无法靠改名字偷偷扩大豁免面。
+    EXEMPT = {"test_bare_playwright_is_rejected_while_product_session_is_alive": 1}
+
+    def test_detector_flags_a_synthetic_bare_call(self):
+        """**正对照**：检测器必须抓住一段已知的裸调用，否则「全绿」可能只是空转。"""
+        self.assertEqual(bare_playwright_calls(self.SNIPPET, "synthetic.py"), [(2, "")])
+
+    def test_no_bare_sync_playwright_in_this_suite(self):
+        offenders: list[str] = []
+        exempt_seen: dict[str, int] = {}
+        for name in sorted(os.listdir(HERE)):
+            if not name.endswith(".py"):
+                continue
+            with open(os.path.join(HERE, name), encoding="utf-8") as fh:
+                for lineno, owner in bare_playwright_calls(fh.read(), name):
+                    if owner in self.EXEMPT:
+                        exempt_seen[owner] = exempt_seen.get(owner, 0) + 1
+                    else:
+                        offenders.append(f"{name}:{lineno}（在 {owner or '模块级'} 内）")
+        self.assertEqual(
+            offenders, [],
+            "task-22：本套件不得裸用 sync_playwright（会撞产品常驻会话的 asyncio 守卫，"
+            f"全量门禁里表现为「Playwright Sync API inside the asyncio loop」）；"
+            f"请改用 browser_session()/session()：{offenders}")
+        self.assertEqual(exempt_seen, self.EXEMPT,
+                         f"豁免账目不符（应恰好 {self.EXEMPT}），实际 {exempt_seen}")
+
+    def test_bare_playwright_is_rejected_while_product_session_is_alive(self):
+        from playwright.sync_api import sync_playwright
+
+        with browser_session() as chan:
+            browser = chan.browser()
+            self.assertTrue(browser.is_connected(), "产品浏览器通道未启动")
+            self.assertTrue(running_loop_name(),
+                            "产品会话启动后本线程应能看到运行中的事件循环（守卫的前提）")
+            with self.assertRaises(Exception) as caught:
+                with sync_playwright():
+                    pass
+            self.assertIn("asyncio loop", str(caught.exception),
+                          f"裸 start 的失败原因不是 asyncio 守卫：{caught.exception}")
+            # 同一状态、同一线程，走产品通道依然可用（这才是修法的判据）
+            page = browser.new_page()
+            try:
+                page.set_content("<b id='probe'>ok</b>")
+                self.assertEqual(page.inner_text("#probe"), "ok")
+            finally:
+                page.close()
 
 
 if __name__ == "__main__":
