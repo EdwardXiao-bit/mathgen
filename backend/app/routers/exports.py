@@ -1,15 +1,26 @@
-"""导出路由（契约 §5.1 `GET /api/papers/{id}/export`，FR-T7/T8 / D57 + M3）。
+"""导出路由。
 
-链路**只有一条**（C3 同源）：
-`build_sheet_context` → `render_html` → 打印/写文件。
+两条链路：
 
-* `format=pdf`：把 HTML 交给 `pdf_export`（子进程里的 Chromium 打印同一份 HTML）
-* `format=docx`（M3 起真实现）：把**同一个 `SheetContext`**（含 `answer_layout`）
-  交给 `app.export.docx.export_docx`（render-export 的写域，可能尚未就绪 →
-  延迟导入 + `ImportError` → 503 `RENDER_NOT_READY`）
+* **卷面导出**（契约 §5.1 `GET /api/papers/{id}/export`，FR-T7/T8 / D57 + M3）：
+  链路**只有一条**（C3 同源）：
+  `build_sheet_context` → `render_html` → 打印/写文件。
+  * `format=pdf`：把 HTML 交给 `pdf_export`（子进程里的 Chromium 打印同一份 HTML）
+  * `format=docx`（M3 起真实现）：把**同一个 `SheetContext`**（含 `answer_layout`）
+    交给 `app.export.docx.export_docx`（render-export 的写域，可能尚未就绪 →
+    延迟导入 + `ImportError` → 503 `RENDER_NOT_READY`）
+* **成绩导出**（契约 §5.5 `GET /api/attempts/export`，FR-T13 + D80）：
+  `attempt_service.list_attempts_all` → `app.export.attempt_export.export_attempts`。
+  **不要浏览器**，因此这条链路不受 Playwright 环境（AGENTS.md「坑 2」）影响。
 
 错误优先级（固定，可测）：卷不存在 → 404；`format` 非法 → 422；`mode` 非法 → 422；
 渲染/Word 模块未就绪 → 503 `RENDER_NOT_READY`；打印或生成失败 → 503 `EXPORT_NOT_READY`。
+
+**`/api/attempts/export` 的注册顺序是契约的一部分**（`docs/04` §5.5）：它必须排在
+`/api/attempts/{attempt_id}` 之前，否则 `attempt_id: int` 解析不了字面量 `"export"`，
+FastAPI 直接 422 而**不会继续匹配**。这里能满足，是因为 `exports.router` 在
+`app/main.py` 里**先于** `attempts.router` 注册；契约包另有权威判据，
+本模块的判据则直接查**真实 app 的路由表顺序**（见 `tests/render/test_export_attempts.py`）。
 """
 from __future__ import annotations
 
@@ -18,7 +29,9 @@ from sqlalchemy.orm import Session
 
 from app.contracts.api import ROUTES
 from app.db import get_db
+from app.export import attempt_export
 from app.routers._common import render_not_ready
+from app.services import attempt_service
 from app.services import docx_export
 from app.services import paper_service as svc
 from app.services import pdf_export
@@ -26,12 +39,23 @@ from app.services.errors import ApiError
 from app.services.sheet_ctx import build_sheet_context, parse_mode
 from app.services.sheet_render import RenderNotReady, render_html
 
-__all__ = ["router", "SUPPORTED_FORMATS", "MEDIA_TYPE_PDF", "MEDIA_TYPE_DOCX"]
+__all__ = [
+    "router",
+    "SUPPORTED_FORMATS",
+    "SUPPORTED_ATTEMPT_FORMATS",
+    "MEDIA_TYPE_PDF",
+    "MEDIA_TYPE_DOCX",
+    "parse_format",
+    "parse_attempts_format",
+]
 
 router = APIRouter(tags=["export"])
 
 #: 支持的导出格式
 SUPPORTED_FORMATS = ("pdf", "docx")
+
+#: 成绩导出的格式（契约 §5.5）。与卷面导出**不是**同一组，所以各解析各的。
+SUPPORTED_ATTEMPT_FORMATS = attempt_export.SUPPORTED_FORMATS
 
 MEDIA_TYPE_PDF = "application/pdf"
 MEDIA_TYPE_DOCX = docx_export.DOCX_MEDIA_TYPE
@@ -48,6 +72,32 @@ def parse_format(raw: str | None) -> str:
             f"format 只能是 {' 或 '.join(SUPPORTED_FORMATS)}，实际为 {raw!r}",
         )
     return value
+
+
+def parse_attempts_format(raw: str | None) -> str:
+    """`format=csv|xlsx`（缺省 csv）；**显式给了非法值**（含空串）→ 422。
+
+    与 `parse_format` 分开而不是加参数：两组取值不同（`pdf/docx` vs `csv/xlsx`），
+    合成一个函数就会让「`/export?format=pdf` 与 `/attempts/export?format=pdf`」
+    的合法集合互相耦合，改一边会误伤另一边。
+    """
+    if raw is None:
+        return "csv"
+    value = raw.strip().lower()
+    if value not in SUPPORTED_ATTEMPT_FORMATS:
+        raise ApiError(
+            "VALIDATION_ERROR",
+            f"format 只能是 {' 或 '.join(SUPPORTED_ATTEMPT_FORMATS)}，实际为 {raw!r}",
+        )
+    return value
+
+
+def _normalise_q(q: str | None) -> str | None:
+    """空串 / 纯空白 → `None`（= 不过滤），与列表接口的约定一致。"""
+    if q is None:
+        return None
+    value = q.strip()
+    return value or None
 
 
 @router.get(
@@ -94,4 +144,32 @@ def export_paper(
         content=data,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    ROUTES["export_attempts"],
+    response_class=Response,
+    responses={200: {"content": {attempt_export.MEDIA_TYPE_CSV: {}, attempt_export.MEDIA_TYPE_XLSX: {}}}},
+)
+def export_attempts(
+    file_format: str = Query(default="csv", alias="format"),
+    paper_id: int | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=100),
+    db: Session = Depends(get_db),
+) -> Response:
+    """导出成绩表（FR-T13）：`format=csv`（默认）→ CSV；`format=xlsx` → Excel。
+
+    **故意没有 `limit` / `offset`**：那两个是列表（FR-T11）的分页参数，导出要的是
+    「当前筛选下的**全部**记录」（契约 §5.5）。分页参数缺省时 FastAPI 会**忽略**传入的
+    `limit`/`offset`（未知查询参数不参与绑定），所以「导出偷偷只给一页」在这里
+    在**结构上**不可能发生——判据专门造了「总数 > 一页」的数据来钉死这点。
+    """
+    fmt = parse_attempts_format(file_format)
+    rows = attempt_service.list_attempts_all(db, paper_id=paper_id, q=_normalise_q(q))
+    data, media_type, filename = attempt_export.export_attempts(rows, fmt)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": attempt_export.content_disposition(filename)},
     )
