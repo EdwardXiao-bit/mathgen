@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 学生端主要跑在手机浏览器上：viewport-fit=cover 用于避开刘海/圆角，interactive-widget 让键盘弹出时不挤压布局 -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="color-scheme" content="light" />
+    <!-- 学生端不需要被索引，也不需要离线缓存（教室内网部署） -->
+    <meta name="robots" content="noindex" />
+    <title>mathgen 学生端</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/student/main.tsx"></script>
+  </body>
+</html>

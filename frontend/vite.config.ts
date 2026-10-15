@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -36,5 +37,15 @@ export default defineConfig({
     outDir: 'dist',
     // 不生成 sourcemap：产物要能直接拷到内网机器上跑，体积越小越好
     sourcemap: false,
+    // 多入口（M4）：老师端 `index.html` + 学生端 `student.html`。
+    // 后端 `app/services/static_site.py` 的 `STUDENT_ENTRY = "student.html"` 依赖这个文件名，
+    // 两边是**同一个约定**：改名要同时改这两处（该文件 :51 有注释指向)。
+    // 用 `new URL(..., import.meta.url)` 而不是 `__dirname`——本配置是 ESM。
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        student: fileURLToPath(new URL('./student.html', import.meta.url)),
+      },
+    },
   },
 });

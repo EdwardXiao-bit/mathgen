@@ -210,14 +210,23 @@ class TestWriteDomainTable(unittest.TestCase):
         self.assertEqual(problems, [], "\n".join(problems))
 
     def test_annotated_missing_scopes_really_are_absent(self) -> None:
-        annotated = [s for r in self.roles for s in r.scopes if s.annotated_missing]
-        self.assertTrue(annotated, "预期至少有一个「尚未创建」的写域（fe-student）")
-        for scope in annotated:
-            self.assertEqual(
-                disk_path_state(scope.base),
-                "missing",
-                f"`{scope.spec}` 标注了「尚未创建」，但磁盘上存在——标注已失效，请改表",
-            )
+        """带「尚未创建」标注的写域**必须真的不存在**（§2 的唯一合法例外）。
+
+        **注意这里刻意不断言「至少有一个标注」**——那是**当前数据**的属性，不是规则。
+        第一版写了 `assertTrue(annotated, "预期至少有一个「尚未创建」的写域（fe-student）")`，
+        结果 M4 一开工 `frontend/src/student/**` 真的建出来、标注依规则去掉之后，这条**本该高兴**的事
+        变成了一次门禁失败（实测踩到）。**把瞬时状态写成断言，就是把"进展"变成"故障"**（V9 同源）。
+        标注机制本身改由 `TestNegativeControls` 用**合成表**验证——测机制，不测当前数据。
+        """
+        for role in self.roles:
+            for scope in role.scopes:
+                if not scope.annotated_missing:
+                    continue
+                self.assertEqual(
+                    disk_path_state(scope.base),
+                    "missing",
+                    f"`{scope.spec}` 标注了「尚未创建」，但磁盘上存在——标注已失效，请改表",
+                )
 
     def test_scopes_are_mutually_exclusive(self) -> None:
         problems = audit_exclusivity(self.roles)
@@ -256,6 +265,19 @@ class TestNegativeControls(unittest.TestCase):
         self.assertTrue(roles[0].scopes[0].annotated_missing, "标注没被解析出来，负对照恒真")
         problems = audit_scopes(roles, disk_path_state)
         self.assertTrue(problems, "标注「尚未创建」但路径真实存在，必须被判红")
+
+    def test_positive_control_annotated_missing_and_absent_passes(self) -> None:
+        """正对照：标注「尚未创建」且路径**确实不存在** → 合法（§2 的唯一例外）。
+
+        没有这条，`audit_scopes` 也可能只是「凡带标注就报错」才通过上面那条负对照——
+        那样标注机制就永远不可用了，而测试还是绿的。
+        """
+        roles = self._parse(
+            "| **fake-role** | x | `backend/app/not-there-yet/**`（**尚未创建**） |\n"
+        )
+        self.assertEqual(len(roles), 1, "合成表没被解析出来，这条正对照恒真")
+        self.assertTrue(roles[0].scopes[0].annotated_missing, "标注没被解析出来，正对照恒真")
+        self.assertEqual(audit_scopes(roles, disk_path_state), [])
 
     def test_negative_control_empty_directory_for_nonempty_glob_is_flagged(self) -> None:
         roles = self._parse("| **fake-role** | x | `frontend/src/design/*` |\n")
