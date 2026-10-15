@@ -19,6 +19,8 @@
     "verify:preview-scale": "node scripts/verify-preview-scale.mjs",
     "verify:voice": "node scripts/verify-ui-voice.mjs",
     "verify:negative": "node scripts/verify-negative-controls.mjs",
+    "verify:mock-parity": "node scripts/compare-mock-and-real.mjs",
+    "verify:mock-parity:selftest": "node scripts/compare-mock-and-real.mjs --self-test",
     "verify": "node scripts/run-all-verifications.mjs"
   },
   "dependencies": {

@@ -26,7 +26,16 @@ BACKEND = REPO_ROOT / "backend"
 API_PY = BACKEND / "app" / "contracts" / "api.py"
 LAYOUT_PY = BACKEND / "app" / "contracts" / "layout.py"
 API_TS = REPO_ROOT / "frontend" / "src" / "shared" / "api.ts"
-TEACHER_TS_DIR = REPO_ROOT / "frontend" / "src"
+
+# 扫描范围是**整个** `frontend/src`（老师端 + 学生端 + 组件层都扫）——注意它不是
+# `src/teacher`。变量名曾是 TEACHER_TS_DIR，容易被读成"只扫老师端"，已改名。
+SRC_TS_DIR = REPO_ROOT / "frontend" / "src"
+
+# ROUTES / route() 的定义处本身就是路径字面量的**唯一合法来源**，必须排除；
+# 但只能按**文件路径**排除，不能按文件名 —— 学生端也有一个 `src/student/api.ts`，
+# 它只是同名，并不定义 ROUTES。早期版本写的是 `if ts_file.name == "api.ts": continue`，
+# 于是把学生端那个文件也一起跳过了，判据**静默空过**（实测：4 处裸路径全部漏报）。
+ROUTES_DEF_FILE = API_TS
 
 sys.path.insert(0, str(BACKEND))
 
@@ -182,17 +191,10 @@ def main() -> int:
     )
 
     print("\n=== ④ 前端只用 ROUTES 常量拼 API 路径（不出现裸 /api 字面量）===")
-    offenders: list[str] = []
-    for ts_file in TEACHER_TS_DIR.rglob("*.ts*"):
-        if ts_file.name == "api.ts":
-            continue  # ROUTES 与 route() 的定义处，本身就含字面量
-        text = ts_file.read_text(encoding="utf-8")
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            stripped = line.strip()
-            if stripped.startswith("//") or stripped.startswith("*"):
-                continue
-            if re.search(r"['\"`]/api/", line):
-                offenders.append(f"{ts_file.relative_to(REPO_ROOT)}:{lineno}: {stripped[:90]}")
+    # 扫描逻辑与 --self-test 共用同一个函数，避免"自检验一套、生产跑另一套"。
+    scanned, offenders = _scan_bare_api_paths()
+    # 先证明"扫到了东西"：如果扫描集为空，下面的 PASS 就是空过（与 D69 同类）。
+    check("扫描覆盖非空（frontend/src 下除 ROUTES 定义处外确有文件被扫）", scanned > 0, f"扫描 {scanned} 个文件")
     check("没有裸 /api 路径字面量（全部走 ROUTES/route()）", not offenders, " ; ".join(offenders) or "无")
 
     print(f"\n结果：{checks - len(failures)}/{checks} 通过")
@@ -205,5 +207,90 @@ def main() -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# 自检（负对照）：证明判据④真的抓得住裸路径
+# ---------------------------------------------------------------------------
+# V9.1/V9.2：一条判据如果"抓不住东西"，比没有判据更危险（D69）。判据④历史上真的
+# 空过一次 —— 排除条件写的是文件名 `api.ts`，把学生端的 `src/student/api.ts`
+# 一起跳过了，于是 4 处裸路径全部漏报、判据还显示 PASS。
+#
+# 所以这里**现造一个真文件**（放在 frontend/src 下，走的是同一个 rglob），
+# 里面写两处形态不同的裸路径（单引号 + 模板串），断言判据必须红；并且额外断言
+# **红的原因确实是那两处**（否则可能是被别的失败项带红的，那就不算证明）。
+# 跑完在 finally 里删掉，不留坏文件在仓库。
+SELFTEST_FILE = SRC_TS_DIR / "__contract_selftest_bare_paths.ts"
+
+
+def _scan_bare_api_paths() -> tuple[int, list[str]]:
+    """判据④的扫描逻辑（抽出来供自检复用，避免自检与生产走两套实现）。"""
+    offenders: list[str] = []
+    scanned = 0
+    for ts_file in SRC_TS_DIR.rglob("*.ts*"):
+        if ts_file.resolve() == ROUTES_DEF_FILE.resolve():
+            continue
+        scanned += 1
+        text = ts_file.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            if re.search(r"['\"`]/api/", line):
+                offenders.append(f"{ts_file.relative_to(REPO_ROOT)}:{lineno}: {stripped[:90]}")
+    return scanned, offenders
+
+
+def self_test() -> int:
+    """返回 0 表示自检通过。--self-test 时只跑这个，不跑完整契约核对。"""
+    print("=== 判据自检：裸 /api 扫描必须抓得住（负对照 + 具名证明）===")
+    ok = True
+
+    # 基线：不注入时应为 0 处。
+    _, base_offenders = _scan_bare_api_paths()
+    print(f"  [{'PASS' if not base_offenders else 'FAIL'}] 基线：当前仓库无裸路径"
+          f"（{len(base_offenders)} 处）")
+    ok = ok and not base_offenders
+
+    # 注入一个真文件（放在 src/ 下，会被同一条 rglob 扫到）。
+    SELFTEST_FILE.write_text(
+        "// 负对照：本文件由 verify-contract.py --self-test 现造，跑完即删。\n"
+        "export async function a() { return fetch('/api/students'); }\n"
+        "export async function b(code: string) {\n"
+        "  return fetch(`/api/student/paper/${code}`);\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    try:
+        scanned, injected = _scan_bare_api_paths()
+        named = [o for o in injected if SELFTEST_FILE.name in o]
+        # 1) 必须红（抓到了东西）
+        caught = len(injected) >= 2
+        print(f"  [{'PASS' if caught else 'FAIL'}] 负对照：注入 2 处裸路径后判据转红"
+              f"（抓到 {len(injected)} 处）")
+        ok = ok and caught
+        # 2) 必须**具名**：红的正是这个注入文件，而不是被别的问题带红
+        named_ok = len(named) == 2
+        print(f"  [{'PASS' if named_ok else 'FAIL'}] 具名：红的位置就是注入文件"
+              f"（命中 {len(named)}/2 处）")
+        ok = ok and named_ok
+        # 3) 扫描集必须真的包含它（证明注入生效，不是"文件没被扫到所以没红"）
+        print(f"  [{'PASS' if scanned > 0 else 'FAIL'}] 注入生效：扫描集 {scanned} 个文件")
+        ok = ok and scanned > 0
+        for line in injected:
+            print(f"      · {line}")
+    finally:
+        SELFTEST_FILE.unlink(missing_ok=True)
+
+    _, after = _scan_bare_api_paths()
+    print(f"  [{'PASS' if not after else 'FAIL'}] 清理：注入文件已删除，仓库回到 0 处"
+          f"（{len(after)} 处）")
+    ok = ok and not after
+
+    print(f"\n结果：{'自检通过' if ok else '自检未通过'} —— "
+          f"判据④抓得住裸 /api 路径，且不误报。")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        raise SystemExit(self_test())
     raise SystemExit(main())

@@ -30,6 +30,13 @@ export const ROUTES = {
   sheet: '/api/papers/{paper_id}/sheet',
   export: '/api/papers/{paper_id}/export',
   qr: '/api/papers/{paper_id}/qr',
+  // ---- M4 学生端（D74 / D75 / D76）----
+  // 顺序与 backend/app/contracts/api.py 的 ROUTES 保持一致，方便逐眼对账。
+  create_student: '/api/students',
+  // {code} 是**卷号**（不是 paper_id）：学生端只认卷号，拿不到也不需要自增主键。
+  student_paper: '/api/student/paper/{code}',
+  student_practice: '/api/student/practice',
+  submit_attempt: '/api/attempts',
 } as const;
 
 export type RouteName = keyof typeof ROUTES;

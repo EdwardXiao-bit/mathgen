@@ -203,37 +203,150 @@ DEV_SCAN = """() => {
 }"""
 
 # 页面底色：读**计算后**的背景色，并同时报告 body 与根容器。
+#
+# 根容器的**选择器必须分老师端/学生端两套**：老师端的页面壳是
+# .config-page/.library-page/.publish-page，学生端是 .st-screen（实测 #root
+# 的 firstElementChild.className === "st-screen"）。学生端用老师端选择器会
+# 返回 null，A11 就会**跳过根容器只查 body** —— 正是「判据悄悄不生效」的形态。
 BG_SCAN = """() => {
-    const root = document.querySelector('.config-page, .library-page, .publish-page');
+    const root = document.querySelector(
+        '.config-page, .library-page, .publish-page, .st-screen');
     const cs = (el) => {
         if (!el) return null;
         const c = getComputedStyle(el);
-        return {bg: c.backgroundColor, bgImage: c.backgroundImage};
+        const r = el.getBoundingClientRect();
+        return {bg: c.backgroundColor, bgImage: c.backgroundImage,
+                h: Math.round(r.height), x: Math.round(r.x), w: Math.round(r.width)};
     };
     return {body: cs(document.body), root: cs(root),
             rootSelector: root ? (root.className || root.tagName) : null,
-            canvas: cs(document.querySelector('.mg-canvas'))};
+            canvas: cs(document.querySelector('.mg-canvas')),
+            viewport: {w: window.innerWidth, h: window.innerHeight}};
 }"""
 
 def parse_rgb_unused(text):
     return None
 
+# 老师端 5 条 + 学生端 5 条（M4 扩 mock 后补齐答题页与交卷结果页）。
+#
+# 学生端这几条**都带身份预置**（见下面的 STUDENT_IDENTITY/_seed_identity）：
+# 不预置的话每条都会停在「先填一下姓名和学号」的身份门槛，只见得到表单；
+# 预置之后 student-entry 看到的是真正的选择页（你好 XX / 想做哪一种 / 自主练习 /
+# 输入卷号做卷子），student-practice 看到的是真正的练习设置页（两种练法 + 题量滑块）。
+#
+# 「student-paper」与「student-result」是**流程页**，不是直接 goto 就能看到内容的：
+#   · 答题页要在 student-paper-flow 里逐题作答并且**真的点「交卷」**；
+#   · 结果页读 sessionStorage 的 mathgen.student.lastResult，只有走完交卷才有内容
+#     （直接打开只会看到「这里暂时没有结果」，那是**空态**不是结果页）。
+# 所以这两条由 _drive_student_paper(page) 现走一遍交卷流程，再照常扫。
+#
+# 补 mock 让这两页可测这件事的正当性来自**逐键比对**：mock 的学生端响应形状
+# 与我用探针打真实 app 抓到的响应逐键一致（见 docs/06 与本轮报告）。扫错误态
+# 不算覆盖，把「404 错误态」当「答题页覆盖」是给自己制造虚假的安全感。
 CASES = [
     ("config", "/teacher", "[data-dimension='answer_form']"),
     ("library", "/teacher/library", "[data-testid='library-rows'] tr"),
     ("paper", "/teacher/paper/1", "#sheet-frame"),
     ("paper-answer", "/teacher/paper/1", "#sheet-frame"),
     ("publish", "/teacher/paper/1/publish", ".publish-page"),
+    ("student-entry", "/student", ".st-screen"),
+    ("student-practice", "/student/practice", ".st-screen"),
+    ("student-paper", "/student/paper/2610-0001", ".st-screen #st-answer"),
+    ("student-paper-flow", "/student/paper/2610-0001", ".st-screen #st-answer"),
+    ("student-result", "/student/result", ".st-screen"),
 ]
+
+# 学生端「做卷子 → 交卷 → 结果页」的流程驱动。
+#
+# 为什么要写成流程而不是直接 goto 结果页：结果页的数据来自 sessionStorage，
+# 由交卷那一刻写入（src/student/resultStore.ts 的 saveResult）。直接打开
+# /student/result 只能看到空态，那验证的是"空态渲染正常"，不是结果页本身。
+#
+# 返回收成 dict（而不是抛异常）是为了让判据侧能**如实报告流程在哪一步断的**：
+# 流程没走通时页面文本原样带回去，报告里能看出是卡在答题、交卷还是结果页。
+def _drive_student_paper(page):
+    out = {"filled": 0, "submit_text": None, "reached_result": False, "step_texts": []}
+    try:
+        for step in range(12):
+            box = page.query_selector(".st-screen #st-answer")
+            if box is not None:
+                try:
+                    box.fill(str(step + 1))
+                    out["filled"] += 1
+                except Exception:
+                    pass
+            labels = [(el.inner_text() or "").strip() for el in page.query_selector_all(".st-screen button")]
+            out["step_texts"].append(labels)
+            nxt = None
+            for el in page.query_selector_all(".st-screen button"):
+                if "下一题" in (el.inner_text() or ""):
+                    nxt = el
+                    break
+            if nxt is not None:
+                nxt.click()
+                page.wait_for_timeout(180)
+                continue
+            for el in page.query_selector_all(".st-screen button"):
+                txt = (el.inner_text() or "").strip()
+                if "交卷" in txt or "提交" in txt or "完成" in txt:
+                    el.click()
+                    out["submit_text"] = txt
+                    break
+            break
+        page.wait_for_timeout(1200)
+        out["reached_result"] = page.url.rstrip("/").endswith("/student/result")
+        out["text"] = (page.inner_text(".st-screen") or "")[:400]
+    except Exception as exc:
+        out["error"] = str(exc)
+    return out
 
 result = {"pages": {}, "console_errors": []}
 exe = find_chromium()
 result["chromium"] = exe
 
+# 负对照开关（默认关）。打开后每个被扫页面都会被注入一段开发者文本，
+# 于是一条诚实的扫描应当"全红"。若某页面恒绿，说明它其实没被扫到。
+INJECT_DEV_TEXT = "@@INJECT_DEV_TEXT@@" == "1"
+result["inject_dev_text"] = INJECT_DEV_TEXT
+# --self-test：跑完正常扫描后，再跑两条自带负对照（注入对照 + 身份预置对照）。
+SELF_TEST = "@@SELF_TEST@@" == "1"
+
+# 学生端身份预置：src/student/identity.ts 用 localStorage['mathgen.student.identity']
+# 记住报过到的学生。预置它 == "这位同学已经报到过"，于是**不需要**后端
+# POST /api/students 就能看到门槛之后的真实界面。
+#
+# 为什么必须这么做（而不是给 mock 补 POST /api/students）：
+# mock 后端（verify-server.mjs）是**老师端与学生端共用**的验收基础设施，
+# 补学生端接口会牵动别人的写域与在跑的门禁；而预置 localStorage 只动本判据，
+# 且它验的正是学生端真实逻辑（identity.ts 的读取路径），不是替身。
+# 实测收益：/student 从「身份门槛」变成真正的选择页（你好/练什么/自主练习/输入卷号），
+# /student/practice 从门槛变成真正的练习设置页（两种练法 + 题量滑块）。
+STUDENT_IDENTITY = '{"student_id":7,"name":"测试同学","student_no":"1001"}'
+
+# 负对照用的注入片段：一个真正的可见文本节点，含两类判据都该抓的东西。
+INJECT_SENTINEL = """() => {
+    const el = document.createElement('div');
+    el.id = 'dev-text-sentinel';
+    el.textContent = '排版参数 --page-margin（D56）';
+    document.body.appendChild(el);
+    return el.getBoundingClientRect().height >= 0;
+}"""
+
+def _seed_identity(page):
+    """在页面脚本运行前写入身份（比 goto 后 evaluate 更早，避免首屏读到 null）。"""
+    try:
+        page.add_init_script(
+            "try{window.localStorage.setItem('mathgen.student.identity', %s);}catch(e){}"
+            % json.dumps(STUDENT_IDENTITY))
+    except Exception:
+        pass
+
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
     for name, url, wait in CASES:
         page = browser.new_page(viewport={"width": 1440, "height": 900})
+        if name.startswith("student-"):
+            _seed_identity(page)
         page.on("pageerror", lambda e: result["console_errors"].append(str(e)))
         page.goto(BASE + url, wait_until="domcontentloaded")
         try:
@@ -246,11 +359,68 @@ with sync_playwright() as p:
             except Exception:
                 pass
         page.wait_for_timeout(800)
+        # student-paper-flow：照常量完答题页之后，**继续走完交卷流程**并把
+        # 结果页也量一遍（同一个 page 对象，交卷写的 sessionStorage 直接可用）。
+        # 这样一条 case 同时覆盖两个页面，且用的是真实流程，不是伪造的存储。
+        if name == "student-paper-flow":
+            result["pages"][name] = {"devHits": page.evaluate(DEV_SCAN), "bg": page.evaluate(BG_SCAN)}
+            result["student_flow"] = _drive_student_paper(page)
+            result["pages"]["student-result-after-submit"] = {
+                "devHits": page.evaluate(DEV_SCAN),
+                "bg": page.evaluate(BG_SCAN),
+            }
+            page.screenshot(path=os.path.join(r"@@FRONTEND_DIR@@".lstrip("/"), "verify-voice-student-result-430x900.png"))
+            page.close()
+            continue
+        if INJECT_DEV_TEXT:
+            # 负对照专用：往**每一个**被扫页面里塞一段"开发者文本"，形状与判据要抓的
+            # 一模一样，然后照常跑扫描。若某个页面其实没被扫到（典型事故：SPA 回落把
+            # 学生端送成老师端 / 容器选择器写错导致页面是空壳），它就抓不到这段文本，
+            # 负对照立刻报红。这样"覆盖面"就不是靠嘴说的。
+            page.evaluate(INJECT_SENTINEL)
+            page.wait_for_timeout(150)
         result["pages"][name] = {"devHits": page.evaluate(DEV_SCAN), "bg": page.evaluate(BG_SCAN)}
         if name == "config":
             page.screenshot(path=os.path.join(r"@@FRONTEND_DIR@@".lstrip("/"), "verify-voice-config-1440x900.png"))
         if name == "library":
             page.screenshot(path=os.path.join(r"@@FRONTEND_DIR@@".lstrip("/"), "verify-voice-library-1440x900.png"))
+        page.close()
+
+    # ---- 自带负对照（只在 --self-test 下跑，用同一个服务与浏览器，避免另起服务撞端口）----
+    # ① 注入对照：每个页面都注入同一段开发者文本，则每条 A10 检查都必须变红。
+    #    这一条证明的是"学生端页面**确实被扫了**"：如果 SPA 回落又把 /student/**
+    #    送成老师端、或 .st-screen 选择器落到空壳上，注入的文本就抓不到，
+    #    这里会直接报出"哪个页面没抓到"。
+    # ② 身份预置对照：不预置身份时，/student/practice 必须停在身份门槛
+    #    （有姓名输入框）。这条证明预置是**承重的**，而不是可有可无的装饰 ——
+    #    否则"扩了覆盖面"这句话就没有依据。
+    if SELF_TEST:
+        sentinel_pages = {}
+        for name, url, wait in CASES:
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            if name.startswith("student-"):
+                _seed_identity(page)
+            page.goto(BASE + url, wait_until="domcontentloaded")
+            try:
+                page.wait_for_selector(wait, timeout=15000)
+            except Exception:
+                pass
+            page.wait_for_timeout(500)
+            page.evaluate(INJECT_SENTINEL)
+            page.wait_for_timeout(150)
+            hits = page.evaluate(DEV_SCAN)
+            sentinel_pages[name] = len(hits)
+            page.close()
+        result["self_test"] = {"injected_pages": sentinel_pages, "case_names": [c[0] for c in CASES]}
+
+        # ② 不预置身份 → 必须看到身份门槛（有姓名输入框）
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.goto(BASE + "/student/practice", wait_until="domcontentloaded")
+        page.wait_for_timeout(1500)
+        result["self_test"]["identity_gate_inputs"] = page.evaluate(
+            "() => document.querySelectorAll('input').length")
+        result["self_test"]["identity_gate_has_practice"] = page.evaluate(
+            "() => Array.from(document.querySelectorAll('button')).some(b => (b.innerText||'').includes('开始练习'))")
         page.close()
 
     # 1280 视口：不横向溢出（不回归）
@@ -276,10 +446,10 @@ print("##RESULT##" + json.dumps(result, ensure_ascii=False))
 `;
 
 function buildPythonScript(staticPort) {
-  return PY_SCRIPT.replaceAll('@@STATIC_PORT@@', String(staticPort)).replaceAll(
-    '@@FRONTEND_DIR@@',
-    FRONTEND_DIR.replace(/\\/g, '/'),
-  );
+  return PY_SCRIPT.replaceAll('@@STATIC_PORT@@', String(staticPort))
+    .replaceAll('@@INJECT_DEV_TEXT@@', process.env.MATHGEN_VERIFY_INJECT_DEV_TEXT === '1' ? '1' : '0')
+    .replaceAll('@@SELF_TEST@@', process.env.MATHGEN_VERIFY_VOICE_SELF_TEST === '1' ? '1' : '0')
+    .replaceAll('@@FRONTEND_DIR@@', FRONTEND_DIR.replace(/\\/g, '/'));
 }
 
 async function main() {
@@ -327,10 +497,32 @@ async function main() {
   console.log('\n—— ② 灰桌面底只能用于画布（D70）——');
   const SUNKEN_HEX = '#f7f8f9';
   const DESK_HEX = '#8e939a';
+  // 页面上「负责铺底」的那个元素，两个应用不一样：
+  //   老师端 → body 有底色（styles.css 的 body 规则），页面壳 .config-page 也有；
+  //   学生端 → F1 修复前 body 是透明的（student.css 没有 import 老师端 styles.css，
+  //            那条 body 底色规则不在学生端的样式表里），铺底的是 .st-screen；
+  //            F1 修复后 student.css 顶部补上了 html/body 的 margin 与底色，
+  //            两个元素现在都是浅底 —— 判据仍按"谁铺底就查谁"来判，不写死 body。
+  // 所以判据不能写死 body：`!closeTo(bodyRgb, DESK, 6)` 在 body 透明时是
+  // **恒真**的（rgba(0,0,0,0) 怎么算都不是灰桌面），前半句 closeTo(bodyRgb, SUNKEN)
+  // 才是真正在把关的那半个条件。这里改成"谁铺底就查谁"，并把**有没有盖住视口**
+  // 一起查出来 —— 否则「中间 520px 有底色、两侧露出别的颜色」也会判绿。
   for (const [page, info] of Object.entries(result.pages ?? {})) {
     const bg = info.bg ?? {};
     const rootRgb = parseRgb(bg.root?.bg);
     const bodyRgb = parseRgb(bg.body?.bg);
+    const vp = bg.viewport ?? {};
+    const rootCovers = Number(bg.root?.h ?? 0) >= Number(vp.h ?? 0) - 1;
+    const bodyCovers = Number(bg.body?.h ?? 0) >= Number(vp.h ?? 0) - 1;
+    // 「默认边距残留」：文档根仍有浏览器默认的 8px margin（`body.x > 0`）。
+    // 这里**只测量、不在此断言**（理由见下面 A11b 的说明），但值得显式算出来：
+    // 学生端的 `.st-screen` 是**有意的**手机优先版式（max-width:520px + margin:0 auto），
+    // 它本来就不该占满 1440 宽，所以不能拿"根容器是否铺满宽度"当判据。真正的症状是
+    // 文档整体缩进 8px、视口最外侧露出的不是令牌色 —— 在只看"颜色对不对"的判据下
+    // 完全查不出来（body 的 h 恰好也是 900）。
+    const hasDefaultBodyMargin = Number(bg.body?.x ?? 0) > 0;
+    const rootFills = rootCovers;
+    const bodyFills = bodyCovers;
     if (page === 'paper' || page === 'paper-answer') {
       // 卷页：画布必须是灰桌面底，页面其余部分不是
       const canvasRgb = parseRgb(bg.canvas?.bg);
@@ -345,15 +537,32 @@ async function main() {
         `root=${bg.root?.bg ?? '(无)'} body=${bg.body?.bg}`,
       );
     } else {
+      // 「铺底元素」= 根容器或 body 里**占满视口的那个**（优先根容器：老师端 body 铺底、
+      // 学生端 .st-screen 铺底，两种实现都要能过）。
+      const isRootPainter = rootFills || (!bodyFills && rootCovers);
+      const painterName = isRootPainter ? `根容器 ${bg.rootSelector}` : 'body';
+      const painterRgb = isRootPainter ? rootRgb : bodyRgb;
+      const painterFills = isRootPainter ? rootFills : bodyFills;
       check(
-        `${page}：页面底色 = 浅底令牌 ${SUNKEN_HEX}（不是灰桌面 ${DESK_HEX}）`,
-        closeTo(rootRgb, SUNKEN) && closeTo(bodyRgb, SUNKEN),
-        `root=${bg.root?.bg} body=${bg.body?.bg}（root 选择器 ${bg.rootSelector}）`,
+        `${page}：铺底元素（${painterName}）底色 = 浅底令牌 ${SUNKEN_HEX} 且占满视口（不是灰桌面 ${DESK_HEX}）`,
+        closeTo(painterRgb, SUNKEN) && painterFills,
+        `根容器 ${bg.rootSelector}=${bg.root?.bg}（x=${bg.root?.x} h=${bg.root?.h}）body=${bg.body?.bg}（x=${bg.body?.x} h=${bg.body?.h}）视口 ${vp.w}x${vp.h}`,
       );
+      // A11b 的位置说明：这里**不**断言 `body.x == 0`。学生端的 `.st-screen` 是
+      // **有意的**手机优先版式（max-width:520px + margin:0 auto），它本来就不该占满
+      // 1440 宽，所以不能拿"根容器是否铺满宽度"当判据。真正该查的是"文档根有没有
+      // 残留浏览器默认边距"—— 本轮确实查出过（发现 F1：学生端没 import 老师端
+      // styles.css 的 `body { margin:0 }`，实测 body.x=8、外壳只有 374 宽、
+      // 整页永远多出 16px 高度）。**F1 已由学生端修复并重建 dist**（student.css 顶部
+      // 补了 `html, body { margin:0; background:var(--mg-surface-sunken) }`），
+      // 现实测 body.x=0、width=390（390×844 视口）→ 这条不再需要哨兵。
+      // 保留 `hasDefaultBodyMargin` 的**测量**并打进 detail：它是有用的现场信息，
+      // 一旦哪天又出现 8px 残留，日志里立刻看得见（而不是又要重跑探针去量）。
+      const bodyMarginNote = hasDefaultBodyMargin ? ` ⚠ 文档根又有 ${bg.body?.x}px 默认边距（F1 回归？）` : '';
       check(
-        `${page}：页面底色不是灰桌面底`,
+        `${page}：页面底色不是灰桌面底${bodyMarginNote}`,
         !closeTo(rootRgb, DESK, 6) && !closeTo(bodyRgb, DESK, 6),
-        `root=${bg.root?.bg} body=${bg.body?.bg}`,
+        `root=${bg.root?.bg} body=${bg.body?.bg} body.x=${bg.body?.x}`,
       );
     }
   }
@@ -364,6 +573,42 @@ async function main() {
   }
 
   check('无 pageerror', (result.console_errors ?? []).length === 0, (result.console_errors ?? []).join(';').slice(0, 200));
+
+  // ---- --self-test：两条自带负对照的断言 ----
+  if (result.self_test) {
+    console.log('\n—— 自带负对照（--self-test）——');
+    const st = result.self_test;
+    const injected = st.injected_pages ?? {};
+    const names = st.case_names ?? [];
+    const missed = names.filter((n) => !injected[n]);
+    console.log(
+      `  注入对照：${names.length} 个页面各自注入同一段开发者文本 → 抓到 ${names.length - missed.length}/${names.length}`,
+    );
+    console.log(`    逐页命中数：${names.map((n) => `${n}=${injected[n] ?? 0}`).join(' ')}`);
+    check(
+      '注入对照：每个被扫页面都抓到了注入的开发者文本（证明学生端确实被扫，不是空跑）',
+      names.length > 0 && missed.length === 0,
+      missed.length ? `没抓到：${missed.join(',')}` : `全部 ${names.length} 个页面命中`,
+    );
+    // 学生端那几条单独点名，避免"整体绿了但学生端恰好漏掉"被平均数盖住。
+    // 数量随 CASES 扩张而改：M4 之前是 3 条，补 mock 后加了 student-paper 与
+    // student-paper-flow（结果页由 flow 一条带出，见 result.pages 的
+    // student-result-after-submit）。
+    const stuNames = names.filter((n) => n.startsWith('student-'));
+    check(
+      `注入对照：学生端 ${stuNames.length} 条路由逐条都抓到（点名，防止被整体平均盖住）`,
+      stuNames.length >= 5 && stuNames.every((n) => injected[n] >= 1),
+      stuNames.map((n) => `${n}=${injected[n] ?? 0}`).join(' '),
+    );
+    console.log(
+      `  身份预置对照（故意不预置）：/student/practice input=${st.identity_gate_inputs} 有"开始练习"按钮=${st.identity_gate_has_practice}`,
+    );
+    check(
+      '身份预置对照：不预置身份时停在身份门槛（有姓名输入框、没有"开始练习"）—— 证明预置是承重的',
+      Number(st.identity_gate_inputs ?? 0) >= 1 && st.identity_gate_has_practice === false,
+      `input=${st.identity_gate_inputs} hasPractice=${st.identity_gate_has_practice}`,
+    );
+  }
 
   const failed = checks.filter((c) => !c.ok);
   console.log(`\n结果：${checks.length - failed.length}/${checks.length} 通过`);

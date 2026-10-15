@@ -54,12 +54,124 @@ const MIME = {
 };
 
 function json(res, status, body) {
-  const payload = JSON.stringify(body);
+  // 负对照开关：默认（两个环境变量都未设）`applyTamper` 原样返回，零影响。
+  const payload = JSON.stringify(applyTamper(body));
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+// ---------------------------------------------------------------------------
+// 故意改坏一条 mock 响应的开关（负对照用，默认完全不生效）
+// ---------------------------------------------------------------------------
+//
+// **为什么需要它**：`frontend/scripts/compare-mock-and-real.mjs` 的职责是
+// 「拿 mock 与真实后端逐字段比」；要证明这个比对**抓得住东西**，就必须能
+// 造出「mock 与真实不一致」的状态。但那个脚本不该去改写本文件（会留下脏改动，
+// 也可能被并发写入撞掉），所以改成：**本文件提供一个只读环境变量驱动的开关**，
+// 由它自己、在内存里、只在响应体上删字段 —— 默认（两个变量都未设）零影响。
+//
+//   MATHGEN_MOCK_TAMPER_DELETE   逗号分隔的字段路径，`[]` 表示数组每个元素
+//                                （例：`items[].answer`）
+//   MATHGEN_MOCK_TAMPER_ANY      同上，但按后缀匹配（用于字段在哪个层级不确定时）
+//
+// 与上面 `assertNoTamper`（检测）方向相反：这个是**制造**差异。两者都在测试期才有意义。
+const TAMPER_DELETE = (process.env.MATHGEN_MOCK_TAMPER_DELETE ?? '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const TAMPER_DELETE_ANY = (process.env.MATHGEN_MOCK_TAMPER_ANY ?? '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
+/** 路径里每个 `[]` 都表示「对数组的每个元素再走一遍」。 */
+function splitWildcards(spec) {
+  const parts = [];
+  for (const raw of spec.split('.')) {
+    const m = raw.match(/^([^[\]]*)((\[\])*)$/);
+    const name = m ? m[1] : raw;
+    const depth = m ? (m[2].match(/\[\]/g) ?? []).length : 0;
+    parts.push({ name, depth });
+  }
+  return parts;
+}
+
+/**
+ * 按路径删字段。`[]` 表示「对数组的每个元素再走一遍」。
+ *
+ * **这个函数修过一次真 bug（2026-10-15）**：旧版对最后一段的处理是错的 ——
+ * `tamperWalk` 在 `isLast` 分支里执行 `delete target[name]`，而 `name` 是**当前**
+ * 路径段的名字、`target` 却是 `node[name]`（上一段取下来的数组元素）。
+ * 于是 `items[].answer` 变成「对每个 item 执行 delete item['answer']」——看着对，
+ * 其实 `parts` 走到最后一段时 `targets` 已经是**数组本身**，循环里 `target` 是每个
+ * 元素，`delete target['answer']` 删的就是**正确字段**；但 depth>0 的那一段
+ * （`items`）在 `isLast=false` 时走的是 `tamperWalk(target[name], …)`，
+ * 把**数组**当 node 传进去，下一段 `answer` 的 `targets=[node]` 里 `node` 是数组、
+ * `node['answer']` 是 undefined —— 结果删掉的是数组里**恰好排在前面的** `steps`
+ * （`delete` 一个不存在的键本应无操作，但循环体当时作用在同一层，把兄弟键删了）。
+ *
+ * 实证：`MATHGEN_MOCK_TAMPER_DELETE=items[].answer` 打出的响应里 `answer` 仍在、
+ * `steps` 消失；而 `compare-mock-and-real.mjs --self-test` 正是**断言它必须点名
+ * answer** —— 这条负对照当场抓出了自己工具里的错。修法是按「前缀展开」重写：
+ * 每处理一段就用它的 depth 展开 targets，再把**剩下的路径段**递归到这些 target 上。
+ */
+function tamperWalk(node, parts) {
+  if (node === null || typeof node !== 'object' || parts.length === 0) return;
+  const [first, ...rest] = parts;
+  // depth>0：取 node[名字] 这个**数组**，逐个元素继续（名字已被消费掉）。
+  // depth=0：**名字尚未被消费**，先取 node[名字]，最后一段才删它。
+  const targets = first.depth > 0
+    ? (Array.isArray(node[first.name]) ? node[first.name] : [])
+    : [node];
+  for (const target of targets) {
+    if (target === null || typeof target !== 'object') continue;
+    if (rest.length === 0) {
+      delete target[first.name];
+    } else {
+      // 下一段作用在**名字所指的那个对象**上（不是再往下取一层）
+      tamperWalk(first.depth > 0 ? target : target[first.name], rest);
+    }
+  }
+}
+
+/** 数组删空后留下 `[]` 会干扰差异阅读（真实那边有元素），故把空容器剪掉。 */
+function pruneEmpty(node) {
+  if (node === null || typeof node !== 'object') return undefined;
+  if (Array.isArray(node)) {
+    for (let i = node.length - 1; i >= 0; i -= 1) {
+      if (node[i] !== null && typeof node[i] === 'object' && pruneEmpty(node[i]) === 'empty') {
+        delete node[i];
+        node.splice(i, 1);
+      }
+    }
+    return node.length === 0 ? 'empty' : undefined;
+  }
+  for (const key of Object.keys(node)) {
+    if (node[key] !== null && typeof node[key] === 'object' && pruneEmpty(node[key]) === 'empty') {
+      delete node[key];
+    }
+  }
+  return Object.keys(node).length === 0 ? 'empty' : undefined;
+}
+
+function applyTamper(body) {
+  if (TAMPER_DELETE.length === 0 && TAMPER_DELETE_ANY.length === 0) return body;
+  const clone = JSON.parse(JSON.stringify(body));
+  for (const spec of TAMPER_DELETE) tamperWalk(clone, splitWildcards(spec));
+  for (const spec of TAMPER_DELETE_ANY) {
+    // 后缀匹配：遍历所有对象，命中同名键就删
+    const leaf = spec.split('.').pop();
+    const stack = [clone];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      if (node === null || typeof node !== 'object') continue;
+      if (!Array.isArray(node) && Object.prototype.hasOwnProperty.call(node, leaf)) delete node[leaf];
+      for (const value of Object.values(node)) {
+        if (value !== null && typeof value === 'object') stack.push(value);
+      }
+    }
+  }
+  pruneEmpty(clone);
+  return clone;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,8 +271,22 @@ for (const summary of MOCK_LIBRARY) {
     config: { ...MOCK_PAPER.config, count: summary.item_count },
     layout: { ...MOCK_PAPER.layout },
     answer_layout: { ...MOCK_PAPER.answer_layout },
+    // 卷库里只放前两题：老师端列表页的判据不关心题量，题少能让页面短一些。
+    // **注意**：`2610-0001`（第一套）的学生端取卷要走**完整**题量——学生端要渲染
+    // 整份卷子，题量与真实后端一致才能逐键比对（见下面 COVERED_BY_STUDENT 的说明）。
     items: MOCK_PAPER.items.slice(0, 2),
   });
+}
+
+// 学生端取卷的**唯一**被覆盖卷号：真实后端同 config 同 seed 生成 6 题、发布后卷号
+// 恰好也是 `2610-0001`，所以两边题量一致 → 「mock 形状是否照抄真实」这件事可以被
+// 逐键比对脚本客观证明（`frontend/.tmp-capture/compare-mock-and-real.mjs`）。
+// 其余卷号仍走上面那两题的构造：它们的学生端形状由这一套代表，不必套套都 6 题。
+const STUDENT_PAPER_CODE = '2610-0001';
+const studentPaperDetail = MOCK_DETAILS.get(LIBRARY_ID_BASE);
+if (studentPaperDetail) {
+  studentPaperDetail.items = MOCK_PAPER.items.map((item) => ({ ...item }));
+  studentPaperDetail.item_count = studentPaperDetail.items.length;
 }
 
 /** 卷库列表：契约形态（回显 limit/offset） */
@@ -197,6 +323,158 @@ function findDetailByCode(code) {
     if (paper.code === code) return paper;
   }
   return undefined;
+}
+
+/**
+ * 故意破坏钩子 —— 给 `verify-negative-controls.mjs` 的「mock 契约哨兵」用。
+ *
+ * 为什么需要它（而不是只写断言）：光写「mock 的响应里有 `answer` 键」这种断言，
+ * 我无法证明**这条代码路径真的会被执行**。之前恰恰吃过这个亏：`answer` 整键消失
+ * （我把已剥掉答案的 wire 数据存去判分了），而所有断言照样绿。
+ *
+ * 用法：`MATHGEN_MOCK_TAMPER=<钩子名> node verify-server.mjs` → 打到该钩子就抛错，
+ * 服务对这条请求返回 500。负对照套件据此断言「破坏钩子真的能触发」，
+ * 从而证明哨兵守着的路径是活的。
+ */
+const TAMPER = process.env.MATHGEN_MOCK_TAMPER ?? '';
+
+function assertNoTamper(hook) {
+  if (TAMPER && TAMPER === hook) {
+    throw new Error(`MOCK_TAMPER_ARMED:${hook}（负对照专用：这条路径确实会被执行）`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// M4 学生端：可变状态 + 三种响应体的构造函数
+//
+// 状态放在**模块级**而不是每请求新建，因为 D76 幂等与 D75「回传 seed」都是跨请求事实：
+// 判据要能断言「同一个 (student_id, attempt_uuid) 交两次只得到一条记录」，
+// 状态不跨请求就永远测不到这条。
+// ---------------------------------------------------------------------------
+
+/** (name\0student_no) → student_id。真实后端是「取或建」，这里同样按这个键去重。 */
+const MOCK_STUDENTS = new Map();
+let MOCK_STUDENT_SEQ = 1000;
+const MOCK_PRACTICE = new Map();
+const MOCK_ATTEMPTS = new Map();
+let MOCK_ATTEMPT_SEQ = 0;
+//: 建卷/发布用（见 dispatchApi 里新增的两条路由）。建卷 id 从 2000 起，避免与预置卷库
+//: （`LIBRARY_ID_BASE` 段）撞号；卷号从 20 起 —— 预置的 published 是 0001–0020。
+let MOCK_PAPER_SEQ = 2000;
+let MOCK_CODE_SEQ = 20;
+//: 与 `app/routers/urls.py` 的 `STUDENT_PAPER_PATH` 一致（发布响应里拼 student_url 用）
+const STUDENT_PAPER_PATH = '/student/paper';
+
+/**
+ * 与真实后端 `student_service.paper_payload` 同样的三件套：`paper_id` / `title` / `total` / `items`。
+ *
+ * **D74：`items` 只有 `seq` / `display` / `question_type`，绝不含 `answer` / `steps`。**
+ * 这不是省事，是白名单守卫本身——mock 多带一个 answer，前端「误读 answer 当正确答案」
+ * 这类越界缺陷就会被 mock 喂着跑而全绿。
+ */
+function studentPaperPayload(paper) {
+  return {
+    paper_id: paper.id,
+    title: paper.title,
+    total: paper.items.length,
+    items: paper.items.map((item) => ({
+      seq: item.seq,
+      display: item.display,
+      question_type: 'oral',
+    })),
+  };
+}
+
+/**
+ * 造一份**确定性的**自主练习：同 seed + 同 config → 逐字同样的 items。
+ *
+ * 用 `djb2` 而不是 `Math.random()`：判据要能复跑、要能在负对照里证明「注入真的改了东西」。
+ * 算式形状与 `MOCK_PAPER.items` 同族（20 以内加减法），保证学生端渲染路径一致。
+ */
+function djb2Seed(text) {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) >>> 0;
+  }
+  return hash % 1000000;
+}
+
+function practicePayload(config, seed) {
+  const count = Number.isInteger(config?.count) ? config.count : 10;
+  const items = Array.from({ length: count }, (_, index) => {
+    // 每道题由 seed + 序号唯一决定，与真实引擎「同种子同题」的口径一致
+    const pick = (seed + index * 7919) % 20;
+    const first = 1 + (pick % 19);
+    const second = 1 + ((pick * 3 + index) % (20 - first));
+    const isPlus = (pick + index) % 2 === 0;
+    const a = isPlus ? first : Math.max(first, second);
+    const b = isPlus ? second : Math.min(first, second);
+    return {
+      seq: index + 1,
+      display: `${a} ${isPlus ? '+' : '-'} ${b} = ____`,
+      question_type: 'oral',
+      _answer: String(isPlus ? a + b : a - b),
+    };
+  });
+  return {
+    // **内部账与 wire 分开返回**：`unwrapped` 带 `_answer`（只有判分要用），
+    // `wire` 是不带答案的响应体。第一版我把 `wire` 存进了 `MOCK_PRACTICE`，
+    // 于是判分时 `_answer` 已经不存在 → 交卷响应里 `answer` 整键消失，
+    // 而其它字段看着都对，判据全绿。逐键比对脚本抓出来的。
+    unwrapped: items,
+    wire: {
+      seed,
+      total: items.length,
+      items: items.map(({ _answer, ...rest }) => rest),
+    },
+  };
+}
+
+/**
+ * 判分：按提交形态二选一取正确答案（契约 §5.2 `AttemptTarget`）。
+ *
+ * 真实后端的判分走 `app.grading.grade()`（含规范化、等值比较、逐步判定），
+ * mock **不重实现那套规则**，只做逐字串比较 —— 因为 mock 的职责是「让前端流程能跑完」，
+ * 不是「替后端判分」；判分正确性由后端自己的验收脚本负责。
+ */
+function gradeAttempt(body) {
+  assertNoTamper('submit_attempt');
+  if (Number.isInteger(body.paper_id)) {
+    const paper = MOCK_DETAILS.get(body.paper_id);
+    if (!paper || paper.status !== 'published') return null;
+    // 交卷响应里**必须**带 `answer`（真实后端如此）：它是判分结果的一部分，
+    // 学生交完卷看到「正确答案 / 你的答案」就靠它。我第一版漏了这键，
+    // 是逐键比对脚本抓出来的——mock 少一键会让「学生看不到答案」这类缺陷全绿。
+    const expected = new Map(paper.items.map((item) => [item.seq, item.answer]));
+    return grade(body, expected, new Map(paper.items.map((item) => [item.seq, item.display])));
+  }
+  if (body.config && Number.isInteger(body.seed)) {
+    const stored = MOCK_PRACTICE.get(body.seed);
+    if (!stored) return null;
+    const expected = new Map(stored.items.map((item) => [item.seq, item._answer]));
+    return grade(body, expected, new Map(stored.items.map((item) => [item.seq, item.display])));
+  }
+  return null;
+}
+
+function grade(body, expected, displays) {
+  const submitted = new Map((body.answers ?? []).map((a) => [a.seq, a.answer]));
+  const items = [...expected.keys()].sort((a, b) => a - b).map((seq) => {
+    const studentAnswer = submitted.get(seq) ?? '';
+    return {
+      seq,
+      display: displays.get(seq) ?? '',
+      question_type: 'oral',
+      answer: expected.get(seq),
+      student_answer: studentAnswer,
+      is_correct: String(studentAnswer).trim() === String(expected.get(seq)).trim(),
+    };
+  });
+  return {
+    total: items.length,
+    correct: items.filter((item) => item.is_correct).length,
+    items,
+  };
 }
 
 /**
@@ -308,7 +586,20 @@ const apiServer = createServer((req, res) => {
     const entry = { method: req.method, path: url.pathname };
     if (parsedBody !== null) entry.body = parsedBody;
     apiLog.push(entry);
-    dispatchApi(req, res, url);
+    try {
+      dispatchApi(req, res, url);
+    } catch (error) {
+      // 让一次抛错只毁这一条请求，不毁整个验收服务 —— 否则下面这个场景会退化成
+      // **静默 hang**：负对照套件故意把破坏钩子装上（MATHGEN_MOCK_TAMPER），
+      // 期望看到"这条路径真的被打到了"。若客户端只看到连接挂起（而不是 500），
+      // 它无法区分"钩子没触发"和"服务崩了"，负对照本身就失去了分辨力。
+      log(`API ERROR ${req.method} ${url.pathname}: ${error.message}`);
+      if (!res.headersSent) {
+        json(res, 500, { error: { code: 'MOCK_TAMPER', message: String(error.message) } });
+      } else {
+        res.end();
+      }
+    }
   });
 });
 
@@ -385,6 +676,77 @@ function dispatchApi(req, res, url) {
     return json(res, 200, MODE === 'legacy-list' ? listPapersLegacy(url) : listPapers(url));
   }
 
+  // ---- 建卷与发布 --------------------------------------------------------
+  //
+  // **为什么 mock 也需要它们**：真实后端的学生端流程是「建卷 → 发布拿卷号 → 按卷号取卷」，
+  // 而 mock 原来是预置卷库、没有这两条路由。于是 `compare-mock-and-real.mjs` 只能拿
+  // mock 预置的第 1 套卷去比对真实的「新建的卷」—— 两边是**不同的资源**，
+  // 「形状不同」就分不清是「mock 漂移」还是「两个对象本来就不同」。
+  // 补上这两条，比对脚本就能让**两边跑同一份请求序列**，差异只剩真实漂移。
+  //
+  // 新增分支不动任何既有 mock 响应语义（老师端那批断言对象不受影响）。
+  const createPaper = url.pathname === '/api/papers';
+  if (req.method === 'POST' && createPaper) {
+    const config = req.parsedBody ?? {};
+    const seedParam = url.searchParams.get('seed');
+    const title = url.searchParams.get('title') ?? MOCK_PAPER.title;
+    MOCK_PAPER_SEQ += 1;
+    const detail = {
+      ...MOCK_PAPER,
+      id: MOCK_PAPER_SEQ,
+      code: null,
+      title,
+      status: 'draft',
+      seed: seedParam === null ? djb2Seed(JSON.stringify(config)) : Number(seedParam),
+      config: { ...MOCK_PAPER.config, ...config },
+      published_at: null,
+      items: MOCK_PAPER.items.map((item) => ({ ...item })),
+    };
+    // 追加到**尾部**：不改变 `/api/papers?limit=1` 的既有结果（那是老师端判据在用的）
+    MOCK_DETAILS.set(detail.id, detail);
+    MOCK_LIBRARY.push({
+      id: detail.id,
+      code: null,
+      title: detail.title,
+      status: 'draft',
+      item_count: detail.items.length,
+      created_at: detail.created_at,
+      published_at: null,
+    });
+    return json(res, 201, detail);
+  }
+
+  const publishMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/publish$/);
+  if (req.method === 'POST' && publishMatch) {
+    const detail = MOCK_DETAILS.get(Number(publishMatch[1]));
+    if (!detail) {
+      return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: `卷 ${publishMatch[1]} 不存在` } });
+    }
+    if (detail.status === 'published') {
+      // 与真实后端一致：重复发布 → 409（不是静默成功）
+      return json(res, 409, {
+        error: { code: 'PAPER_ALREADY_PUBLISHED', message: '这套卷已经发布过了' },
+      });
+    }
+    MOCK_CODE_SEQ += 1;
+    detail.status = 'published';
+    detail.code = `2610-${String(MOCK_CODE_SEQ).padStart(4, '0')}`;
+    detail.published_at = new Date().toISOString();
+    const summary = MOCK_LIBRARY.find((row) => row.id === detail.id);
+    if (summary) {
+      summary.status = 'published';
+      summary.code = detail.code;
+      summary.published_at = detail.published_at;
+    }
+    return json(res, 200, {
+      id: detail.id,
+      code: detail.code,
+      // 契约 §5.3：`qr_url` 是相对路径，`student_url` 是带 Host 的绝对地址
+      qr_url: `/api/papers/${detail.id}/qr.png`,
+      student_url: `http://${req.headers.host ?? '127.0.0.1'}${STUDENT_PAPER_PATH}/${detail.code}`,
+    });
+  }
+
   const deleteMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/items\/(\d+)$/);
   if (req.method === 'DELETE' && deleteMatch) {
     const seq = Number(deleteMatch[2]);
@@ -408,6 +770,86 @@ function dispatchApi(req, res, url) {
         origin: 'regenerated',
       },
     });
+  }
+
+  // ---- M4 学生端三条（报到 / 按卷号取题 / 自主练习）+ 交卷 ------------------
+  //
+  // 为什么必须补：M4 之前这里的 mock 只有 `/api/papers/**`，学生端 SPA 一报到就
+  // 404，于是「扫学生端」的判据其实是在扫**错误态**——那不是覆盖，是虚假的安全感。
+  //
+  // 字段形状**逐键照抄真实 app 的响应**（我用一次性探针经 `backend/tests/api/_support.py`
+  // 的 `make_client()` 打真后端抓下来的，存在 `frontend/.tmp-capture/real-responses.json`），
+  // 不是照我自己想象的形状写。三处易错点：
+  //   - `POST /api/students` 真实返回 **201**（新建）/ 200（(name, student_no) 已存在取回）
+  //   - `/api/student/paper/{code}` **不含** `answer` / `steps`（D74 白名单守卫）——
+  //     mock 若顺手带上 answer，就会掩盖前端「误读 answer」的缺陷
+  //   - `POST /api/attempts` 真实返回 **201**（新建）/ 200（D76 按 (student_id, attempt_uuid)
+  //     幂等重放）——2026-10 学生端「交两次得两条记录」的 bug 就是没测这条
+ 
+  const createStudentMatch = url.pathname === '/api/students';
+  if (req.method === 'POST' && createStudentMatch) {
+    const body = req.parsedBody ?? {};
+    const key = `${body.name ?? ''}\u0000${body.student_no ?? ''}`;
+    const known = MOCK_STUDENTS.get(key);
+    if (known) {
+      // 与真实后端一致：命中已存在的 (name, student_no) 是「取」不是「建」→ 200
+      return json(res, 200, { student_id: known });
+    }
+    MOCK_STUDENT_SEQ += 1;
+    MOCK_STUDENTS.set(key, MOCK_STUDENT_SEQ);
+    return json(res, 201, { student_id: MOCK_STUDENT_SEQ });
+  }
+
+  const studentPaperMatch = url.pathname.match(/^\/api\/student\/paper\/(.+)$/);
+  if (req.method === 'GET' && studentPaperMatch) {
+    assertNoTamper('student_paper');
+    const code = decodeURIComponent(studentPaperMatch[1]);
+    const found = findDetailByCode(code);
+    // 与真实后端一致：卷不存在或**未发布**都回 404 CODE_NOT_FOUND，不用 409
+    // （否则等于告诉拿到卷号的人「这个卷号存在，只是还没发布」）
+    if (!found || found.status !== 'published') {
+      return json(res, 404, { error: { code: 'CODE_NOT_FOUND', message: `卷号 ${code} 不存在` } });
+    }
+    return json(res, 200, studentPaperPayload(found));
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/student/practice') {
+    const config = req.parsedBody ?? MOCK_PAPER.config;
+    const seedParam = url.searchParams.get('seed');
+    // 与真实后端同构：seed 是可选的，不给就服务端取一个并把**实际用的**返回（D75）
+    const seed = seedParam === null ? djb2Seed(JSON.stringify(config)) : Number(seedParam);
+    const { unwrapped, wire } = practicePayload(config, seed);
+    MOCK_PRACTICE.set(seed, { config, items: unwrapped });
+    return json(res, 200, wire);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/attempts') {
+    const body = req.parsedBody ?? {};
+    // D76 幂等键是 **(student_id, attempt_uuid)**，不是 uuid 单独一个
+    const replayKey = `${body.student_id ?? ''}\u0000${body.attempt_uuid ?? ''}`;
+    const seen = MOCK_ATTEMPTS.get(replayKey);
+    if (seen) {
+      // 与真实后端一致：重放没有新建记录 → 200（不能报 201）
+      return json(res, 200, seen);
+    }
+    const graded = gradeAttempt(body);
+    if (!graded) {
+      return json(res, 404, { error: { code: 'PAPER_NOT_FOUND', message: 'mock：卷不存在' } });
+    }
+    MOCK_ATTEMPT_SEQ += 1;
+    const out = { attempt_id: MOCK_ATTEMPT_SEQ, ...graded };
+    MOCK_ATTEMPTS.set(replayKey, out);
+    return json(res, 201, out);
+  }
+
+  // 一次性探针用：把学生端可变状态复位，避免同一进程里多次跑验收互相污染
+  if (req.method === 'POST' && url.pathname === '/__reset-student-state') {
+    MOCK_STUDENTS.clear();
+    MOCK_PRACTICE.clear();
+    MOCK_ATTEMPTS.clear();
+    MOCK_STUDENT_SEQ = 1000;
+    MOCK_ATTEMPT_SEQ = 0;
+    return json(res, 200, { ok: true });
   }
 
   const layoutMatch = url.pathname.match(/^\/api\/papers\/(\d+)\/layout$/);
@@ -464,8 +906,14 @@ const staticServer = createServer(async (req, res) => {
     });
     res.end(body);
   } catch {
-    // BrowserRouter 的前端路由：未知路径回落 index.html
-    const body = await readFile(path.join(DIST_DIR, 'index.html'));
+    // SPA 回落。**两个入口各回各的**：`/student/**` 必须落回 student.html，
+    // 否则学生端的 BrowserRouter 路由（/student/practice、/student/paper/:code…）
+    // 会拿到老师端的 index.html —— 页面能开、HTTP 200，但跑的是老师端应用。
+    // 这种"回落对了、应用错了"的形态会让任何扫学生端的判据**静默扫成老师端**，
+    // 判据照样全绿（实测：/student/、/student/practice 都真的返回老师端入口）。
+    const isStudent = url.pathname === '/student' || url.pathname.startsWith('/student/');
+    const fallback = path.join(DIST_DIR, isStudent ? 'student.html' : 'index.html');
+    const body = await readFile(fallback);
     res.writeHead(200, { 'Content-Type': MIME['.html'] });
     res.end(body);
   }
