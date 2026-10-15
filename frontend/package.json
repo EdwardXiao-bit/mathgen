@@ -13,6 +13,11 @@
     "verify:no-cdn": "node scripts/verify-no-cdn.mjs",
     "verify:layout": "node scripts/verify-layout-css-vars.mjs",
     "verify:ui": "node scripts/verify-teacher-ui.mjs",
+    "verify:library": "node scripts/verify-library-m3.mjs",
+    "verify:tokens": "node scripts/verify-tokens.mjs",
+    "verify:structure": "node scripts/verify-structure.mjs",
+    "verify:preview-scale": "node scripts/verify-preview-scale.mjs",
+    "verify:negative": "node scripts/verify-negative-controls.mjs",
     "verify": "node scripts/run-all-verifications.mjs"
   },
   "dependencies": {

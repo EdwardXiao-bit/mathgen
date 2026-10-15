@@ -23,11 +23,11 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 & $NODE $PNPM --dir frontend verify     # 跑全部验收（见下）
 ```
 
-## 八条验收脚本（都可复现，退出码 0 = 通过）
+## 八条验收脚本 + 一套负对照（都可复现，退出码 0 = 通过）
 
 ```powershell
-& $NODE $PNPM --dir frontend verify                       # 一次跑完八条
-# 或分开跑：
+& $NODE $PNPM --dir frontend verify                       # 一次跑完 8 条门禁 + 负对照
+# 或分开跑（package.json 里都有对应 script）：
 & $NODE frontend\scripts\verify-no-cdn.mjs
 & backend\.venv\Scripts\python.exe frontend\scripts\verify-contract.py
 & $NODE frontend\scripts\verify-layout-css-vars.mjs
@@ -36,6 +36,8 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 & $NODE frontend\scripts\verify-tokens.mjs
 & $NODE frontend\scripts\verify-structure.mjs
 & $NODE frontend\scripts\verify-preview-scale.mjs
+# 负对照单独一条（也可用 pnpm --dir frontend verify:negative）：
+& $NODE frontend\scripts\verify-negative-controls.mjs
 ```
 
 | 脚本 | 验证什么 | 怎么保证不是「自证」 |
@@ -48,6 +50,7 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 | `verify-tokens.mjs` | **判据 A1**：`frontend/src/**` 除 `design/tokens.css` 外，颜色字面量计数 = 0 | 脚本**逐行扫源码**并打印命中行；允许清单是**逐条**的（带文件+行号+理由），当前为空。注释里也刻意不出现颜色写法，否则会被它自己命中 |
 | `verify-structure.mjs` | **判据 A2/A3/A4/A7/A8**：组件必备状态（样式表规则 + 运行时测 `disabled` / `invalid` 文字原因 / Slider 量纲 / Switch 人话）、键盘可达与焦点环、状态条不谎报、空态与错误态分离、浮动层几何（不互压、不压纸面）、两个视口不横向溢出、纸面 A4 比例、顶栏 44 / 状态条 34 / 1280 侧栏收窄 | 交互类断言用 Playwright 真点真读（`data-state`、`aria-*`、`getBoundingClientRect`），不是看源码里有没写某个 class |
 | `verify-preview-scale.mjs` | **A9**：预览必须是**打印几何的等比缩小**。进到 iframe 文档里量：`.sheet` 计算宽度 = 793.7px ± 2（210mm@96dpi）、`padding-left/宽度 ≈ 0.0952`、`scaleX == scaleY`、题块高度一致（= 不换行）、两种视口下纸内几何不变 | **实测**从渲染结果反推缩放比（`rect.width / offsetWidth`），而不是读我们自己写进去的内联 `scale(k)` —— 后者只证明「我们写了 k」，不证明「浏览器按 k 渲染了」 |
+| `verify-negative-controls.mjs` | **V9 负对照**：故意注入错误状态，断言判据**必须变红**。覆盖 A9（注入 3cm 边距 → 比例判据红；把纸钳制到 459px → 宽度判据红）与卷面焦点环（未聚焦 → 新判据红、旧写法仍绿） | 每条负对照都额外断言**注入真的改变了关键量**（V9.2）——否则「判据没红」会被误读成「判据有问题」，而真相可能是「注入没生效」 |
 
 > **A3 焦点环（task-19 更正）**：环画在**包裹层 `.mg-paper-stage` 的 `:focus-visible`** 上，
 > 该层带 `tabindex="0"`，iframe 设 `tabindex="-1"` 退出 Tab 顺序。
@@ -61,7 +64,16 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 > 教训来自 task-17：我曾把 `(stage.outlineWidth ?? 0) > 0` 说成「功能断言、判据更强」——
 > 它其实**恒真**：`outline-width` 的 CSS 初值就是 `medium` = 3px，**与是否聚焦无关**
 > （实测未聚焦元素同样读到 `outlineStyle: none` + `outlineWidth: 3px`）。
-> 现在门禁⑦ 与门禁⑧ 里都跑了**负对照**，并把「该输入下断言为红」也打印出来。
+>
+> **V9.1 · 负对照要留在仓库里**：报告会过期，脚本不会。
+> 上面那次我确实跑了负对照，但它只活在一次性探针里，汇报的原始输出在仓库中 grep 不到 —— 别人无法复核。
+> 现在集中在 `scripts/verify-negative-controls.mjs`，可随时重跑（`pnpm --dir frontend verify:negative`）。
+>
+> **V9.2 · 负对照本身也要被验证**：要断言「注入真的改变了关键量」。
+> 这也是实测换来的：A9 的负对照我最初注入 `.sheet { width: 100% }`，**判据没红** ——
+> 但那不是判据有问题，而是**注入没生效**（iframe 内容视口已是 793.7px，`100%` 解析出来还是 793.7px）。
+> 必须显式给一个比 A4 窄的固定宽度才重现出「被钳制」。
+> 把这个坑写在脚本注释里，免得后人以为「注入没生效 = 判据没问题」。
 
 > **空态与错误态是两个状态，不共用槽位**（Lead 裁决）。`Table` 有独立的 `emptyAction` 与 `errorAction`：
 > 后者一旦传入，wrapper 的 `data-state` 就是 `error`。把 `ErrorState` 塞进 `emptyAction` 会让一个**错误**
