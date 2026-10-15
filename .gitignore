@@ -39,6 +39,11 @@ backend/tests/e2e_*/artifacts/
 # 需要入库的样张截图在 frontend/mockups/ 子目录里，不受这条影响。
 frontend/*.png
 
+# 仓库根目录下的 png 同理：一次性调试截图（如 debug-f1-修前.png、debug-fresh-scan.png），
+# 结论已落在报告与 docs/06 里，图片本身可随时重跑生成，不是交付物。
+# **按目录判定**，与上一条同源；要入库的图一律放 frontend/mockups/ 或 docs/word/figures/。
+/*.png
+
 # ---------- 编辑器 / 操作系统 ----------
 .vscode/
 .idea/
