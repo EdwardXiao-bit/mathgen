@@ -77,20 +77,28 @@ def free_port() -> int:
 
 
 class RealServer:
-    """真实后端 + 静态产物（M3 起一条命令即托管界面）。"""
+    """真实后端 + 静态产物（M3 起一条命令即托管界面）。
 
-    def __init__(self):
+    `static_dir` 可指向**另一份构建产物副本**（用于「不改产品源码」的负对照实验）。
+    """
+
+    def __init__(self, static_dir: str | None = None, db_path: str | None = None):
         self.port = free_port()
+        self.static_dir = static_dir
+        self.db_path = db_path
         self.process = None
 
     def __enter__(self):
         env = dict(os.environ)
         env.update({
-            "MATHGEN_DB": os.path.join(ARTIFACTS, f"ui-{self.port}.db"),
+            "MATHGEN_DB": self.db_path or os.path.join(ARTIFACTS, f"ui-{self.port}.db"),
             "MATHGEN_PW_TMP": os.path.join(REPO, ".tmp-pw"),
             "PYTHONIOENCODING": "utf-8",
         })
-        env.pop("MATHGEN_STATIC_DIR", None)
+        if self.static_dir:
+            env["MATHGEN_STATIC_DIR"] = self.static_dir
+        else:
+            env.pop("MATHGEN_STATIC_DIR", None)
         self.process = subprocess.Popen(
             [VPY, "-m", "uvicorn", "app.main:app", "--app-dir", "backend",
              "--host", "127.0.0.1", "--port", str(self.port), "--log-level", "warning"],
@@ -458,17 +466,18 @@ class TestA3Keyboard(UiRuntimeCase):
                     shadow_ok = item["shadow"] not in ("none", "")
                     return outline_ok or shadow_ok
 
-                # 唯一允许的例外：卷面 iframe（Chromium 不渲染 iframe 的 outline）——
-                # 逐条判定，不是整类放宽；且它的 :focus-visible 规则必须已定义（见 A2/A6 用例）
+                # task-19 起**不再需要任何豁免**：卷面停靠点由包裹层承担并自带环，
+                # 所以「每个 Tab 停靠点都有可见焦点环」可以无例外地成立（比带豁免的版本更强）。
                 missing = [f"{i['tag']}#{i['id']}{i['testid']}" for i in visited
-                           if not visible_ring(i) and i["id"] != "sheet-frame"]
-                self.assertEqual(missing, [], f"A3：以下元素没有可见焦点环：{missing}")
+                           if not visible_ring(i)]
+                self.assertEqual(missing, [], f"A3：以下停靠点没有可见焦点环：{missing}")
                 with open(os.path.join(ARTIFACTS, "a3-tab-focus.json"), "w",
                           encoding="utf-8") as fh:
                     json.dump(visited, fh, ensure_ascii=False, indent=2)
 
-                # iframe 例外要「有理由、可复核」：**用键盘**走到 iframe（程序性 focus()
-                # 不会匹配 :focus-visible），再实测它的 computed outline / box-shadow。
+                # task-19 起：卷面这一站的 Tab 停靠点是**包裹层**（`tabindex="0"`），
+                # iframe 退出 Tab 顺序（`tabindex="-1"`）。所以停靠点应当**自带可见环**，
+                # 不再需要任何豁免 —— 与门禁⑦的「无例外」一致。
                 page.goto(f"{self.server.base_url}/teacher/paper/{pid}",
                           wait_until="networkidle", timeout=60_000)
                 page.wait_for_selector("#sheet-frame", timeout=30_000)
@@ -476,31 +485,36 @@ class TestA3Keyboard(UiRuntimeCase):
                 for _ in range(60):
                     page.keyboard.press("Tab")
                     if page.evaluate(
-                            "() => document.activeElement && document.activeElement.id") == "sheet-frame":
+                            """() => { const a = document.activeElement;
+                                 return !!a && (a.className || '').toString()
+                                                 .includes('mg-paper-stage'); }"""):
                         reached_by_tab = True
                         break
-                self.assertTrue(reached_by_tab, "A3：键盘 Tab 走不到卷面 iframe")
+                self.assertTrue(reached_by_tab, "A3：键盘 Tab 走不到卷面停靠点（包裹层）")
                 frame_probe = page.evaluate(
-                    """() => { const el = document.getElementById('sheet-frame');
-                         const cs = getComputedStyle(el);
-                         return {outline: cs.outlineStyle + ' ' + cs.outlineWidth,
+                    """() => { const stage = document.querySelector('.mg-paper-stage');
+                         const iframe = document.getElementById('sheet-frame');
+                         const cs = getComputedStyle(stage);
+                         return {stageFocus: stage.matches(':focus'),
+                                 stageFocusVisible: stage.matches(':focus-visible'),
+                                 outline: cs.outlineStyle + ' ' + cs.outlineWidth,
                                  shadow: cs.boxShadow,
-                                 focusVisible: el.matches(':focus-visible')}; }""")
-                # 「豁免不等于不写」：环改画在包裹层 `.mg-paper-stage:focus-within` 上
-                # （task-17 起），规则必须真的存在。**注意**：该规则对 iframe 聚焦**不会触发**
-                # （Chromium 不把 iframe 元素当 `:focus` 触发者）——功能判定见
-                # `test_ui_a9.py::TestA9FocusRingClosed`。
-                iframe_rule_exists = any(
-                    ".mg-paper-stage" in sel and ":focus-within" in sel
+                                 iframeTabIndex: iframe.tabIndex,
+                                 iframeFocusVisible: iframe.matches(':focus-visible')}; }""")
+                self.assertTrue(frame_probe["stageFocus"], f"A3：停靠点未真正获得焦点：{frame_probe}")
+                self.assertNotEqual(frame_probe["outline"].split()[0], "none",
+                                    f"A3：卷面停靠点没有可见焦点环：{frame_probe}")
+                self.assertEqual(frame_probe["iframeTabIndex"], -1,
+                                 "A3：iframe 应退出 Tab 顺序（tabindex=-1）")
+                # 规则本身来自令牌（A2/A3 的静态面）
+                stage_rule_exists = any(
+                    ".mg-paper-stage" in sel and (":focus-visible" in sel or ":focus" in sel)
                     for sel, _body in parse_rules(open(STYLES, encoding="utf-8").read()))
-                self.assertTrue(iframe_rule_exists,
-                                "A3：卷面焦点环的包裹层 :focus-within 规则不存在")
-                # 豁免的理由（Chromium 不匹配 iframe 的 :focus-visible）由我独立复测并记录：
-                # 键盘 Tab **确实**到达了 iframe，但浏览器不给 :focus-visible —— 逐条、有理由。
+                self.assertTrue(stage_rule_exists, "A3：包裹层聚焦环规则不存在")
                 with open(os.path.join(ARTIFACTS, "a3-iframe-focus.json"), "w",
                           encoding="utf-8") as fh:
                     json.dump({"reached_by_tab": reached_by_tab,
-                               "iframe_rule_exists": iframe_rule_exists,
+                               "stage_rule_exists": stage_rule_exists,
                                **frame_probe}, fh, ensure_ascii=False, indent=2)
 
                 # Space 能切换开关（role=switch）

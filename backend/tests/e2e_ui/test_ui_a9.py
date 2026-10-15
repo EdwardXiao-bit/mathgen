@@ -23,6 +23,7 @@ if os.path.isdir(_PYLIBS):
 
 from test_ui_structure import (  # noqa: E402
     ARTIFACTS,
+    REPO,
     RealServer,
     browser_page,
     ensure_dist_fresh,
@@ -354,6 +355,7 @@ class TestA9FocusRingClosed(A9Case):
     """
 
     def test_wrapper_shows_focus_ring_when_sheet_focused(self):
+        """task-19 起焦点停靠点是**包裹层**（`tabindex="0"`，iframe `tabindex="-1"`）。"""
         from playwright.sync_api import sync_playwright
 
         pid = self.make_paper()
@@ -366,45 +368,40 @@ class TestA9FocusRingClosed(A9Case):
                 reached = False
                 for _ in range(60):
                     page.keyboard.press("Tab")
-                    if page.evaluate("() => document.activeElement && document.activeElement.id") \
-                            == "sheet-frame":
+                    if page.evaluate(
+                            """() => { const a = document.activeElement;
+                                 return !!a && (a.className || '').toString().includes('mg-paper-stage'); }"""):
                         reached = True
                         break
-                self.assertTrue(reached, "键盘 Tab 走不到卷面 iframe")
+                self.assertTrue(reached, "A9：键盘 Tab 走不到卷面（包裹层停靠点）")
                 probe = page.evaluate(STAGE_JS)
-                probe["activeIsIframe"] = page.evaluate(
-                    "() => document.activeElement === document.getElementById('sheet-frame')")
-                probe["iframeMatchesFocus"] = page.evaluate(
-                    "() => document.getElementById('sheet-frame').matches(':focus')")
-                # 正对照：同一套 CSS，在 stage 里放一个 tabindex 元素并聚焦，环应当出现
-                probe["positiveControl"] = page.evaluate(
-                    """() => { const st = document.querySelector('.mg-paper-stage');
-                         const el = document.createElement('div'); el.tabIndex = 0; el.id = 'verify-probe';
-                         st.appendChild(el); el.focus();
-                         const cs = getComputedStyle(st);
-                         const out = {stageFocusWithin: st.matches(':focus-within'),
-                                      outline: cs.outlineStyle + ' ' + cs.outlineWidth};
-                         el.remove(); return out; }""")
+                probe["activeIsStage"] = page.evaluate(
+                    """() => (document.activeElement.className || '').toString()
+                              .includes('mg-paper-stage')""")
+                probe["stageMatchesFocus"] = page.evaluate(
+                    "() => document.querySelector('.mg-paper-stage').matches(':focus')")
+                probe["stageMatchesFocusVisible"] = page.evaluate(
+                    "() => document.querySelector('.mg-paper-stage').matches(':focus-visible')")
                 with open(os.path.join(ARTIFACTS, "a9-focus-ring.json"), "w",
                           encoding="utf-8") as fh:
                     json.dump(probe, fh, ensure_ascii=False, indent=2)
 
                 self.assertIsNotNone(probe["stage"], "找不到包裹层 .mg-paper-stage")
-                self.assertTrue(probe["positiveControl"]["stageFocusWithin"],
-                                f"正对照失败：连普通元素聚焦都触发不了 :focus-within —— {probe}")
-                self.assertTrue(
-                    probe["stage"]["focusWithin"],
-                    "卷面聚焦时包裹层未进入 :focus-within（`:focus-within` 对 iframe 不触发）："
-                    f"activeIsIframe={probe['activeIsIframe']}, "
-                    f"iframeMatchesFocus={probe['iframeMatchesFocus']}, stage={probe['stage']}")
+                self.assertTrue(probe["activeIsStage"], f"Tab 的停靠点不是包裹层：{probe}")
+                self.assertTrue(probe["stageMatchesFocus"],
+                                f"包裹层未匹配 :focus：{probe}")
                 self.assertNotEqual(probe["stage"]["outlineStyle"], "none",
-                                    f"包裹层没有可见 outline（非阻断观察未闭环）：{probe['stage']}")
+                                    f"包裹层没有可见 outline（焦点环未闭环）：{probe['stage']}")
                 self.assertGreater(probe["stage"]["outlineWidth"], 0, f"{probe['stage']}")
+                # iframe 应退出 Tab 顺序（否则会多一个没有环的停靠点）
+                self.assertEqual(page.evaluate(
+                    "() => document.getElementById('sheet-frame').tabIndex"), -1,
+                    "iframe 应当 tabindex=-1 退出 Tab 顺序")
             finally:
                 browser.close()
 
     def test_no_visible_ring_is_measured_while_sheet_focused(self):
-        """独立复测（与上面同源，但只做「有没有任何一个元素画出环」的判定）。"""
+        """独立复测：卷面停靠点聚焦时，**确实有元素画出可见环**。"""
         from playwright.sync_api import sync_playwright
 
         pid = self.make_paper()
@@ -414,25 +411,28 @@ class TestA9FocusRingClosed(A9Case):
                 page.goto(f"{self.server.base_url}/teacher/paper/{pid}",
                           wait_until="networkidle", timeout=60_000)
                 page.wait_for_selector("#sheet-frame", timeout=30_000)
+                reached = False
                 for _ in range(60):
                     page.keyboard.press("Tab")
-                    if page.evaluate("() => document.activeElement && document.activeElement.id") \
-                            == "sheet-frame":
+                    if page.evaluate(
+                            """() => { const a = document.activeElement;
+                                 return !!a && (a.className || '').toString().includes('mg-paper-stage'); }"""):
+                        reached = True
                         break
+                self.assertTrue(reached, "Tab 走不到卷面停靠点")
                 rings = page.evaluate(
                     """() => { const out = [];
-                         for (const el of [document.getElementById('sheet-frame'),
+                         for (const el of [document.querySelector('.mg-paper-stage'),
                                            document.querySelector('.mg-paper-scaler'),
-                                           document.querySelector('.mg-paper-stage'),
-                                           document.querySelector('.mg-paper-frame')]) {
+                                           document.querySelector('.mg-paper-frame'),
+                                           document.getElementById('sheet-frame')]) {
                            if (!el) continue;
                            const cs = getComputedStyle(el);
                            const ring = (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0)
                                         || (cs.boxShadow && cs.boxShadow !== 'none');
                            out.push({cls: el.className, ring,
                                      outline: cs.outlineStyle + ' ' + cs.outlineWidth,
-                                     shadow: (cs.boxShadow || '').slice(0, 40),
-                                     focusWithin: el.matches(':focus-within')});
+                                     shadow: (cs.boxShadow || '').slice(0, 48)});
                          } return out; }""")
                 with open(os.path.join(ARTIFACTS, "a9-focus-ring-elements.json"), "w",
                           encoding="utf-8") as fh:
@@ -445,11 +445,85 @@ class TestA9FocusRingClosed(A9Case):
     def test_rule_is_defined_in_stylesheet(self):
         rules = parse_rules(open(STYLES, encoding="utf-8").read())
         matched = [(sel, body) for sel, body in rules
-                   if ".mg-paper-stage" in sel and ":focus-within" in sel]
-        self.assertTrue(matched, "styles.css 里没有 .mg-paper-stage:focus-within 规则")
+                   if ".mg-paper-stage" in sel
+                   and (":focus-visible" in sel or ":focus" in sel)]
+        self.assertTrue(matched, "styles.css 里没有 .mg-paper-stage 的聚焦环规则")
         bodies = "".join(body for _sel, body in matched)
         self.assertIn("outline", bodies, "包裹层焦点环应给出 outline")
         self.assertIn("var(--mg-", bodies, "包裹层焦点环应取自令牌")
+
+
+class TestA9NegativeControlOnRealBuild(unittest.TestCase):
+    """**不改产品源码**的反证：把 `dist` 复制一份，只在**副本**里注入「钳回 459px」，
+    再由**真实产品代码路径**渲染，然后用同一套判据去量 —— 判据必须变红。
+
+    与门禁⑨互补：门禁⑨是在**活页面**上注入（验证注入生效 + 判据变红），
+    本条是**整份构建产物被降级**后测（证明判据对真实缺陷产物也会红），且不碰 `frontend/**`。
+    """
+
+    TAMPER = ("<style id='verify-degraded'>"
+              "#sheet-frame{width:459px !important;height:649px !important;"
+              "transform:none !important;}</style>")
+
+    def test_criteria_go_red_on_degraded_build(self):
+        import shutil
+
+        import httpx
+        from playwright.sync_api import sync_playwright
+
+        source = os.path.join(REPO, "frontend", "dist")
+        target = os.path.join(ARTIFACTS, "dist-degraded")
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        shutil.copytree(source, target)
+        index = os.path.join(target, "index.html")
+        with open(index, encoding="utf-8") as fh:
+            html = fh.read()
+        self.assertIn("</head>", html, "index.html 结构异常")
+        with open(index, "w", encoding="utf-8") as fh:
+            fh.write(html.replace("</head>", self.TAMPER + "</head>", 1))
+
+        db = os.path.join(ARTIFACTS, "a9-degraded.db")
+        normal = RealServer(db_path=db)
+        normal.__enter__()
+        try:
+            with httpx.Client(base_url=normal.base_url, timeout=60.0) as client:
+                pid = client.post("/api/papers", params={"seed": 20261015, "title": "A9 负对照"},
+                                  json={"ops": ["+", "-"], "ranges": ["R2"],
+                                        "question_type": "oral", "count": 12}).json()["id"]
+        finally:
+            normal.__exit__(None, None, None)
+
+        degraded = RealServer(static_dir=target, db_path=db)
+        degraded.__enter__()
+        try:
+            with sync_playwright() as pw:
+                browser, page = browser_page(pw)
+                try:
+                    page.goto(f"{degraded.base_url}/teacher/paper/{pid}",
+                              wait_until="networkidle", timeout=60_000)
+                    page.wait_for_selector("#sheet-frame", timeout=30_000)
+                    inner = page.query_selector("#sheet-frame").content_frame().evaluate(PREVIEW_JS)
+                finally:
+                    browser.close()
+        finally:
+            degraded.__exit__(None, None, None)
+
+        ratio = inner["sheetPaddingLeft"] / inner["sheetWidth"]
+        with open(os.path.join(ARTIFACTS, "a9-negative-control-real-build.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"sheet_width": inner["sheetWidth"], "padding_left": inner["sheetPaddingLeft"],
+                       "ratio": ratio, "doc_width": inner["docWidth"],
+                       "tamper": self.TAMPER}, fh, ensure_ascii=False, indent=2)
+
+        # ① 降级**真的生效**（否则下面「判据变红」说明不了任何问题）
+        self.assertLess(inner["sheetWidth"], 500,
+                        f"降级产物没生效（.sheet 仍是 {inner['sheetWidth']}px）")
+        # ② A9 的两条验收判据在该产物上确实为红
+        self.assertGreater(abs(inner["sheetWidth"] - A4_PX), 2.0,
+                           f"A9-1（纸宽 {inner['sheetWidth']}）没能在降级产物上变红")
+        self.assertGreater(abs(ratio - PADDING_RATIO), 0.002,
+                           f"A9-2（比例 {ratio:.4f}）没能在降级产物上变红")
 
 
 if __name__ == "__main__":
