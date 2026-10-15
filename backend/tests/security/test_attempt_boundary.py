@@ -41,8 +41,10 @@ from tests.security._whitelist import WhitelistViolation, assert_student_payload
 ATTEMPT_ITEM_KEYS = frozenset(
     {"seq", "display", "question_type", "answer", "student_answer", "is_correct"}
 )
-#: 判分结果的顶层键集（`AttemptResultOut`）
-ATTEMPT_TOP_KEYS = frozenset({"attempt_id", "total", "correct", "items"})
+#: 判分结果的顶层键集（`AttemptResultOut`）。M5 起多一个 `score`（D80）：
+#: 得分改为**后端下发**（`contracts.api.score_of`），学生端结果页不再自己算，
+#: 教师端成绩列表与导出也用同一个数——否则同一份数据会有三处口径。
+ATTEMPT_TOP_KEYS = frozenset({"attempt_id", "total", "correct", "score", "items"})
 #: 判分结果里**不该出现**的过程性/内部字段（学生端拿答案是为了看对错，不是看解法）
 FORBIDDEN_PROCESS_KEYS = (
     "explanation",

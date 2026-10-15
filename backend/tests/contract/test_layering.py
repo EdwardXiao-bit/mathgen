@@ -28,7 +28,7 @@ EXPECTED_SHA256 = {
     os.path.join(APP, "contracts", "sheet.py"):
         "dd6e3eadba118792101307e88fd3ead9ab2e0322b75af0e9520eba75131e0f00",
     os.path.join(APP, "contracts", "api.py"):
-        "359efa5323376c66e2abb04768f6a3f74b49fa8ef3510436aaaee16526c7c435",
+        "31202c98d1740edddfb9985f490b3f26771ca0b92459a8d2145faad207c09ded",
 }
 
 # 纯函数包中禁止出现的依赖

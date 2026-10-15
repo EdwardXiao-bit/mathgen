@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.contracts.api import ROUTES, PaperConfigIn
+from app.contracts.api import ROUTES, AttemptItemOut, PaperConfigIn
 
 __all__ = [
     "ROUTE_CREATE_STUDENT",
@@ -27,7 +27,6 @@ __all__ = [
     "PracticeOut",
     "AnswerIn",
     "AttemptIn",
-    "AttemptItemOut",
     "AttemptResultOut",
 ]
 
@@ -124,19 +123,17 @@ class AttemptIn(BaseModel):
         return self
 
 
-class AttemptItemOut(BaseModel):
-    """判分明细：含**正确答案**与逐题对错（FR-S8；这里给 answer 是契约要求的）。"""
-
-    seq: int
-    display: str
-    question_type: str
-    answer: str
-    student_answer: str | None
-    is_correct: bool
-
-
 class AttemptResultOut(BaseModel):
+    """提交判分结果（契约 §5.2）。
+
+    `score` 是 M5 新增的（D80）：学生端结果页原本自己用
+    `Math.round(correct / total * 100)` 算分，而教师端成绩列表与导出也必须显示
+    **同一个数**——若三处各算一遍就变成三份口径。现在得分只由
+    `contracts.api.score_of()` 产出，界面直接渲染它。
+    """
+
     attempt_id: int
     total: int
     correct: int
+    score: int
     items: list[AttemptItemOut]

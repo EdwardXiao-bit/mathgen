@@ -11,6 +11,10 @@ import unittest
 from app.contracts.api import (
     ROUTES,
     AnswerLayoutIn,
+    AttemptDetailOut,
+    AttemptItemOut,
+    AttemptListOut,
+    AttemptSummary,
     LayoutIn,
     PaperConfigIn,
     PaperDetail,
@@ -18,6 +22,7 @@ from app.contracts.api import (
     PaperListOut,
     PaperSummary,
     PublishResult,
+    score_of,
 )
 from app.contracts.layout import (
     BOUNDS,
@@ -176,6 +181,10 @@ class TestApiContract(unittest.TestCase):
             "student_paper": "/api/student/paper/{code}",
             "student_practice": "/api/student/practice",
             "submit_attempt": "/api/attempts",
+            # ---- M5 成绩（FR-T11 / FR-T12 / FR-T13）----
+            "export_attempts": "/api/attempts/export",
+            "list_attempts": "/api/attempts",
+            "get_attempt": "/api/attempts/{attempt_id}",
         })
 
     def test_item_out_exposes_answer_for_teacher(self):
@@ -210,6 +219,42 @@ class TestApiContract(unittest.TestCase):
             ["total", "limit", "offset", "papers"],
         )
 
+    def test_attempt_field_names(self):
+        """M5 成绩三件套的字段名与顺序（前端按同一份写，改一个就红）。"""
+        self.assertEqual(
+            list(AttemptSummary.model_fields),
+            ["id", "student_id", "student_name", "student_no",
+             "paper_id", "paper_code", "paper_title",
+             "total", "correct", "score", "duration_ms", "submitted_at"],
+        )
+        self.assertEqual(
+            list(AttemptItemOut.model_fields),
+            ["seq", "display", "question_type", "answer", "student_answer", "is_correct"],
+        )
+        self.assertEqual(
+            list(AttemptListOut.model_fields),
+            ["total", "limit", "offset", "attempts"],
+        )
+        # 明细 = 概要 + items，顺序也必须一致（继承字段排在最前）
+        self.assertEqual(
+            list(AttemptDetailOut.model_fields),
+            list(AttemptSummary.model_fields) + ["items"],
+        )
+
+    def test_attempt_item_detail_carries_the_answer(self):
+        """教师端明细**必须**含正确答案（FR-T12）——它和学生端的三键白名单（D74）不是一回事。"""
+        self.assertIn("answer", AttemptItemOut.model_fields)
+        self.assertIn("student_answer", AttemptItemOut.model_fields)
+
+    def test_export_route_is_declared_before_the_id_route(self):
+        """`/api/attempts/export` 必须排在 `/api/attempts/{attempt_id}` 之前。
+
+        否则 `attempt_id: int` 解析不了 "export"，FastAPI 会直接 422 而不是继续匹配——
+        字面量路由被参数路由吃掉。这条顺序是契约的一部分，不是实现细节。
+        """
+        keys = list(ROUTES)
+        self.assertLess(keys.index("export_attempts"), keys.index("get_attempt"))
+
     def test_answer_layout_defaults_match_d20(self):
         """六维中的第六维（M3 起接入）：默认与 D20 一致——答案单独成页。"""
         al = AnswerLayoutIn()
@@ -225,6 +270,59 @@ class TestApiContract(unittest.TestCase):
     def test_publish_result_field_names(self):
         self.assertEqual(list(PublishResult.model_fields),
                          ["id", "code", "qr_url", "student_url"])
+
+
+class TestScoreRule(unittest.TestCase):
+    """得分口径（D80）：`score_of` 是**唯一**实现，且必须与 M4 学生端的显示逐位一致。"""
+
+    def test_is_exact_half_up_rounding(self):
+        """精确 half-up：`.5` 一律进位，且**不经过浮点**（与实现是同一个整数公式，
+        这里独立重写一遍是为了让「规则」本身而不是「某次算出来的数」被钉住）。"""
+        for total in range(0, 61):
+            for correct in range(0, total + 1):
+                expected = (correct * 200 + total) // (2 * total) if total else 0
+                self.assertEqual(score_of(total, correct), expected,
+                                 f"total={total} correct={correct}")
+
+    def test_half_a_point_always_rounds_up(self):
+        self.assertEqual(score_of(40, 23), 58)   # 57.5 → 58
+        self.assertEqual(score_of(80, 46), 58)   # 57.5 → 58
+        self.assertEqual(score_of(8, 1), 13)     # 12.5 → 13
+        self.assertEqual(score_of(40, 33), 83)   # 82.5 → 83
+
+    def test_float_floor_x_plus_half_would_be_off_by_one_exactly_where_python_round_is(self):
+        """旧学生端 JS 口径（`floor(x/t*100 + 0.5)`）与精确口径的差异**必须有名有姓**：
+        在 `total ≤ 100`（真实题量上限）内只有 2 个点，且都是浮点把 `.5` 存小了。
+
+        这条用例把「D80 改掉的到底是什么」写成可执行的记录——若哪天有人把实现换回
+        浮点写法，它会立刻红，并直接指出是哪两个点。
+        """
+        import math
+        divergent = [
+            (total, correct)
+            for total in range(1, 101)
+            for correct in range(0, total + 1)
+            if math.floor(correct / total * 100 + 0.5) != score_of(total, correct)
+        ]
+        self.assertEqual(divergent, [(40, 23), (80, 46)])
+
+    def test_is_not_python_banker_rounding(self):
+        """**这正是不能用内建 `round()` 的原因**：Python 的 round 是银行家舍入，
+        在 .5 上会与 JS 差 1 分（1/8 → 12 而不是 13）。这条用例把这个差异钉住。"""
+        self.assertEqual(score_of(8, 1), 13)
+        self.assertNotEqual(score_of(8, 1), round(1 / 8 * 100))       # round(12.5) == 12
+        self.assertEqual(score_of(40, 33), 83)
+        self.assertNotEqual(score_of(40, 33), round(33 / 40 * 100))   # round(82.5) == 82
+
+    def test_clamps_inconsistent_data_instead_of_going_over_100(self):
+        self.assertEqual(score_of(10, 12), 100)
+        self.assertEqual(score_of(10, -3), 0)
+        self.assertEqual(score_of(0, 5), 0)
+        self.assertEqual(score_of(0, 0), 0)
+
+    def test_full_marks_and_zero(self):
+        self.assertEqual(score_of(10, 10), 100)
+        self.assertEqual(score_of(10, 0), 0)
 
 
 if __name__ == "__main__":
