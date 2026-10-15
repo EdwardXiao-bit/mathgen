@@ -4,16 +4,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { ApiError, teacherApi } from '../../shared/apiClient';
+import { teacherApi } from '../../shared/apiClient';
+import { readError } from '../../shared/errorText';
 import { queryKeys } from '../../shared/queryKeys';
 import { ConfigForm, DEFAULT_DRAFT, type ConfigDraft } from '../ConfigForm';
-
-function readError(error: unknown): string {
-  if (error instanceof ApiError) {
-    return `${error.code}：${error.message}`;
-  }
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function ConfigPage() {
   const [draft, setDraft] = useState<ConfigDraft>(DEFAULT_DRAFT);

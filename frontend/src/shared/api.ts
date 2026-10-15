@@ -113,14 +113,14 @@ export const ANSWER_LAYOUT_FIELDS: ReadonlyArray<{
     label: '答案单独成页',
     onLabel: '单独成页',
     offLabel: '与题目同页',
-    hint: 'D20 默认：答案版另起一页，便于只打印给老师',
+    hint: '答案另起一页，方便只把答案页打印给老师',
   },
   {
     field: 'include_steps',
     label: '含逐步过程',
     onLabel: '含过程',
     offLabel: '不含',
-    hint: '脱式题的递等式步骤（stepwise 题型才有内容）',
+    hint: '脱式题的分步计算过程',
   },
   {
     field: 'include_difficulty',

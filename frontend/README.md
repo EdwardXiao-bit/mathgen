@@ -23,10 +23,10 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 & $NODE $PNPM --dir frontend verify     # 跑全部验收（见下）
 ```
 
-## 八条验收脚本 + 一套负对照（都可复现，退出码 0 = 通过）
+## 九条验收脚本 + 一套负对照（都可复现，退出码 0 = 通过）
 
 ```powershell
-& $NODE $PNPM --dir frontend verify                       # 一次跑完 8 条门禁 + 负对照
+& $NODE $PNPM --dir frontend verify                       # 一次跑完 9 条门禁 + 负对照
 # 或分开跑（package.json 里都有对应 script）：
 & $NODE frontend\scripts\verify-no-cdn.mjs
 & backend\.venv\Scripts\python.exe frontend\scripts\verify-contract.py
@@ -36,6 +36,7 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 & $NODE frontend\scripts\verify-tokens.mjs
 & $NODE frontend\scripts\verify-structure.mjs
 & $NODE frontend\scripts\verify-preview-scale.mjs
+& $NODE frontend\scripts\verify-ui-voice.mjs
 # 负对照单独一条（也可用 pnpm --dir frontend verify:negative）：
 & $NODE frontend\scripts\verify-negative-controls.mjs
 ```
@@ -50,7 +51,8 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 | `verify-tokens.mjs` | **判据 A1**：`frontend/src/**` 除 `design/tokens.css` 外，颜色字面量计数 = 0 | 脚本**逐行扫源码**并打印命中行；允许清单是**逐条**的（带文件+行号+理由），当前为空。注释里也刻意不出现颜色写法，否则会被它自己命中 |
 | `verify-structure.mjs` | **判据 A2/A3/A4/A7/A8**：组件必备状态（样式表规则 + 运行时测 `disabled` / `invalid` 文字原因 / Slider 量纲 / Switch 人话）、键盘可达与焦点环、状态条不谎报、空态与错误态分离、浮动层几何（不互压、不压纸面）、两个视口不横向溢出、纸面 A4 比例、顶栏 44 / 状态条 34 / 1280 侧栏收窄 | 交互类断言用 Playwright 真点真读（`data-state`、`aria-*`、`getBoundingClientRect`），不是看源码里有没写某个 class |
 | `verify-preview-scale.mjs` | **A9**：预览必须是**打印几何的等比缩小**。进到 iframe 文档里量：`.sheet` 计算宽度 = 793.7px ± 2（210mm@96dpi）、`padding-left/宽度 ≈ 0.0952`、`scaleX == scaleY`、题块高度一致（= 不换行）、两种视口下纸内几何不变 | **实测**从渲染结果反推缩放比（`rect.width / offsetWidth`），而不是读我们自己写进去的内联 `scale(k)` —— 后者只证明「我们写了 k」，不证明「浏览器按 k 渲染了」 |
-| `verify-negative-controls.mjs` | **V9 负对照**：故意注入错误状态，断言判据**必须变红**。覆盖 A9（注入 3cm 边距 → 比例判据红；把纸钳制到 459px → 宽度判据红）与卷面焦点环（未聚焦 → 新判据红、旧写法仍绿） | 每条负对照都额外断言**注入真的改变了关键量**（V9.2）——否则「判据没红」会被误读成「判据有问题」，而真相可能是「注入没生效」 |
+| `verify-ui-voice.mjs` | **视觉轮 A10/A11**（D70）：① 界面**可见**文本里不得出现决策编号（`D\d+`）、CSS 变量名（`--xxx`）、裸 CSS 关键字（`none/block/grid/flex/inline`）、需求编号（`FR-xx`）、内部实现痕迹；② 卷库/配置/发布页的**计算后底色**必须是浅底令牌（近白浅灰），灰桌面底只允许出现在画布 | ① 扫的是**渲染后可见**的文本节点（`getBoundingClientRect` 非零 + 祖先可见），不是源码字符串 —— 源码里全是决策编号注释，源码扫法会立刻失效；`display:none` 的验收 dump 因此不计入 ② 读的是**计算后颜色**并与令牌值比对，不是看 CSS 里写了哪个变量名 |
+| `verify-negative-controls.mjs` | **V9 负对照**：故意注入错误状态，断言判据**必须变红**。覆盖 A9（注入 3cm 边距 → 比例判据红；把纸钳制到 459px → 宽度判据红）、卷面焦点环（未聚焦 → 新判据红、旧写法仍绿）、A10（注入含决策编号/CSS 变量的可见文本 → 红；改成 `display:none` → 不报）、A11（把配置页底色改成灰桌面 → 红） | 每条负对照都额外断言**注入真的改变了关键量**（V9.2）——否则「判据没红」会被误读成「判据有问题」，而真相可能是「注入没生效」 |
 
 > **A3 焦点环（task-19 更正）**：环画在**包裹层 `.mg-paper-stage` 的 `:focus-visible`** 上，
 > 该层带 `tabindex="0"`，iframe 设 `tabindex="-1"` 退出 Tab 顺序。
@@ -106,7 +108,7 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
 
 ## 几个必须知道的实现约定
 
-### 0. M3.5 结构轮：令牌 + 组件层 + C1 骨架
+### M3.5 · 结构轮：令牌 + 组件层 + C1 骨架
 
 三件事，纪律优先于观感（观感留给视觉轮）：
 
@@ -134,7 +136,36 @@ $PNPM = 'C:\Users\Ed\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin
   而纸面按剩余高度缩放，结果 A4 纸被压到 329×465；挪到侧栏并收起后是 459×650。
   门禁③读的是它的 `textContent`（不是可见性），所以收起不改变那条断言的语义。
 
-### 0.1 A9：预览是「等比缩小」，不是「把 A4 横向压扁」（D68）
+### M3.5 · 视觉轮：灰底归位 / 内容列居中 / 清掉开发者文本（D70）
+
+用户看图后的逐条反馈，只做了下面这些（**没顺手做别的**）：
+
+1. **灰桌面底只属于画布**。`--mg-desk-*` 那一族（中灰）只允许出现在**卷页中间的画布**上；
+   卷库页 / 配置页 / 发布页改用 `--mg-surface-sunken`（近白浅灰）。
+   原来 `body` 就是灰桌面底，于是列表页变成「白卡片浮在灰桌面上」——用户说这条"确实严重"。
+   `body` 现在是浅底，画布自己带灰底 + 环境光 + 网格（C1/C2 质感不回归）。
+2. **配置页内容居中**。三个页面的根是 flex 列 + `align-items: center`，各内容块自带 `max-width`
+   （配置/发布 880，卷库 1180）。**同时**修了两个连带缺陷：
+   - 卷库翻页条（`position: sticky`）被"一刀切"的 `width:100%` 子元素规则撑变形、压到表格上；
+   - `.mg-table-wrap` 作为 flex 子项时 `min-width:auto` 会收缩到表格 min-content 宽度
+     （实测 528.8px），且会被压到视口剩余高度导致翻页条**叠住最后一行**。
+     组件层因此固定 `width:100%; min-width:0; flex:none`（注释里写了原因）。
+3. **清掉面向开发者的文本**（用户单独点名）。改前实测有 7 处可见的 `--cols-per-row` 之类调试小字，
+   以及 `（D56）`、`（FR-T10 / D23）`、`uvicorn app.main:app …` 这类内部痕迹。全部换成老师能懂的一句话。
+   - 排版面板每项下方的变量名小字**整段删掉**（原先 Lead 要求它"证明在工作"，用户判定不该出现在产品里 —— 以用户为准）。
+   - 六个变量名仍写进**对用户不可见**的验收 dump（`display:none`，门禁③读它的 `textContent`），
+     所以「可核对性」没有被削弱，而门禁④那条断言也相应改成
+     「可见处必须没有 + 非可见处必须有」——**整体更强，不是放宽**。
+   - 错误提示统一走 `shared/errorText.ts` 的 `readError()`（原先三个页面各写一遍），
+     口径是"说人话 + 错误码单列"，不再把服务端原文怼给老师。
+4. **明确不做**：纸面偏小（题目多时自然不空）、库表表头与数字列对齐（用户判定非问题）、
+   纸下半空白（用户决定保留完整 A4，不做"纸高随内容收缩"）。
+
+> 判据 A10/A11 由 `verify-ui-voice.mjs` 守，负对照见 `verify-negative-controls.mjs`。
+> 特别注意 A10 **扫的是渲染后的可见文本**：源码里到处是 `D56` 之类的注释，扫源码会立刻失效。
+
+### M3.5 · A9：预览是「等比缩小」，不是「把 A4 横向压扁」（D68）
+
 
 后端的屏幕 CSS 是**已冻结**的（D56）：
 

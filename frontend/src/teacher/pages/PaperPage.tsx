@@ -29,6 +29,7 @@ import {
   type SheetMode,
 } from '../../shared/api';
 import { ApiError, teacherApi } from '../../shared/apiClient';
+import { readError } from '../../shared/errorText';
 import { queryKeys } from '../../shared/queryKeys';
 import { Card, EmptyState, ErrorState, FloatingPanel, List, StatusBar, Toolbar, ToolbarDivider } from '../../ui';
 import type { StatusBarState } from '../../ui';
@@ -44,10 +45,6 @@ export type PersistState = 'idle' | 'saving' | 'refreshing' | 'refreshed' | 'err
 
 const PERSIST_DEBOUNCE_MS = 400;
 
-function readError(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}：${error.message}`;
-  return error instanceof Error ? error.message : String(error);
-}
 
 function parsePaperId(raw: string | undefined): number | null {
   if (!raw) return null;
@@ -403,8 +400,8 @@ export function PaperPage() {
             what={readError(error)}
             how={
               offline
-                ? '后端还没启动。请先执行：uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend'
-                : '如果是刚重启过后端，点「重试」；仍然失败请把错误码报给维护者。'
+                ? '题目服务还没连上。请确认服务程序正在运行（窗口不要关），然后点「重试」。'
+                : '如果是刚重启过服务，点「重试」；仍然打不开请把下面的错误码告诉维护人员。'
             }
             code={error instanceof ApiError ? `${error.code}（HTTP ${error.status}）` : 'UNKNOWN'}
             actions={
@@ -564,9 +561,7 @@ export function PaperPage() {
               </button>
             </div>
             <ToolbarDivider />
-            <span className="mg-toolbar-meta">
-              卷面由后端渲染（D56）：预览、打印、PDF 是同一份 HTML
-            </span>
+            <span className="mg-toolbar-meta">打印和 PDF 与这里看到的一致</span>
             <ToolbarDivider />
             <button
               type="button"

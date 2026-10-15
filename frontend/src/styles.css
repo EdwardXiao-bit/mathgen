@@ -34,7 +34,10 @@ body,
 }
 
 body {
-  background: var(--mg-desk-1);
+  /* 底色是**浅底**，不是灰色桌面底。
+     用户裁决（D70）：灰桌面只属于**画布**（卷页中间那一栏），列表页 / 表单页用浅底，
+     否则就是「白卡片浮在灰桌面上」——最容易一眼看出不专业的地方。 */
+  background: var(--mg-surface-sunken);
   color: var(--mg-ink);
   font-family: var(--mg-font-ui);
   font-size: var(--mg-fs-14);
@@ -744,8 +747,19 @@ code {
   text-align: right;
 }
 
+/* 表格容器：默认铺满所在列，且**不参与收缩**。
+   两条都是实测换来的：
+   ① `width:100%` + `min-width:0` —— 本容器常作为**弹性列的子项**，而 flex 子项的
+      `min-width` 默认是 `auto`，会收缩到「表格的 min-content 宽度」（实测 6 列表格收缩到 528.8px），
+      于是居中的页面里表格缩成一小块、标题与翻页条却是满宽，看起来错位。
+   ② `flex: none` —— 否则容器会被压到「视口剩余高度」，表格在容器内部滚动，
+      而紧跟其后的翻页条按**压缩后的高度**排布，就**压在表格最后一行上**（实测截图上确实叠住了）。
+      设定成不收缩后，页面整体滚动，翻页条自然落在表格下方。 */
 .mg-table-wrap {
   min-height: 0;
+  width: 100%;
+  min-width: 0;
+  flex: none;
 }
 
 .mg-table {
@@ -1061,6 +1075,17 @@ code {
   margin-top: var(--mg-sp-3);
 }
 
+/* 列表页 / 表单页：浅底 + 内容列居中（用户反馈「整体偏左」，D70）。
+   `--mg-surface-sunken`（近白浅灰）既不是纯白（那样卡片与页面糊在一起、没有层次），
+   也不是灰桌面底（那是画布专用）。
+   注意：本文件里**不要写出颜色字面量**（连注释里也不行）—— 判据 A1 会逐行扫描，
+   它分不清注释与声明，写进去就会红（`verify-tokens.mjs`）。
+
+   为什么用 `align-items: center` 而不是给每个子元素写 `width:100%` 的工具类：
+   页面是 flex 列，居中由 `align-items` 一次性完成，子元素各自的 `max-width` 决定列宽。
+   ⚠️ 不要写成 `.library-page > * { width: 100% }` 那种「一刀切」——
+   卷库页的翻页条（`.library-pager`，`position: sticky`）也是直接子元素，
+   被撑满/改宽度后会脱层压到表格上（实测踩过）。 */
 .config-page,
 .library-page,
 .publish-page {
@@ -1068,13 +1093,37 @@ code {
   min-height: 0;
   overflow-y: auto;
   padding: var(--mg-sp-8) var(--mg-sp-10) var(--mg-sp-12);
+  background: var(--mg-surface-sunken);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 配置页与发布页：单栏阅读宽度，居中。 */
+.config-page > *,
+.publish-page > * {
+  max-width: 880px;
+}
+
+/* 卷库：表格较宽，给它更宽的居中列。 */
+.library-page > * {
+  max-width: 1180px;
+}
+
+/* 上面各列都需要在「不超过上限」的前提下尽量铺开。 */
+.page-intro,
+.config-form,
+.library-toolbar,
+.library-summary,
+.library-pager,
+.publish-body {
+  width: 100%;
 }
 
 .config-form {
   display: flex;
   flex-direction: column;
   gap: var(--mg-sp-6);
-  max-width: 880px;
 }
 
 .dim-card {
@@ -1528,12 +1577,13 @@ code {
   font-size: var(--mg-fs-11);
 }
 
-/* 旧预览滚动容器：卷页已改走 .mg-canvas + .mg-paper-frame */
+/* 旧预览滚动容器：卷页已改走 .mg-canvas + .mg-paper-frame。
+   这里也**不能**用灰桌面底（那是画布专用，D70），何况它已被卷页弃用。 */
 .preview-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  background: var(--mg-desk-1);
+  background: var(--mg-surface-sunken);
   border-radius: var(--mg-radius-float);
 }
 
@@ -1791,27 +1841,15 @@ code {
   font-size: var(--mg-fs-12);
 }
 
+/* 验收用的 CSS 变量 dump —— **对用户完全不可见**（`display:none`）。
+ *
+ * 用户裁决（D70）：界面上不得出现 CSS 变量名这类内部细节。
+ * 但门禁③仍需要读到它来核对「前端写进 iframe 的六个变量是哪些」——
+ * 它读的是 **`textContent`（不是可见性）**，所以 `display:none` 既满足用户要求，
+ * 又保留那条断言的语义（脚本注释里也写明了这一点）。
+ * 这里刻意**不删元素**：删掉就等于让门禁③失去可读的取证对象。 */
 .css-var-debug {
-  flex: none;
-  border: 1px solid var(--mg-line);
-  border-radius: var(--mg-radius);
-  background: var(--mg-surface);
-  font-size: var(--mg-fs-11);
-}
-
-.css-var-debug summary {
-  padding: var(--mg-sp-3) var(--mg-sp-5);
-  cursor: pointer;
-  color: var(--mg-ink-soft);
-}
-
-.css-var-debug pre {
-  margin: 0;
-  padding: var(--mg-sp-5);
-  background: var(--mg-surface-sunken);
-  font-family: var(--mg-font-mono);
-  font-size: var(--mg-fs-10);
-  overflow-x: auto;
+  display: none;
 }
 
 /* ---------------------------------------------------------------------------

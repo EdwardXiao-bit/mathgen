@@ -172,7 +172,7 @@ export function ConfigForm({
             />
           </div>
         ) : null}
-        {showHints ? <p className="dim-hint">多选档位取并集：任一所选档位接受即通过（D47）。</p> : null}
+        {showHints ? <p className="dim-hint">可多选：只要题目符合你勾的任意一个档位，就会被选进来。</p> : null}
       </section>
 
       <section className="dim-card" data-dimension="constraints">
@@ -268,7 +268,7 @@ export function ConfigForm({
           idPrefix="config-answer-layout"
         />
         <p className="dim-hint" data-testid="answer-layout-note">
-          四项开关随「生成」一起保存到该卷（`paper.answer_layout`）；生成后还可以在卷页继续调整。
+          四项开关会跟着「生成」一起存进这套卷子；生成后还可以在卷页继续调整。
         </p>
       </section>
 
@@ -288,7 +288,7 @@ export function ConfigForm({
             />
           </label>
           <label className="meta-field">
-            <span>种子（同种子 + 同配置 = 同一套题，D19）</span>
+            <span>种子（填同一个种子、同一套配置，就得到同一套题）</span>
             <span className="seed-row">
               <input
                 type="text"

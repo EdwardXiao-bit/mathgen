@@ -140,6 +140,50 @@ def a9_checks(m):
         "A9-3 scaleX == scaleY": abs(m["scaleX"] - m["scaleY"]) < 0.005,
     }
 
+# ---- A10：无开发者文本（与门禁⑩ verify-ui-voice.mjs 同一套检测）----
+DEV_SCAN = """() => {
+    const vis = (el) => {
+        if (!el) return false;
+        const cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+        if (el.closest('[hidden]') || el.closest('[aria-hidden="true"]')) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+    };
+    const hits = [];
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) {
+        const el = n.parentElement;
+        if (!el) continue;
+        let own = '';
+        for (const c of el.childNodes) if (c.nodeType === 3) own += c.textContent;
+        own = own.trim();
+        if (!own) continue;
+        if (!vis(el)) continue;
+        const f = [];
+        const dec = own.match(/\\bD\\d+\\b/g);
+        if (dec) f.push('决策编号:' + dec.join(','));
+        const cssvar = own.match(/--[a-z][a-z0-9-]*/g);
+        if (cssvar) f.push('CSS变量:' + cssvar.join(','));
+        const kw = own.match(/\\b(none|block|grid|flex|inline)\\b/g);
+        if (kw) f.push('CSS关键字:' + kw.join(','));
+        if (f.length) hits.push({cls: (typeof el.className === 'string' ? el.className : el.tagName).slice(0, 44),
+                                 text: own.slice(0, 110), found: f});
+    }
+    return hits;
+}"""
+
+# ---- A11：灰底只用于画布（与门禁⑩同一套判据）----
+BG_PROBE = """() => {
+    const cs = (el) => {
+        if (!el) return null;
+        const c = getComputedStyle(el);
+        return {bg: c.backgroundColor, bgImage: c.backgroundImage};
+    };
+    return {body: cs(document.body), root: cs(document.querySelector('.config-page'))};
+}"""
+
 # ---- 焦点环判据（与 gate 7 的 A3 一致：聚焦 AND 可见环 的合取）----
 FOCUS_PROBE = """() => {
     const stage = document.querySelector('.mg-paper-stage');
@@ -160,7 +204,7 @@ FOCUS_PROBE = """() => {
     };
 }"""
 
-result = {"a9": {}, "focus": {}, "console_errors": []}
+result = {"a9": {}, "focus": {}, "a10": {}, "a11": {}, "console_errors": []}
 exe = find_chromium()
 result["chromium"] = exe
 
@@ -233,6 +277,67 @@ with sync_playwright() as p:
             reached = probe
             break
     result["focus"]["after_real_tab"] = reached
+
+    # ---------- A10 负对照：无开发者文本 ----------
+    # 与门禁⑩同一套检测逻辑（照搬过来，确保验的就是同一条判据）。
+    # 做法：往页面里塞一个**可见**的哨兵元素，内部文本含决策编号 / CSS 变量 / CSS 关键字，
+    # 检测器必须把它抓出来。
+    dev_page = browser.new_page(viewport={"width": 1440, "height": 900})
+    dev_page.goto(BASE + "/teacher", wait_until="domcontentloaded")
+    dev_page.wait_for_selector("[data-dimension='answer_form']", timeout=20000)
+    dev_page.wait_for_timeout(600)
+    result["a10"]["baseline"] = dev_page.evaluate(DEV_SCAN)
+    # 哨兵 1：决策编号 + CSS 变量（模拟旧版「调试小字」）
+    dev_page.evaluate("""() => {
+        const p = document.createElement('p');
+        p.id = 'negative-control-devtext';
+        p.style.cssText = 'position:static;display:block;color:#000;font-size:12px;';
+        p.textContent = '页边距 --page-margin（D56）';
+        document.querySelector('.config-page').appendChild(p);
+    }""")
+    dev_page.wait_for_timeout(200)
+    result["a10"]["with_sentinel"] = dev_page.evaluate(DEV_SCAN)
+    # 哨兵 2：单独的裸 CSS 关键字（验证关键字那条分支也会红）
+    dev_page.evaluate("""() => {
+        const s = document.getElementById('negative-control-devtext');
+        s.textContent = 'display: block';
+    }""")
+    dev_page.wait_for_timeout(200)
+    result["a10"]["with_keyword"] = dev_page.evaluate(DEV_SCAN)
+    # 哨兵 3：仅视觉隐藏（display:none）→ 检测器**不应**报（证明判据看的是"可见"而不是"存在"）
+    dev_page.evaluate("""() => {
+        const s = document.getElementById('negative-control-devtext');
+        s.style.display = 'none';
+    }""")
+    dev_page.wait_for_timeout(200)
+    result["a10"]["hidden_sentinel"] = dev_page.evaluate(DEV_SCAN)
+    dev_page.close()
+
+    # ---------- A11 负对照：灰底只用于画布 ----------
+    # 做法：把配置页底色硬改成灰桌面色 → 判据必须变红。
+    # ⚠️ 这里必须**显式改颜色值**，不能改成 var(--mg-desk-1) 就以为生效 ——
+    #    改完要读回 computed 颜色确认真的变成了 #8e939a（V9.2）。
+    bg_page = browser.new_page(viewport={"width": 1440, "height": 900})
+    bg_page.goto(BASE + "/teacher", wait_until="domcontentloaded")
+    bg_page.wait_for_selector("[data-dimension='answer_form']", timeout=20000)
+    bg_page.wait_for_timeout(600)
+    result["a11"]["baseline"] = bg_page.evaluate(BG_PROBE)
+    bg_page.evaluate("""() => {
+        const page = document.querySelector('.config-page');
+        page.style.background = '#8e939a';
+        document.body.style.background = '#8e939a';
+    }""")
+    bg_page.wait_for_timeout(200)
+    result["a11"]["injected_desk"] = bg_page.evaluate(BG_PROBE)
+    # 还原（并确认还原后真的回到浅底）
+    bg_page.evaluate("""() => {
+        const page = document.querySelector('.config-page');
+        page.style.background = '';
+        document.body.style.background = '';
+    }""")
+    bg_page.wait_for_timeout(200)
+    result["a11"]["restored"] = bg_page.evaluate(BG_PROBE)
+    bg_page.close()
 
     browser.close()
 
@@ -361,6 +466,76 @@ async function main() {
     '焦点环：真实 Tab 到卷面后新判据为绿',
     fTab?.newCheck === true,
     `outline=${fTab?.outlineStyle} ${fTab?.outlineWidth} boxShadow=${fTab?.boxShadow}`,
+  );
+
+  // ---------- A10：无开发者文本 ----------
+  const a10 = result.a10 ?? {};
+  const sentinelHit = (a10.with_sentinel ?? []).find((h) => (h.text ?? '').includes('--page-margin'));
+  const keywordHit = (a10.with_keyword ?? []).find((h) => (h.text ?? '').includes('block'));
+  console.log('\n—— 负对照 3/4：无开发者文本（判据见门禁⑩ verify-ui-voice.mjs）——');
+  console.log(`  基线（真实页面）：命中 ${(a10.baseline ?? []).length} 处  ← 必须为 0`);
+  console.log(
+    `  注入哨兵「页边距 --page-margin（D56）」：命中 ${(a10.with_sentinel ?? []).length} 处` +
+      `  → ${sentinelHit ? JSON.stringify(sentinelHit.found) : '(未抓到！)'}`,
+  );
+  console.log(
+    `  注入哨兵「display: block」：命中 ${(a10.with_keyword ?? []).length} 处` +
+      `  → ${keywordHit ? JSON.stringify(keywordHit.found) : '(未抓到！)'}`,
+  );
+  console.log(
+    `  把哨兵改成 display:none：命中 ${(a10.hidden_sentinel ?? []).length} 处  ← 应为 0（判据看"可见"而非"存在"）`,
+  );
+  record(
+    'A10 基线：真实页面可见文本里 0 处开发者文本',
+    (a10.baseline ?? []).length === 0,
+    `命中 ${(a10.baseline ?? []).length} 处`,
+  );
+  record(
+    'A10 负对照：注入含决策编号/CSS 变量的可见文本 → 判据变红并分别报出两类',
+    Boolean(sentinelHit)
+      && sentinelHit.found.some((f) => f.startsWith('决策编号'))
+      && sentinelHit.found.some((f) => f.startsWith('CSS变量')),
+    sentinelHit ? JSON.stringify(sentinelHit.found) : '未抓到',
+  );
+  record(
+    'A10 负对照：注入裸 CSS 关键字（block）→ 判据变红',
+    Boolean(keywordHit) && keywordHit.found.some((f) => f.startsWith('CSS关键字')),
+    keywordHit ? JSON.stringify(keywordHit.found) : '未抓到',
+  );
+  record(
+    'A10 负对照有效性：把哨兵 display:none 后**不再**命中（证明判据看的是可见性，不是「源码里有」）',
+    (a10.hidden_sentinel ?? []).length === 0,
+    `命中 ${(a10.hidden_sentinel ?? []).length} 处`,
+  );
+
+  // ---------- A11：灰底只用于画布 ----------
+  const a11 = result.a11 ?? {};
+  const baseBg = a11.baseline ?? {};
+  const injBg = a11.injected_desk ?? {};
+  const restoredBg = a11.restored ?? {};
+  console.log('\n—— 负对照 4/4：灰底只用于画布（判据见门禁⑩）——');
+  console.log(`  基线：root=${baseBg.root?.bg} body=${baseBg.body?.bg}  ← 应为 #f7f8f9（rgb(247,248,249)）`);
+  console.log(`  注入灰桌面色 #8e939a：root=${injBg.root?.bg} body=${injBg.body?.bg}  ← 应变成 rgb(142,147,154)`);
+  console.log(`  还原后：root=${restoredBg.root?.bg} body=${restoredBg.body?.bg}`);
+  record(
+    'A11 基线：配置页底色是浅底 #f7f8f9（不是灰桌面）',
+    baseBg.root?.bg === 'rgb(247, 248, 249)' && baseBg.body?.bg === 'rgb(247, 248, 249)',
+    `root=${baseBg.root?.bg} body=${baseBg.body?.bg}`,
+  );
+  record(
+    'A11 负对照：把配置页底色改成灰桌面 → 判据变红',
+    injBg.root?.bg === 'rgb(142, 147, 154)' && injBg.body?.bg === 'rgb(142, 147, 154)',
+    `root=${injBg.root?.bg} body=${injBg.body?.bg}`,
+  );
+  record(
+    'A11 负对照有效性：注入真的生效（关键量确实从浅底变成灰桌面，不是「没注入成功」）',
+    baseBg.root?.bg !== injBg.root?.bg,
+    `${baseBg.root?.bg} → ${injBg.root?.bg}`,
+  );
+  record(
+    'A11 还原后判据重新为绿（负对照没留下副作用）',
+    restoredBg.root?.bg === 'rgb(247, 248, 249)' && restoredBg.body?.bg === 'rgb(247, 248, 249)',
+    `root=${restoredBg.root?.bg} body=${restoredBg.body?.bg}`,
   );
 
   const failed = results.filter((r) => !r.ok);

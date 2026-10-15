@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { LIST_BOUNDS, type PaperStatus } from '../../shared/api';
 import { ApiError, teacherApi } from '../../shared/apiClient';
+import { readError } from '../../shared/errorText';
 import { queryKeys } from '../../shared/queryKeys';
 import { Button, EmptyState, ErrorState, Table, type TableColumn } from '../../ui';
 
@@ -29,11 +30,6 @@ function formatTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString('zh-CN', { hour12: false });
-}
-
-function readError(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}：${error.message}`;
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** 防抖：输入停止 `delay` 毫秒后才更新返回值。 */
@@ -187,7 +183,7 @@ export function LibraryPage() {
           {statusFilter !== 'all' ? `（${statusFilter === 'draft' ? '草稿' : '已发布'}）` : ''}
           {paginationMode === 'legacy' ? (
             <span className="library-legacy-note" data-testid="library-pagination-mode">
-              （后端仍是 page/size 分页，前端已换算）
+              （当前服务版本较旧，页码已自动换算）
             </span>
           ) : null}
         </div>
@@ -239,7 +235,7 @@ export function LibraryPage() {
               testId="library-error"
               title="读不到卷库"
               what={readError(query.error)}
-              how="先确认后端已启动（uvicorn 一条命令即可托管本页面），然后点「重试」。"
+              how="先确认题目服务正在运行（窗口不要关），然后点「重试」。"
               code={query.error instanceof ApiError ? query.error.code : null}
               actions={
                 <Button variant="primary" onClick={() => void query.refetch()}>

@@ -3,7 +3,7 @@
  *
  * 用法：& $NODE $PNPM --dir frontend verify      （等价于 node scripts/run-all-verifications.mjs）
  *
- * 依次跑九个脚本，任一失败即整体失败，最后打印汇总与产物路径：
+ * 依次跑十个脚本，任一失败即整体失败，最后打印汇总与产物路径：
  *   1. scripts/verify-no-cdn.mjs           产物无外部资源引用（位置感知：只看资源位）
  *   2. scripts/verify-contract.py          前端类型 ↔ backend/app/contracts/{api,layout}.py
  *   3. scripts/verify-layout-css-vars.mjs  排版面板六控件实时驱动预览区 CSS 变量
@@ -12,7 +12,8 @@
  *   6. scripts/verify-tokens.mjs           M3.5 判据 A1：令牌之外没有颜色字面量
  *   7. scripts/verify-structure.mjs        M3.5 判据 A2/A3/A4/A7/A8：组件状态与骨架几何
  *   8. scripts/verify-preview-scale.mjs    A9：预览是打印几何的等比缩小（进 iframe 量纸内几何）
- *   9. scripts/verify-negative-controls.mjs 负对照（V9）：故意弄红，证明判据能失败
+ *  10. scripts/verify-ui-voice.mjs         视觉轮 A10/A11：无开发者文本 / 灰底只用于画布
+ *   9. scripts/verify-negative-controls.mjs 负对照（V9）：故意弄红，证明上述判据能失败
  */
 
 import { spawnSync } from 'node:child_process';
@@ -67,10 +68,15 @@ const steps = [
     args: [path.join(__dirname, 'verify-preview-scale.mjs')],
   },
   {
+    name: '⑨ 视觉轮 A10/A11（无开发者文本 / 灰底只用于画布）',
+    cmd: process.execPath,
+    args: [path.join(__dirname, 'verify-ui-voice.mjs')],
+  },
+  {
     // 故意让判据失败，证明它们真的会红（V9 / V9.1 / V9.2）。
     // 单独一个脚本、且放在最后：主门禁其余各条的意义是「全绿才算过」，
     // 而这一步的意义恰恰相反 —— 混在一起会让输出读不懂。
-    name: '⑨ 负对照（故意弄红，证明判据能失败）',
+    name: '⑩ 负对照（故意弄红，证明判据能失败）',
     cmd: process.execPath,
     args: [path.join(__dirname, 'verify-negative-controls.mjs')],
   },
@@ -117,6 +123,12 @@ console.log('  frontend/verify-structure-1440x900.png  C1 骨架（1440×900）'
 console.log('  frontend/verify-structure-1280x900.png  C1 骨架（1280×900，侧栏收窄）');
 console.log('  frontend/verify-a9-after-1440x900.png   A9 修后：预览等比缩放（对比 shot-struct-paper.png 是修前）');
 console.log('  frontend/shot-focus-ring-1440x900.png   键盘 Tab 到卷面时的焦点环');
-console.log('\n负对照（⑨）可单独重跑，用来证明判据真的会红：');
+console.log('  frontend/verify-voice-config-1440x900.png            视觉轮：配置页居中 + 浅底');
+console.log('  frontend/verify-voice-library-1440x900.png           视觉轮：卷库页浅底 + 内容列居中');
+console.log('  frontend/verify-voice-config-1280x900.png            视觉轮：1280 视口（不溢出）');
+console.log('\n视觉轮改前/改后对比（用户反馈的三条）：');
+console.log('  改前：frontend/vis-before-{config,library,paper}-1440.png');
+console.log('  改后：frontend/vis-after-{config,library,paper}-1440.png');
+console.log('\n负对照（⑩）可单独重跑，用来证明判据真的会红：');
 console.log('  & $NODE $PNPM --dir frontend verify:negative');
 console.log('  （见 scripts/verify-negative-controls.mjs 头注释：V9/V9.1/V9.2 的由来）');

@@ -14,8 +14,6 @@
  */
 
 import {
-  CSS_DISPLAY_VALUES,
-  CSS_VAR_NAMES,
   LAYOUT_BOUNDS,
   type LayoutBoolField,
   type LayoutIn,
@@ -48,9 +46,6 @@ interface BoolControl {
   onLabel: string;
   offLabel: string;
   hint: string;
-  /** 该布尔项在 CSS 里的实际取值（D59：display 关键字），只用于小字展示与核对。 */
-  cssOn: string;
-  cssOff: string;
 }
 
 type Control = NumberControl | BoolControl;
@@ -101,8 +96,6 @@ export const LAYOUT_CONTROLS: readonly Control[] = [
     onLabel: '保留',
     offLabel: '不留',
     hint: '题目下方是否留书写空位',
-    cssOn: CSS_DISPLAY_VALUES.answer_line.on,
-    cssOff: CSS_DISPLAY_VALUES.answer_line.off,
   },
   {
     kind: 'bool',
@@ -111,8 +104,6 @@ export const LAYOUT_CONTROLS: readonly Control[] = [
     onLabel: '显示',
     offLabel: '隐藏',
     hint: '班级 / 姓名 / 得分信息栏',
-    cssOn: CSS_DISPLAY_VALUES.header_bar.on,
-    cssOff: CSS_DISPLAY_VALUES.header_bar.off,
   },
 ];
 
@@ -158,19 +149,18 @@ export function LayoutPanel({
         </button>
       </div>
       <p className="layout-panel-note">
-        六项参数直接驱动预览区的 CSS 变量，不往返服务器；拖动或拨动开关时右侧版式立刻变化。
-        保存成功后会自动重新加载卷面，确保预览与后端渲染结果一致。
+        这六项直接改变右边卷面的样子，不用等服务器。调好后会自动保存，下次打开还是这个版式。
       </p>
 
       <div className="layout-controls">
         {LAYOUT_CONTROLS.map((control) => {
-          const cssVar = CSS_VAR_NAMES[control.field];
           if (control.kind === 'bool') {
             const checked = layout[control.field];
             return (
               <div className="layout-control" key={control.field}>
-                {/* 人话文案（「保留 / 不留」「显示 / 隐藏」）由 Switch 的 onLabel/offLabel 承载；
-                    CSS 关键字（block/none）只出现在下面的调试小字里，不怼给老师看（D59）。 */}
+                {/* 人话文案（「保留 / 不留」「显示 / 隐藏」）由 Switch 的 onLabel/offLabel 承载。
+                    这里**不显示** CSS 变量名与取值：老师不需要知道 `--answer-line-display: block`
+                    这类内部细节（用户裁决，见 D70）。变量名仍由门禁②按契约核对，不靠界面展示。 */}
                 <Switch
                   control={control.field}
                   checked={checked}
@@ -181,12 +171,7 @@ export function LayoutPanel({
                   testId={`layout-${control.field}`}
                   onChange={(next) => onChange({ [control.field]: next })}
                 />
-                <p className="layout-control-hint">
-                  {control.hint} · <code className="var-chip">{cssVar}</code>
-                  <code className="var-chip">
-                    {checked ? control.cssOn : control.cssOff}
-                  </code>
-                </p>
+                <p className="layout-control-hint">{control.hint}</p>
               </div>
             );
           }
@@ -215,8 +200,7 @@ export function LayoutPanel({
                   <span className="screen-note" data-testid={`screen-note-${control.field}`}>
                     {control.screenNote}
                   </span>
-                ) : null}{' '}
-                <code className="var-chip">{cssVar}</code>
+                ) : null}
               </p>
             </div>
           );

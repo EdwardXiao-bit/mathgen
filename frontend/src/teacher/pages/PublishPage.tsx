@@ -11,7 +11,9 @@ import { Link, useParams } from 'react-router-dom';
 
 import { route } from '../../shared/api';
 import { ApiError, teacherApi } from '../../shared/apiClient';
+import { readError } from '../../shared/errorText';
 import { queryKeys } from '../../shared/queryKeys';
+import { ErrorState } from '../../ui';
 
 export function PublishPage() {
   const params = useParams<{ id: string }>();
@@ -29,8 +31,11 @@ export function PublishPage() {
 
   if (!Number.isInteger(paperId) || paperId <= 0) {
     return (
-      <div className="error-card">
-        <h1>卷号不合法</h1>
+      <div className="publish-page">
+        <div className="page-intro">
+          <h1>卷号不合法</h1>
+          <p>请从卷库列表里选一套卷子再发卷。</p>
+        </div>
         <Link className="btn" to="/teacher">
           回到出题配置
         </Link>
@@ -44,23 +49,27 @@ export function PublishPage() {
     <div className="publish-page">
       <header className="page-intro">
         <h1>发卷</h1>
-        <p>生成卷号与二维码后同屏展示，供投屏给学生（FR-T10 / D23）。</p>
+        <p>生成卷号和二维码后一起显示，可以直接投屏给学生。</p>
       </header>
 
       {paperQuery.isLoading ? <div className="loading-card">正在读取卷 #{paperId} …</div> : null}
 
       {paperQuery.isError ? (
-        <div className="error-card" data-testid="publish-error">
-          <h1>读不到卷 #{paperId}</h1>
-          <p>
-            {paperQuery.error instanceof ApiError
-              ? `${paperQuery.error.code}：${paperQuery.error.message}`
-              : String(paperQuery.error)}
-          </p>
-          <Link className="btn" to="/teacher">
-            回到出题配置
-          </Link>
-        </div>
+        // 统一走组件层 ErrorState：说人话 + 给下一步 + 单列错误码。
+        // 之前是 `.error-card` 里拼一行 `CODE：message`，既是另一套卡片样式，
+        // 也把服务端原文直接怼给老师（用户反馈「面向开发者的文本」）。
+        <ErrorState
+          testId="publish-error"
+          title={`读不到卷 #${paperId}`}
+          what={readError(paperQuery.error)}
+          how="先确认题目服务正在运行（窗口不要关），然后重试；仍然不行请把这个卷号告诉维护人员。"
+          code={paperQuery.error instanceof ApiError ? paperQuery.error.code : null}
+          actions={
+            <Link className="btn btn-primary" to="/teacher">
+              回到出题配置
+            </Link>
+          }
+        />
       ) : null}
 
       {paper ? (
@@ -82,10 +91,9 @@ export function PublishPage() {
           </button>
 
           {publishMutation.isError ? (
+            // 用共享的 readError：说人话，错误码只在末尾单列一次。
             <p className="form-error" role="alert" data-testid="publish-failure">
-              {publishMutation.error instanceof ApiError
-                ? `${publishMutation.error.code}：${publishMutation.error.message}`
-                : String(publishMutation.error)}
+              发卷失败：{readError(publishMutation.error)}
             </p>
           ) : null}
 

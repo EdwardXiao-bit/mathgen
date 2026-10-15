@@ -217,10 +217,20 @@ with sync_playwright() as p:
     result["panel_bool_values"] = page.eval_on_selector_all(
         '[data-control="answer_line"] .mg-switch-value, [data-control="header_bar"] .mg-switch-value',
         "els => els.map(e => e.textContent.trim())") if panel_ready else []
+    # 面板可见文本：既用于「不得出现开发者文本」的判据，也用来确认开关旁边仍是人话。
     result["panel_visible_text"] = page.eval_on_selector(
         ".layout-panel", "el => el.innerText") if panel_ready else ""
+    # 旧写法取的是面板里可见的 --xxx 调试小字。用户裁决（D70）后这些小字已从界面移除，
+    # 所以这里改成取两处：
+    #   panel_var_chips     —— 面板里**可见**的变量小字（期望为空）
+    #   panel_var_dump_text —— 验收用 dump（display:none，对用户不可见）的 textContent
+    # 断言的含义不变：前端仍然把六个变量名写出来可供核对；
+    # 变的是**它们不许出现在老师能看到的地方**（门禁⑩ A10 会把这一点变成硬判据）。
+    # 注意：本模板块是 String.raw，块内不要出现反引号（会提前终止模板）。
     result["panel_var_chips"] = page.eval_on_selector_all(
         ".layout-panel .var-chip", "els => els.map(e => e.textContent.trim())") if panel_ready else []
+    result["panel_var_dump_text"] = page.eval_on_selector(
+        '[data-testid="css-var-dump"]', "el => el.textContent") if panel_ready else ""
     result["page_margin_note"] = (page.inner_text('[data-testid="screen-note-page_margin"]')
                                   if page.locator('[data-testid="screen-note-page_margin"]').count() > 0 else None)
 
@@ -406,7 +416,25 @@ async function main() {
   const boolValues = online.panel_bool_values ?? [];
   check('两个开关的状态文案是人类可读的（保留 / 显示…）', boolValues.length === 2 && boolValues.every((v) => /[\u4e00-\u9fa5]/.test(v)) && !boolValues.some((v) => /^(none|block|grid|1|0)$/.test(v)), boolValues.join(' / '));
   check('面板正文里不出现裸 CSS 关键字（none / block / grid）', !/\bnone\b|\bblock\b|\bgrid\b/.test(online.panel_visible_text ?? ''), `面板文本片段=${(online.panel_visible_text ?? '').slice(0, 120)}`);
-  check('CSS 变量名以调试小字出现（老师要排查时才需要）', (online.panel_var_chips ?? []).some((v) => v.includes('--answer-line-display')) && (online.panel_var_chips ?? []).some((v) => v.includes('--header-bar-display')), (online.panel_var_chips ?? []).join(' / '));
+  // 这条断言的**含义**是「前端确实把六个排版变量名写出来，可供核对」——它守的是可核对性，不是"给老师看"。
+  // 用户裁决（D70）后可见的调试小字必须移除，所以判据改成：
+  //   ① 面板里**可见**的变量小字为空（老师看到的地方干净）；
+  //   ② 对用户不可见的验收 dump 里仍含全部六个变量名（可核对性没有被削弱）。
+  // 这不是「为了变绿而放宽」：原来是「可见处必须有变量名」，现在是「可见处必须没有、非可见处必须有」，
+  // 后半句是新增的约束，整体**更强**。门禁⑩ A10 另有独立断言守住可见处。
+  const dumpText = online.panel_var_dump_text ?? '';
+  const SIX_VARS = ['--cols-per-row', '--row-gap', '--font-size', '--page-margin',
+                    '--answer-line-display', '--header-bar-display'];
+  check(
+    '面板可见处不再出现 CSS 变量名（D70：调试小字已从产品界面移除）',
+    (online.panel_var_chips ?? []).length === 0,
+    (online.panel_var_chips ?? []).join(' / ') || '(空)',
+  );
+  check(
+    '六个排版变量名仍在不可见的验收 dump 里（可核对性未被削弱）',
+    SIX_VARS.every((v) => dumpText.includes(v)),
+    `dump 命中 ${SIX_VARS.filter((v) => dumpText.includes(v)).length}/6：${dumpText.slice(0, 80)}`,
+  );
   check('页边距控件带「屏幕上看不出效果」的说明（不让它显得像坏了）', Boolean(online.page_margin_note) && (online.page_margin_note ?? '').length > 0, online.page_margin_note);
 
   console.log('\n—— C. 打印（D56：打印的是后端卷面 iframe，不是主文档）——');
