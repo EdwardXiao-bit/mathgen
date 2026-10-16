@@ -27,8 +27,9 @@ npm 启动器、GitHub Release），**没有新增任何功能**。
   - 源码一键脚本 `scripts/start.ps1`（Windows）与 `scripts/start.sh`（macOS / Linux）
   - Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1`（自带前端产物与 Chromium，开箱即用；
     **只提供 `linux/amd64`**，Apple Silicon 用 Docker Desktop 的模拟运行）
-  - npm 启动器 `npx mathgen@rc`（等价 `npx mathgen@1.0.0-rc1`；预发布版发在 **`rc`** 标签下，
-    `latest` 留给正式版）
+  - npm 启动器 `mathgen-cli`：`npx mathgen-cli@rc`（等价 `npx mathgen-cli@1.0.0-rc1`；预发布版发在 **`rc`** 标签下，
+    `latest` 留给正式版。包名不叫 `mathgen` 是因为 npm 判定它与已有的 `math-gen` 太像，
+    `npm publish mathgen` 被 403 挡住；里面转交的命令仍然是 `mathgen`）
   - `pip install ./backend` 后可用 `mathgen` 命令
 - 工程基座：后端 1254 个用例、前端 12 步门禁；契约冻结（`docs/04`）与文档—代码对账判据。
 

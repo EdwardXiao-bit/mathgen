@@ -1,14 +1,18 @@
-# mathgen
+# mathgen-cli
 
-给小学数学老师用的**出题 / 打印 / 批改**工具 —— 一条命令在本机拉起老师端与学生端。
+小学数学老师用的**出题 / 打印 / 批改**工具 `mathgen` 的 **npm 启动器** —— 一条命令在本机拉起老师端与学生端。
 不需要注册、不需要联网、不需要服务器。
 
 ```sh
-npx mathgen@rc          # 或写死版本：npx mathgen@1.0.0-rc1
+npx mathgen-cli@rc          # 或写死版本：npx mathgen-cli@1.0.0-rc1
 ```
 
 > **当前是预发布版（release candidate）**：它在 npm 上发在 **`rc`** 标签下，不在 `latest`，
-> 所以要用 `@rc` 或写死版本号；等正式版发布后 `npx mathgen` 才会直接指向它。
+> 所以要用 `@rc` 或写死版本号；等正式版发布后 `npx mathgen-cli` 才会直接指向它。
+>
+> **包名为什么不是 `mathgen`？** npm 上那个名字被判定与已有的 `math-gen` 太像（去标点后同名），
+> `npm publish` 直接 403。包名改成 `mathgen-cli`，但里面的命令仍然是 `mathgen`，
+> 用法与仓库 README 里写的完全一样。
 
 跑起来后浏览器打开 <http://127.0.0.1:8000/teacher>。
 
@@ -23,11 +27,11 @@ npx mathgen@rc          # 或写死版本：npx mathgen@1.0.0-rc1
 ## 用法
 
 ```sh
-npx mathgen@1.0.0-rc1                      # 默认 127.0.0.1:8000，自动打开浏览器
-npx mathgen@1.0.0-rc1 --port 9000          # 换端口
-npx mathgen@1.0.0-rc1 --host 0.0.0.0       # 让同一局域网的学生也能连（教室场景）
-npx mathgen@1.0.0-rc1 --data-dir D:\math   # 数据目录
-npx mathgen@1.0.0-rc1 --no-browser         # 不要自动开浏览器
+npx mathgen-cli@1.0.0-rc1                      # 默认 127.0.0.1:8000，自动打开浏览器
+npx mathgen-cli@1.0.0-rc1 --port 9000          # 换端口
+npx mathgen-cli@1.0.0-rc1 --host 0.0.0.0       # 让同一局域网的学生也能连（教室场景）
+npx mathgen-cli@1.0.0-rc1 --data-dir D:\math   # 数据目录
+npx mathgen-cli@1.0.0-rc1 --no-browser         # 不要自动开浏览器
 ```
 
 参数会**原样转交**给 `mathgen` 命令，完整列表：
@@ -56,7 +60,7 @@ npx mathgen@1.0.0-rc1 --no-browser         # 不要自动开浏览器
 
 ## 常见问题
 
-**PDF 导出报 503？** Chromium 没装好。`npx mathgen` 首次会自己装；
+**PDF 导出报 503？** Chromium 没装好。`npx mathgen-cli` 首次会自己装；
 如果当时网络不通，手动补一次：
 
 ```sh
@@ -69,8 +73,8 @@ npx mathgen@1.0.0-rc1 --no-browser         # 不要自动开浏览器
 **下载 wheel 失败？** 可以指定别的下载地址或本地文件：
 
 ```sh
-MATHGEN_WHEEL_URL=https://你的镜像/mathgen_backend-1.0.0rc1-py3-none-any.whl npx mathgen
-MATHGEN_WHEEL_PATH=D:\build\mathgen_backend-1.0.0rc1-py3-none-any.whl npx mathgen
+MATHGEN_WHEEL_URL=https://你的镜像/mathgen_backend-1.0.0rc1-py3-none-any.whl npx mathgen-cli
+MATHGEN_WHEEL_PATH=D:\build\mathgen_backend-1.0.0rc1-py3-none-any.whl npx mathgen-cli
 ```
 
 **想彻底卸载？** 删掉 `~/.mathgen` 即可。

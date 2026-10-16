@@ -46,7 +46,7 @@
 | --- | --- | --- |
 | **一键脚本** | 双击就跑，脚本自己建虚拟环境、装依赖、下 Chromium | Python 3.12+ |
 | **Docker** | 一条 `docker run`，镜像里连 Chromium 都带了 | Docker |
-| **npm 启动器** | `npx mathgen@rc`，自动装到 `~/.mathgen` | Node 18+ 与 Python 3.12+ |
+| **npm 启动器** | `npx mathgen-cli@rc`，自动装到 `~/.mathgen` | Node 18+ 与 Python 3.12+ |
 | **pip** | 下载 wheel 装上，用 `mathgen` 命令 | Python 3.12+ |
 
 不管哪种方式，跑起来之后都是：**浏览器打开 <http://127.0.0.1:8000/teacher>**。
@@ -101,18 +101,20 @@ docker compose up -d
 ### 3. npm 启动器
 
 ```sh
-npx mathgen@1.0.0-rc1
+npx mathgen-cli@1.0.0-rc1
 ```
 
-> 当前是**预发布版**，在 npm 上发在 `rc` 标签下（`npx mathgen@rc` 等价），
-> `latest` 要等正式版；三条已上线的渠道见 [`CHANGELOG.md`](CHANGELOG.md)。
+> 当前是**预发布版**，在 npm 上发在 `rc` 标签下（`npx mathgen-cli@rc` 等价），
+> `latest` 要等正式版。**包名不叫 `mathgen`**：npm 判定它与早已存在的 `math-gen` 太像，
+> `npm publish mathgen` 直接 403，所以包名是 `mathgen-cli` —— 但它里面转交的命令仍是 `mathgen`。
+> 四条渠道的现状见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 它会：找一个 Python 3.12+ → 在 `~/.mathgen/npm-1.0.0-rc1/venv` 建**独立**虚拟环境 →
 从 GitHub Release 装后端 wheel（**wheel 里自带前端产物**）→ 需要时下 Chromium → 启动。
 参数原样透传：
 
 ```sh
-npx mathgen@1.0.0-rc1 --host 0.0.0.0 --port 9000
+npx mathgen-cli@1.0.0-rc1 --host 0.0.0.0 --port 9000
 ```
 
 它**不**自带 Python 运行时：后端是 Python 写的，Node 里跑不了，所以本机仍需 Python 3.12+。
@@ -218,7 +220,7 @@ Chromium 没装好。跑一次 `python -m playwright install chromium` 即可。
 **Q：学生答题时断网了会怎样？**
 答题页面已经加载在手机上，交卷需要服务在。教室场景建议先把服务跑起来再让学生扫码。
 
-**Q：为什么 `npx mathgen` 还要装 Python？**
+**Q：为什么 `npx mathgen-cli` 还要装 Python？**
 因为后端是 Python 写的。npm 包只是**启动器**：它把 Python 环境装到 `~/.mathgen`，
 然后转交给 `mathgen` 命令。不想装 Python 就用 Docker 方式。
 

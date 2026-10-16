@@ -28,7 +28,7 @@
 | 课程提交 Word | **三份均已产出**：需求分析、技术设计、测试文档（M7，源 `docs/08-测试文档.md`） |
 | 配图 | **13 张 PNG**，见 `docs/word/figures/` |
 | 代码 | **M1–M6 全部已验收**（引擎 / 判分 / API / 卷面渲染导出 / 老师端 / 学生端 / 卷库 / 成绩 / 导出 / 单一服务托管），后端全量 **1254 用例 OK**、前端 **12 步门禁全 PASS** |
-| 发布 | **`v1.0.0-rc1`（预发布，已上线）**：GitHub Release 资产 `mathgen_backend-1.0.0rc1-py3-none-any.whl`（wheel 内含前端产物）+ Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1` + **npm 启动器 `npx mathgen`（尚未发布：本机 npm token 失效）** + 一键脚本。CI run 38945145652 两个 job 全绿，容器冒烟真导出 PDF 17894 字节。版本号**单点定义**在 `backend/app/__init__.py` 的 `__version__`，与 `backend/pyproject.toml`、`frontend/package.json`、tag 四处必须一致（CI 会拦） |
+| 发布 | **`v1.0.0-rc1`（预发布，已上线）**：GitHub Release 资产 `mathgen_backend-1.0.0rc1-py3-none-any.whl`（wheel 内含前端产物）+ Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1` + **npm 启动器 `mathgen-cli`**（包名不叫 `mathgen`：npm 判定它与已有的 `math-gen` 太像，`npm publish` 报 403；发布进度见 `docs/05` T-M8-08） + 一键脚本。CI run 38945145652 两个 job 全绿，容器冒烟真导出 PDF 17894 字节。版本号**单点定义**在 `backend/app/__init__.py` 的 `__version__`，与 `backend/pyproject.toml`、`frontend/package.json`、tag 四处必须一致（CI 会拦） |
 
 ## 文档索引
 

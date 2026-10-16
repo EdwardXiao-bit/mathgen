@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * mathgen 的 npm 启动器。
+ * mathgen-cli —— mathgen 的 npm 启动器。
  *
- *   npx mathgen@1.0.0-rc1            # 直接跑（首次会准备环境，之后秒起）
- *   npx mathgen@1.0.0-rc1 --host 0.0.0.0   # 让局域网里的学生也能连
+ *   npx mathgen-cli@1.0.0-rc1            # 直接跑（首次会准备环境，之后秒起）
+ *   npx mathgen-cli@1.0.0-rc1 --host 0.0.0.0   # 让局域网里的学生也能连
+ *
+ * 包名为什么是 mathgen-cli 而不是 mathgen：npm 判定 `mathgen` 与早已存在的 `math-gen`
+ * 太像（去标点后同名），`npm publish mathgen` 直接 403。包名换了，里面转交的命令仍是 `mathgen`。
  *
  * 它**不是**把 Python 后端重新实现一遍，也不自带运行时：Python 应用没法在 Node 里跑。
  * 它做的是「把 Python 那套东西装到用户目录下，然后把参数转交给 `mathgen` 命令」：
@@ -105,7 +108,7 @@ async function ensureInstalled() {
   if (fs.existsSync(STAMP)) return
 
   say(`\n首次运行：把服务装到 ${HOME}`)
-  say('（只装一次，以后 npx mathgen 直接起）\n')
+  say('（只装一次，以后 npx mathgen-cli 直接起）\n')
 
   const python = findPython()
   if (!python) {
