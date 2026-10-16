@@ -1,0 +1,45 @@
+# 构建上下文里不需要的东西。
+# 目标是让 `docker build` 只看到 frontend/ 与 backend/app，上下文越小越快。
+
+# 版本库与 CI
+.git
+.github
+
+# 文档与工具链（镜像里用不到；AGENTS.md 说明 docs/*.md 是事实来源，Word 是派生产物）
+docs
+tools
+scripts
+AGENTS.md
+CHANGELOG.md
+LICENSE
+README.md
+
+# 依赖与虚拟环境
+node_modules
+**/node_modules
+.venv
+**/.venv
+backend/.venv
+
+# 构建产物（前端在镜像里现构建）
+frontend/dist
+dist
+build
+
+# 测试与测试证据
+backend/tests
+.pylibs
+.playwright
+backend/.tmp-playwright
+backend/.playwright-tmp
+
+# 运行期数据（容器里用 /data 卷）
+backend/data
+
+# 一次性的实验、日志、缓存
+.tmp-*
+tmp-*
+*.log
+**/__pycache__
+**/*.pyc
+**/*.pyo

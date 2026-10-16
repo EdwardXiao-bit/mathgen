@@ -1,0 +1,21 @@
+# mathgen —— 一条命令在本机 / 教室内网跑起来
+#
+#   docker compose up -d
+#   浏览器打开 http://127.0.0.1:8000/teacher
+#
+# 数据和卷子放在命名卷 mathgen-data 里，`docker compose down` 不会丢；
+# 要一起删掉就加 -v。
+
+services:
+  mathgen:
+    image: ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1
+    # 想从源码自己构建，把上面这行注释掉、打开下面这行：
+    # build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - mathgen-data:/data
+    restart: unless-stopped
+
+volumes:
+  mathgen-data:
