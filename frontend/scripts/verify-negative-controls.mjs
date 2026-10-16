@@ -607,6 +607,68 @@ function buildPythonScript(staticPort) {
   );
 }
 
+/**
+ * M6（task-46）专用的**小**浏览器脚本：只做一件事 —— 打开卷库页，读三样东西。
+ *
+ * 为什么不并进上面那个大脚本：那两个世界各自要一个**装了不同破坏开关的 mock 实例**，
+ * 而大脚本跑在共享的那个实例上（不能被污染 —— 装开关会毁掉其它组的判据）。
+ *
+ * 用法：`python -c <本脚本> <baseUrl>`，`baseUrl` 是静态端口。
+ * 反引号禁令同 `PY_SCRIPT`：块内出现反引号会提前终止 JS 模板。
+ */
+const M6_SCRIPT = String.raw`
+import glob, json, os, sys
+from playwright.sync_api import sync_playwright
+
+BASE = sys.argv[1]
+
+def find_chromium():
+    explicit = os.environ.get("MATHGEN_CHROMIUM")
+    if explicit and os.path.exists(explicit):
+        return explicit
+    roots = [
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "ms-playwright"),
+        os.path.join(os.path.expanduser("~"), ".cache", "ms-playwright"),
+    ]
+    candidates = []
+    for root in roots:
+        candidates += glob.glob(os.path.join(root, "chromium-*", "chrome-win64", "chrome.exe"))
+        candidates += glob.glob(os.path.join(root, "chromium-*", "chrome-linux", "chrome"))
+    return sorted(candidates)[-1] if candidates else None
+
+result = {"console_errors": [], "responses": []}
+exe = find_chromium()
+result["chromium"] = exe
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
+    page = browser.new_page(viewport={"width": 1440, "height": 1000})
+    page.on("pageerror", lambda e: result["console_errors"].append(str(e)))
+    page.on(
+        "response",
+        lambda r: result["responses"].append({"status": r.status, "url": r.url})
+        if "/api/papers" in r.url
+        else None,
+    )
+    page.goto(BASE + "/teacher/library", wait_until="domcontentloaded")
+    page.wait_for_selector("[data-testid='library-rows'] tr", timeout=20000)
+    page.wait_for_timeout(400)
+    result["evidence"] = page.evaluate("""() => {
+        const probe = document.querySelector("[data-testid='library-pagination-probe']");
+        const legacy = document.querySelector("[data-testid='library-pagination-mode']");
+        return {
+            probeShown: Boolean(probe),
+            probeText: probe ? probe.innerText : null,
+            legacyShown: Boolean(legacy),
+            legacyText: legacy ? legacy.innerText : null,
+            rows: document.querySelectorAll("[data-testid='library-rows'] tr").length,
+        };
+    }""")
+    browser.close()
+
+print("##RESULT##" + json.dumps(result, ensure_ascii=False))
+`;
+
 async function main() {
   if (!existsSync(path.join(DIST_DIR, 'index.html'))) {
     console.error('找不到 frontend/dist/index.html —— 请先运行：pnpm --dir frontend build');
@@ -647,7 +709,7 @@ async function main() {
       : '(量不到)';
 
   const a9 = result.a9 ?? {};
-  console.log('\n—— 负对照 1/12：A9 纸内几何（判据见门禁⑧ verify-preview-scale.mjs）——');
+  console.log('\n—— 负对照 1/13：A9 纸内几何（判据见门禁⑧ verify-preview-scale.mjs）——');
   for (const [key, label] of [
     ['baseline', '基线（无注入）'],
     ['n1_margin3cm', '负对照 A9-N1：注入 --page-margin:3cm'],
@@ -663,7 +725,7 @@ async function main() {
     }
   }
 
-  console.log('\n—— 负对照 2/12：卷面焦点环（判据见门禁⑦ 的 A3）——');
+  console.log('\n—— 负对照 2/13：卷面焦点环（判据见门禁⑦ 的 A3）——');
   const fBase = result.focus?.baseline_unfocused;
   const fTab = result.focus?.after_real_tab;
   console.log('  基线（未聚焦）');
@@ -733,7 +795,7 @@ async function main() {
   const a10 = result.a10 ?? {};
   const sentinelHit = (a10.with_sentinel ?? []).find((h) => (h.text ?? '').includes('--page-margin'));
   const keywordHit = (a10.with_keyword ?? []).find((h) => (h.text ?? '').includes('block'));
-  console.log('\n—— 负对照 3/12：无开发者文本（判据见门禁⑨ verify-ui-voice.mjs）——');
+  console.log('\n—— 负对照 3/13：无开发者文本（判据见门禁⑨ verify-ui-voice.mjs）——');
   console.log(`  基线（真实页面）：命中 ${(a10.baseline ?? []).length} 处  ← 必须为 0`);
   console.log(
     `  注入哨兵「页边距 --page-margin（D56）」：命中 ${(a10.with_sentinel ?? []).length} 处` +
@@ -803,7 +865,7 @@ async function main() {
   const baseBg = a11.baseline ?? {};
   const injBg = a11.injected_desk ?? {};
   const restoredBg = a11.restored ?? {};
-  console.log('\n—— 负对照 4/12：灰底只用于画布（判据见门禁⑨）——');
+  console.log('\n—— 负对照 4/13：灰底只用于画布（判据见门禁⑨）——');
   console.log(`  基线：root=${baseBg.root?.bg} body=${baseBg.body?.bg}  ← 应为 #f7f8f9（rgb(247,248,249)）`);
   console.log(`  注入灰桌面色 #8e939a：root=${injBg.root?.bg} body=${injBg.body?.bg}  ← 应变成 rgb(142,147,154)`);
   console.log(`  还原后：root=${restoredBg.root?.bg} body=${restoredBg.body?.bg}`);
@@ -828,7 +890,7 @@ async function main() {
     `root=${restoredBg.root?.bg} body=${restoredBg.body?.bg}`,
   );
 
-  // ---------- 5/12：学生端覆盖（A10 + A11 的覆盖面真实性） ----------
+  // ---------- 5/13：学生端覆盖（A10 + A11 的覆盖面真实性） ----------
   // 这一组盯的是**覆盖面的真实性**，不是文案本身。历史坑有两个，都会"全绿但没查"：
   //   (a) verify-server.mjs 的 SPA 回落在 catch 分支里一律回 dist/index.html，于是
   //       /student/** 拿到的是**老师端**入口 —— 判据会拿学生端 URL 扫老师端页面；
@@ -845,7 +907,7 @@ async function main() {
   const sBase = a11s.baseline ?? {};
   const sInj = a11s.injected_desk ?? {};
   const sRestored = a11s.restored ?? {};
-  console.log('\n—— 负对照 5/12：学生端覆盖（判据见门禁⑨ 的 A10/A11）——');
+  console.log('\n—— 负对照 5/13：学生端覆盖（判据见门禁⑨ 的 A10/A11）——');
   console.log(`  A10 /student        根容器=${stuShell.rootChildCls} stScreen=${stuShell.stScreen} teacherShell=${stuShell.teacherShell}`);
   console.log(`  A10 /student/result 根容器=${stuResShell.rootChildCls} stScreen=${stuResShell.stScreen}`);
   console.log(`  A10 基线命中：/student ${(a10s.baseline ?? []).length} 处；/student/result ${(a10s.result_page_baseline ?? []).length} 处；注入哨兵后 ${(a10s.with_sentinel ?? []).length} 处`);
@@ -919,12 +981,12 @@ async function main() {
     `root=${sRestored.root?.bg}`,
   );
 
-  // ---------- 6/12：裸 /api 路径扫描（判据见门禁② verify-contract.py 的 ④） ----------
+  // ---------- 6/13：裸 /api 路径扫描（判据见门禁② verify-contract.py 的 ④） ----------
   // 这条判据历史上真的**空过**：排除条件按**文件名**（api.ts）写，把学生端同名的
   // src/student/api.ts 一起跳过，于是 4 处裸路径全部漏报、判据还显示 PASS。
   // 修法是按**文件路径**排除。下面直接把 verify-contract.py 的 --self-test 跑起来，
   // 它自己会注入一个真文件（走同一条 rglob）、断言转红且红得具名、最后删掉。
-  console.log('\n—— 负对照 6/12：裸 /api 路径扫描（判据见门禁② 的 ④）——');
+  console.log('\n—— 负对照 6/13：裸 /api 路径扫描（判据见门禁② 的 ④）——');
   const contractSelfTest = spawnSync(PYTHON, [path.join(__dirname, 'verify-contract.py'), '--self-test'], {
     encoding: 'utf8',
     cwd: FRONTEND_DIR,
@@ -951,7 +1013,7 @@ async function main() {
     '无残留',
   );
 
-  // ---------- 7/12：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面） ----------
+  // ---------- 7/13：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面） ----------
   // 这一组守的是「**mock 自己**有没有照抄真实契约」，不是产品代码。
   //
   // 为什么需要它：本轮我把学生端三条接口补进 mock（`verify-server.mjs`），而门禁⑨
@@ -963,7 +1025,7 @@ async function main() {
   //   ① 断言 mock 响应的**关键不变量**（D74 不泄答案、D76 幂等、状态码 201/200）；
   //   ② 证明这些断言守着的代码路径**真的会被执行** —— 用 `MATHGEN_MOCK_TAMPER`
   //      故意破坏钩子，若服务照旧返回 200 就说明钩子没接上、哨兵是摆设。
-  console.log('\n—— 负对照 7/12：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面）——');
+  console.log('\n—— 负对照 7/13：mock 学生端契约哨兵（判据见门禁⑨ 的学生端两条页面）——');
 
   record(
     'mock 契约（D74）：GET /api/student/paper/{code} 带 paper_id/title/total/items，且 items **不含** answer/steps',
@@ -1002,7 +1064,7 @@ async function main() {
     `status=${mockContract.tamperStatus} code=${mockContract.tamperCode}`,
   );
 
-  // ---------- 8/12：门禁入口的参数解析（判据见 run-all-verifications.mjs） ----------
+  // ---------- 8/13：门禁入口的参数解析（判据见 run-all-verifications.mjs） ----------
   // 守的是**门禁入口自己**的用法契约，不是产品代码。
   //
   // 为什么需要：`--list` 的卖点是「列出步骤但不执行」。如果用「输出里没有 PASS/FAIL
@@ -1016,7 +1078,7 @@ async function main() {
   // 「干净」。所以下面还有一条反向断言：--list 必须**列满 12 步**（task-32 起第 ⑫ 步是
   // mock↔真实后端逐字段比对）。
   // 两条合起来才能区分「正确地只列不跑」与「坏掉了什么都不说」。
-  console.log('\n—— 负对照 8/12：门禁入口的参数解析（判据见 run-all-verifications.mjs）——');
+  console.log('\n—— 负对照 8/13：门禁入口的参数解析（判据见 run-all-verifications.mjs）——');
 
   const RUNNER = path.join(__dirname, 'run-all-verifications.mjs');
   const EXEC_ONLY = ['门禁脚本自检', '源码夹逼', '汇总', '全部验收通过'];
@@ -1097,7 +1159,7 @@ async function main() {
     `合成转录命中 ${EXEC_ONLY.filter((m) => syntheticFullRun.includes(m)).length}/${EXEC_ONLY.length} 个标记`,
   );
 
-  // ---------- 9/12：task-32 —— 判据「不进默认门禁就不存在」（判据见 compare-mock-and-real.mjs） ----------
+  // ---------- 9/13：task-32 —— 判据「不进默认门禁就不存在」（判据见 compare-mock-and-real.mjs） ----------
   // 守的是 task-32(a) 新增的**第 ⑫ 步**：把 mock↔真实后端的逐字段比对接进默认门禁。
   //
   // 为什么需要：task-29 交付的比对本身很硬（它的自检 C 段证明了抓得住「少一个键」和
@@ -1109,7 +1171,7 @@ async function main() {
   // 所以这里对**同一个真实脚本**喂两种世界，断言它给出**相反**的结论：
   //   态 A 正常输入 → exit 0（绿）      态 B 前置缺失 → exit ≠ 0 且点名原因、且**不含 PASS**（红）
   // 两态的原始输出都打出来（V9.1：报告会过期，脚本不会 —— 别人要能在仓库里 grep 到它）。
-  console.log('\n—— 负对照 9/12：第 ⑫ 步「前置缺失时红、绝不静默绿」（判据见 compare-mock-and-real.mjs）——');
+  console.log('\n—— 负对照 9/13：第 ⑫ 步「前置缺失时红、绝不静默绿」（判据见 compare-mock-and-real.mjs）——');
 
   const PARITY = path.join(__dirname, 'compare-mock-and-real.mjs');
   const runParity = (env) =>
@@ -1180,7 +1242,7 @@ async function main() {
     console.log(`  | ${line}`);
   }
 
-  // ---------- 10/12：task-35 卷库归档 / 恢复 / 删除（判据见契约 D78 与门禁②/⑨） ----------
+  // ---------- 10/13：task-35 卷库归档 / 恢复 / 删除（判据见契约 D78 与门禁②/⑨） ----------
   //
   // 为什么需要：task-35 给卷库加了「归档 / 恢复 / 删除」，有实质风险的只有删除。
   // 用户裁决原话是「有成绩的可以归档，类似于软删除」——于是界面上「有成绩的卷」必须
@@ -1194,7 +1256,7 @@ async function main() {
   //   ① 同一个谓词分别喂**真实响应**与**合成响应**，证明它对两种世界给出相反结论（V11）；
   //   ② 用破坏钩子把 `has_attempts` 从响应里抹掉，证明上面那个绿**真的在看这个字段**（V9.2）；
   //   ③ 正面证明「有成绩的卷能归档」（用户要的正是这条出路）。
-  console.log('\n—— 负对照 10/12：卷库归档 / 恢复 / 删除（判据见契约 D78）——');
+  console.log('\n—— 负对照 10/13：卷库归档 / 恢复 / 删除（判据见契约 D78）——');
 
   // 谓词**只定义一次**，真实响应与合成响应共用 —— 另抄一份等于什么都没证明。
   const defaultViewHidesArchived = (payload) =>
@@ -1373,7 +1435,7 @@ async function main() {
   libTamper.child.kill();
   libMock.child.kill();
 
-  // —— 负对照 11/12：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——
+  // —— 负对照 11/13：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——
   // 为什么要有这一条（V13 同族）：门禁第 ③④⑤⑦⑨ 步加载 frontend/dist/**，而门禁**不构建**。
   // 改了 src 却忘了 build，那四个浏览器门禁测的是旧 bundle —— 会给出与源码无关的**绿**。
   // 这里用**合成目录树**构造两个世界（不碰真实 frontend/dist，也不依赖真实构建）：
@@ -1381,7 +1443,7 @@ async function main() {
   //   B 世界：dist 比源码旧 → 判据红，且必须**点名**那个更晚的源文件
   //   （V9.2：B 世界必须自证它真的制造了失败条件，而不只是"我们相信它会红"）
   console.log(
-    '\n—— 负对照 11/12：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——',
+    '\n—— 负对照 11/13：门禁入口的「陈旧产物」前置判据（判据见 scripts/dist-freshness.mjs）——',
   );
   {
     const WORLDS = path.join(TMP_DIR, 'dist-freshness-worlds');
@@ -1523,8 +1585,8 @@ async function main() {
     rmSync(WORLDS, { recursive: true, force: true });
   }
 
-  // ---------- 12/12：task-40 —— M5 成绩的得分口径与导出（判据见契约 §5.5 / D80） ----------
-  console.log('\n—— 负对照 12/12：M5 成绩的得分口径与导出（判据见契约 §5.5 / D80）——');
+  // ---------- 12/13：task-40 —— M5 成绩的得分口径与导出（判据见契约 §5.5 / D80） ----------
+  console.log('\n—— 负对照 12/13：M5 成绩的得分口径与导出（判据见契约 §5.5 / D80）——');
 
   // 谓词**只定义一次**，正常世界、注入故障世界与合成世界共用同一个 —— 另抄一份等于没证明。
   //
@@ -1709,6 +1771,182 @@ async function main() {
   } finally {
     m5Bad.child.kill();
   }
+
+  // ==== 第 13 组：M6 卷库「分页探测失败」不许被静默降级 ======================
+  //
+  // 缺陷本体（task-46）：`detectPaginationMode` 的 `catch { return 'legacy' }` 把
+  // **探测失败**与**后端确实是旧版**混成同一个值，于是任何一次瞬时失败都被固化成
+  // 长期降级（改发 `size`/`page`）。要证明修好了，必须构造两个世界并让**同一条判据**
+  // 给出相反结论：
+  //   世界 A = 只有探测那一次请求坏掉（后端其余部分好的）→ 必须「说没确认」，**不许**说版本旧；
+  //   世界 B = 后端真的只认旧参数（MODE=legacy-list）→ 必须照旧说版本旧，页码自动换算。
+  // 只测世界 A 是不够的：一个「永远不显示版本旧」的实现也能让世界 A 全绿。
+  console.log('\n' + '='.repeat(72));
+  console.log(
+    '—— 负对照 13/13：卷库「分页探测失败」不许被静默降级（判据见 shared/apiClient.ts 的 PaginationProbe）——',
+  );
+  console.log('='.repeat(72));
+
+  const m6Spawn = (env) => {
+    const child = spawn(NODE_EXE, [path.join(__dirname, 'verify-server.mjs')], {
+      cwd: FRONTEND_DIR,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, MATHGEN_VERIFY_MODE: 'online', ...env },
+    });
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+    return new Promise((resolve, reject) => {
+      let buffer = '';
+      const timer = setTimeout(() => {
+        child.kill();
+        reject(new Error(`mock 服务没就绪。stderr:\n${stderr}`));
+      }, 15_000);
+      child.stdout.on('data', (chunk) => {
+        buffer += chunk;
+        const ports = buffer.match(/VERIFY_PORTS static=(\d+) api=(\d+)/);
+        if (ports && buffer.includes('VERIFY_SERVER_READY')) {
+          clearTimeout(timer);
+          // 静态端口给浏览器用，api 端口给断言用 —— 后者直连，规避静态服务的
+          // `/api` 反代缺陷（它转的是**请求的** api 端口，不是实际绑上的那个）。
+          resolve({
+            child,
+            staticBase: `http://127.0.0.1:${Number(ports[1])}`,
+            apiBase: `http://127.0.0.1:${Number(ports[2])}`,
+          });
+        }
+      });
+      child.on('exit', (code) => {
+        if (code !== null) {
+          clearTimeout(timer);
+          reject(new Error(`mock 服务提前退出（code=${code}）。stderr:\n${stderr}`));
+        }
+      });
+    });
+  };
+
+  const m6Browser = (staticBase) =>
+    spawnSync(PYTHON, ['-c', M6_SCRIPT, staticBase], {
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+      env: { ...process.env, PYTHONUTF8: '1', TEMP: TMP_DIR, TMP: TMP_DIR, TMPDIR: TMP_DIR },
+    });
+
+  const m6Parse = (proc) => {
+    const line = (proc.stdout ?? '').split(/\r?\n/).find((l) => l.startsWith('##RESULT##'));
+    if (!line) return null;
+    try {
+      return JSON.parse(line.slice('##RESULT##'.length));
+    } catch {
+      return null;
+    }
+  };
+
+  const m6Log = async (apiBase) => {
+    const res = await fetch(apiBase + '/__api-log');
+    return await res.json();
+  };
+
+  // ---- 谓词只定义一次，两个世界共用（各抄一份等于没证明）----
+  // 「界面谎报后端版本旧」与「界面如实说没确认」是两个必须分开的方向。
+  const m6ClaimsLegacy = (ev) => ev?.legacyShown === true;
+  const m6ClaimsUnconfirmed = (ev) => ev?.probeShown === true;
+  const m6Queries = (log) =>
+    (log ?? []).filter((r) => r?.path === '/api/papers').map((r) => r?.query ?? '');
+  const m6UsedLegacyPaging = (log) =>
+    m6Queries(log).some((q) => q.includes('size=') || q.includes('page='));
+
+  const m6A = await m6Spawn({ MATHGEN_MOCK_TAMPER: 'list_papers_probe' });
+  let evA = null;
+  let logA = [];
+  try {
+    const proc = m6Browser(m6A.staticBase);
+    evA = m6Parse(proc);
+    logA = await m6Log(m6A.apiBase);
+    console.log(`  世界 A（只让探测那次请求 500）浏览器证据：${JSON.stringify(evA?.evidence ?? null)}`);
+    console.log(`  世界 A 发往 /api/papers 的查询串：${JSON.stringify(m6Queries(logA))}`);
+
+    record(
+      'M6 世界 A：浏览器脚本必须产出证据（否则下面的断言都是在空集上通过）',
+      evA !== null && evA.evidence !== undefined,
+      evA === null
+        ? `stdout 尾部=${(proc.stdout ?? '').slice(-300)} stderr 尾部=${(proc.stderr ?? '').slice(-300)}`
+        : 'ok',
+    );
+    record(
+      'M6 世界 A：破坏钩子真的打到了探测请求上（`limit=1&offset=0` 那条回 500）',
+      (evA?.responses ?? []).some((r) => r.status === 500 && r.url.includes('limit=1&offset=0')),
+      JSON.stringify((evA?.responses ?? []).map((r) => `${r.status} ${r.url.split('?')[1] ?? ''}`)),
+    );
+    record(
+      'M6 世界 A：故障是**局部**的 —— 后端其余部分好的（普通列表请求仍 200）',
+      (evA?.responses ?? []).some((r) => r.status === 200 && r.url.includes('limit=20')),
+      JSON.stringify((evA?.responses ?? []).map((r) => `${r.status} ${r.url.split('?')[1] ?? ''}`)),
+    );
+    record(
+      'M6 世界 A（核心）：探测失败时**不许**把请求降级成 size/page —— 直读 mock 收到的查询串',
+      m6UsedLegacyPaging(logA) === false,
+      `收到的查询串=${JSON.stringify(m6Queries(logA))}`,
+    );
+    record(
+      'M6 世界 A：界面必须如实说「没能确认服务版本」，而不是谎报「版本较旧」',
+      m6ClaimsUnconfirmed(evA?.evidence) === true &&
+        m6ClaimsLegacy(evA?.evidence) === false &&
+        String(evA?.evidence?.probeText ?? '').includes('没能确认服务版本'),
+      `probeShown=${evA?.evidence?.probeShown} legacyShown=${evA?.evidence?.legacyShown} 文案=${JSON.stringify(evA?.evidence?.probeText)}`,
+    );
+    record(
+      'M6 世界 A：探测失败不影响列表本身 —— 卷库照常渲染出数据',
+      (evA?.evidence?.rows ?? 0) > 0,
+      `rows=${evA?.evidence?.rows}`,
+    );
+  } finally {
+    m6A.child.kill();
+  }
+
+  // ---- 世界 B：后端真的只认旧参数（MODE=legacy-list）→ 照旧降级且说明 ----------
+  const m6B = await m6Spawn({ MATHGEN_VERIFY_MODE: 'legacy-list' });
+  let evB = null;
+  let logB = [];
+  try {
+    const proc = m6Browser(m6B.staticBase);
+    evB = m6Parse(proc);
+    logB = await m6Log(m6B.apiBase);
+    console.log(`  世界 B（MODE=legacy-list）浏览器证据：${JSON.stringify(evB?.evidence ?? null)}`);
+    console.log(`  世界 B 发往 /api/papers 的查询串：${JSON.stringify(m6Queries(logB))}`);
+
+    record(
+      'M6 世界 B：后端确实只认旧参数时，界面照旧说明「版本较旧、页码已自动换算」（既有行为不变）',
+      m6ClaimsLegacy(evB?.evidence) === true && m6ClaimsUnconfirmed(evB?.evidence) === false,
+      `legacyShown=${evB?.evidence?.legacyShown} probeShown=${evB?.evidence?.probeShown} 文案=${JSON.stringify(evB?.evidence?.legacyText)}`,
+    );
+    record(
+      'M6 世界 B：这一次**应当**改发 size/page —— 与世界的 A 的查询串形成对照',
+      m6UsedLegacyPaging(logB) === true,
+      `收到的查询串=${JSON.stringify(m6Queries(logB))}`,
+    );
+    record(
+      'M6 世界 B：列表照常渲染（降级路径可用，不是白屏）',
+      (evB?.evidence?.rows ?? 0) > 0,
+      `rows=${evB?.evidence?.rows}`,
+    );
+    record(
+      'V11：同一条判据在两个世界给出**相反**结论（世界 A 不许说版本旧；世界 B 必须说）',
+      m6ClaimsLegacy(evA?.evidence) === false && m6ClaimsLegacy(evB?.evidence) === true,
+      `A.legacyShown=${evA?.evidence?.legacyShown} B.legacyShown=${evB?.evidence?.legacyShown}`,
+    );
+  } finally {
+    m6B.child.kill();
+  }
+
+  record(
+    'V9.2 合成：把空证据喂给同一条判据必须为假（判据不是恒真）',
+    m6ClaimsUnconfirmed(null) === false && m6ClaimsUnconfirmed({}) === false,
+    '合成输入：null / {} 都判假',
+  );
 
   const failed = results.filter((r) => !r.ok);
   console.log(`\n结果：${results.length - failed.length}/${results.length} 通过`);

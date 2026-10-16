@@ -46,11 +46,28 @@ export interface CreatePaperRequest {
   answerLayout?: AnswerLayoutIn;
 }
 
+/**
+ * 分页参数形态探测的结果 —— **三态**，不是布尔。
+ *
+ * M6（task-46）：`'legacy'` 这个值以前有两个来源：「后端确实是旧版」与「这次探测没成功」。
+ * 把两者混成一个值，于是一次**瞬时**失败（桩服务器少写一个 import、网络抖动、500）
+ * 就被固化成**长期**降级：界面改用 `size`/`page` 打旧参数 → 20 秒超时 →
+ * 用户看到 `NETWORK_UNREACHABLE`。故障点离真正的原因有三层远。
+ *
+ * 所以这里把「没探成功」显式建模成 `failed`：它**不进缓存**（下次请求重探），
+ * 并且由界面如实告诉老师「版本没确认」——两个世界必须给出不同结论（V11）。
+ */
+export type PaginationProbe =
+  | { status: 'detected'; mode: 'contract' | 'legacy' }
+  | { status: 'failed'; reason: string };
+
 /** `listPapers` 的返回值：附上「后端用的是哪套分页参数形态」的探测结果。 */
 export interface ListPapersResult {
   data: PaperListOut;
   /** 'contract' = limit/offset 生效；'legacy' = 后端还是 page/size，前端做了换算 */
   paginationMode: 'contract' | 'legacy';
+  /** 探测结论本体：`detected`（真的探到了）或 `failed`（没探成功，**没有**降级成旧版）。 */
+  paginationProbe: PaginationProbe;
 }
 
 /** `createPaper` 的返回值：附上答案版形式是怎么落库的。 */
@@ -220,11 +237,19 @@ function apiBase(): string {
  *
  * 判据是**响应回显**，不是「请求没报错」——对未知查询参数后端是忽略，不报错。
  * 所以这里要求 `limit=1` 既被回显成 `limit: 1`，又真的只返回 1 条，才算契约形态生效。
- * 探测失败（后端没起）时**不写缓存**，下次请求再探，避免把「暂时连不上」误判成旧形态。
+ *
+ * M6（task-46）：探测**失败**与「后端确实是旧版」是两个世界，必须给出不同结论。
+ * 旧实现 `catch { return 'legacy' }` 把失败也报成旧版，于是任何一次瞬时失败都被
+ * 固化成长期降级（详见 `PaginationProbe` 的注释）。现在的行为：
+ *   · 探成功 → 写缓存 + 回 `detected`；
+ *   · 探失败 → **不写缓存** + 回 `failed`（带上人话原因），交给调用方如实呈现。
+ * 重试节奏：不缓存失败 ⇒ 每次真正取列表时会再探一次。React Query 按 queryKey 去重，
+ * 所以是「每次加载列表探一次」，不是「每次渲染探一次」；没有次数上限，也不需要 ——
+ * 失败不会被固化成状态，探通的那一刻就自己收敛。
  */
-async function detectPaginationMode(): Promise<'contract' | 'legacy'> {
+async function detectPaginationMode(): Promise<PaginationProbe> {
   const cached = paginationModeCache.get(apiBase());
-  if (cached) return cached;
+  if (cached) return { status: 'detected', mode: cached };
 
   const probeUrl = `${route('list_papers')}?limit=1&offset=0`;
   try {
@@ -234,12 +259,31 @@ async function detectPaginationMode(): Promise<'contract' | 'legacy'> {
     };
     const echoesLimit = payload?.limit === 1;
     const count = Array.isArray(payload?.papers) ? payload.papers.length : -1;
+    if (count < 0) {
+      // 「后端答了，但答的不是任何一种卷库列表形态」也归到失败：把它当成旧版
+      // 同样是凭猜测降级。
+      return { status: 'failed', reason: '后端返回的数据看不出是哪一版' };
+    }
     const mode: 'contract' | 'legacy' = echoesLimit && count <= 1 ? 'contract' : 'legacy';
     paginationModeCache.set(apiBase(), mode);
-    return mode;
-  } catch {
-    return 'legacy';
+    return { status: 'detected', mode };
+  } catch (error) {
+    return { status: 'failed', reason: describeProbeFailure(error) };
   }
+}
+
+/**
+ * 把探测失败翻译成老师能看懂的一句话（D65：说人话 + 给下一步在界面那侧补）。
+ *
+ * 刻意**不**把 `ApiError` 的 code 原样抛给界面：`HTTP_500` 这类串对老师没有意义，
+ * 而且它会把「后端没起来」和「后端起来了但答错了」混成同一种呈现。
+ */
+function describeProbeFailure(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === 'NETWORK_UNREACHABLE') return '连不上后端';
+    if (error.isBackendUnreachable) return '后端暂时没有响应';
+  }
+  return '后端没有正常返回分页信息';
 }
 
 /**
@@ -546,9 +590,16 @@ export const teacherApi = {
       return `${route('list_papers')}?${params.toString()}`;
     };
 
-    const mode = await detectPaginationMode();
+    // 探测没成功时**不猜**：不走 `size`/`page`（那会把「没探到」变成一次 20 秒超时
+    // 的假失败），先按契约形态发一次，并把「版本没确认」如实带回去给界面。
+    const probe = await detectPaginationMode();
+    const mode = probe.status === 'detected' ? probe.mode : 'contract';
     const payload = await requestJson<unknown>(buildUrl(mode));
-    return { data: normalizePaperList(payload, limit, offset, mode), paginationMode: mode };
+    return {
+      data: normalizePaperList(payload, limit, offset, mode),
+      paginationMode: mode,
+      paginationProbe: probe,
+    };
   },
 
   /**

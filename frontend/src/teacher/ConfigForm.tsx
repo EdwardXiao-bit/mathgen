@@ -310,6 +310,19 @@ export function ConfigForm({
         </div>
       </section>
 
+      {/* M6：真实用户走完全程后问过「编辑好一个题单之后，怎么保存到题库中」——
+          产品里**没有**保存这一步（点生成时就 createPaper 落库了），是界面没说出来。
+          这段话必须放在生成按钮**之前**、并且是**始终可见的正文**（不能只进 tooltip /
+          placeholder：那等于没写）。四个要点一个都不能少：
+            ① 没有单独的保存步骤；② 点生成就已经进卷库；③ 之后的改动立刻生效；
+            ④ 想再找回它 → 卷库 / 卷号。
+          判据见 scripts/verify-ui-voice.mjs 的「config-save-note」段。 */}
+      <p className="dim-hint" data-testid="config-save-note">
+        点「生成」的时候，这套卷子就已经存进<b>卷库</b>了——这里没有单独的「保存」步骤。
+        生成之后改题、调排版也是立刻生效，不用再保存一次。想再打开它，去左侧「卷库」，
+        或直接用卷号查找。
+      </p>
+
       <div className="submit-bar">
         <label className="hint-toggle">
           <input

@@ -120,6 +120,11 @@ export function LibraryPage() {
 
   const data = query.data?.data;
   const paginationMode = query.data?.paginationMode;
+  const paginationProbe = query.data?.paginationProbe;
+  // M6（task-46）：探测没成功时**如实说**，不谎报成「版本较旧」。
+  // 谎报的代价不是文案难看：老师会以为「页码已自动换算」，而真实原因是这次探测
+  // 没答上来（可能后端刚刚重启），下一次刷新就可能变。
+  const probeFailed = paginationProbe?.status === 'failed' ? paginationProbe.reason : null;
   const total = data?.total ?? 0;
   const canPrev = offset > 0;
   const canNext = offset + PAGE_SIZE < total;
@@ -292,6 +297,11 @@ export function LibraryPage() {
           生成过的卷都在这里，可以再次打开、重新打印，也可以直接用卷号打开一套历史卷。
           用不上的卷可以归档收起来，需要时再恢复。
         </p>
+        {/* M6：从卷库这一侧再说一遍同一件事（出题页也写了）。
+            真实用户是走完出题流程后不知道东西存到哪了，两个入口都要能自答。 */}
+        <p>
+          出题页点「生成」的时候，卷子就已经存到这里了，没有单独的保存步骤；之后改题、调排版也是立刻生效。
+        </p>
       </header>
 
       <div className="library-toolbar">
@@ -377,6 +387,11 @@ export function LibraryPage() {
           {paginationMode === 'legacy' ? (
             <span className="library-legacy-note" data-testid="library-pagination-mode">
               （当前服务版本较旧，页码已自动换算）
+            </span>
+          ) : null}
+          {probeFailed !== null ? (
+            <span className="library-probe-note" data-testid="library-pagination-probe">
+              （没能确认服务版本：{probeFailed}。本次按新版参数读取，列表本身是好的；刷新一次会重新确认。）
             </span>
           ) : null}
         </div>

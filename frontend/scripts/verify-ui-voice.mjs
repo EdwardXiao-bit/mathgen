@@ -307,6 +307,35 @@ ATT_DETAIL_SCAN = """() => {
     };
 }"""
 
+# M6：出题页必须在**生成之前**就说清「生成即入库、卷在卷库」（真实用户提问催生的）。
+# 这一段只抓**结构**证据（说明在不在、在不在生成按钮之前），文案有没有说到四个要点
+# 交给 Node 侧的 saveNoteClaims() 判 —— 抓与判分开，负对照才能复用同一个谓词。
+SAVE_NOTE_SCAN = """() => {
+    const note = document.querySelector("[data-testid='config-save-note']");
+    const btn = Array.from(document.querySelectorAll('button'))
+        .find((b) => (b.innerText || '').includes('生成'));
+    let beforeSubmit = null;
+    if (note && btn) {
+        beforeSubmit = Boolean(note.compareDocumentPosition(btn) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+    let display = null;
+    let visibility = null;
+    if (note) {
+        const cs = getComputedStyle(note);
+        display = cs.display;
+        visibility = cs.visibility;
+    }
+    return {
+        found: Boolean(note),
+        text: note ? note.innerText : null,
+        beforeSubmit: beforeSubmit,
+        submitText: btn ? btn.innerText : null,
+        display: display,
+        visibility: visibility,
+        visible: Boolean(note) && display !== 'none' && visibility !== 'hidden',
+    };
+}"""
+
 # 老师端 9 条（配置 / 卷库在用 / 卷库已归档 / 卷预览 / 卷预览-答案页 / 发布 / M5 成绩 /
 # M5 逐题明细 / M5 空态）+ 学生端 5 条（M4 扩 mock 后补齐答题页与交卷结果页）。
 #
@@ -516,6 +545,9 @@ with sync_playwright() as p:
             result["pages"][name]["att"] = page.evaluate(ATT_STATE_SCAN)
         if name == "attempt-detail":
             result["pages"][name]["attDetail"] = page.evaluate(ATT_DETAIL_SCAN)
+        # M6：出题页的入库说明（存在性 + 是否排在「生成」按钮之前）。
+        if name == "config":
+            result["pages"][name]["save_note"] = page.evaluate(SAVE_NOTE_SCAN)
         if name == "library-archived":
             result["pages"][name]["tab_switch"] = archived_tab_switch
         # 卷库归档的**行为**证据（D78）：点第一行的「归档」，看三件事同时发生 ——
@@ -588,6 +620,37 @@ with sync_playwright() as p:
             "() => document.querySelectorAll('input').length")
         result["self_test"]["identity_gate_has_practice"] = page.evaluate(
             "() => Array.from(document.querySelectorAll('button')).some(b => (b.innerText||'').includes('开始练习'))")
+        page.close()
+
+        # ③ M6 出题页入库说明的负对照：**先把说明从 DOM 里删掉**，再用同一个谓词扫一遍。
+        #    两条一起才成立 —— 只报"删掉后为假"是空话（元素本来就不存在时，任何谓词都为假）；
+        #    所以先把"删除前它确实在"这件事测下来（V9.2：负对照本身要自证制造了失败条件）。
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.goto(BASE + "/teacher", wait_until="domcontentloaded")
+        try:
+            page.wait_for_selector("[data-dimension='answer_form']", timeout=15000)
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+        existed_before = page.evaluate(
+            "() => Boolean(document.querySelector(\"[data-testid='config-save-note']\"))")
+        # 先加 display:none 再扫：这一态专门证明「只查文本」是不够的 ——
+        # innerText 在 display:none 下**仍返回文本**（Chromium 实测），
+        # 所以四要点仍会全真，只有计算样式断言能把它判红。
+        page.evaluate(
+            "() => { const n = document.querySelector(\"[data-testid='config-save-note']\");"
+            " if (n) n.style.display = 'none'; }")
+        page.wait_for_timeout(100)
+        hidden_evidence = page.evaluate(SAVE_NOTE_SCAN)
+        page.evaluate(
+            "() => { const n = document.querySelector(\"[data-testid='config-save-note']\");"
+            " if (n) n.remove(); }")
+        page.wait_for_timeout(100)
+        result["self_test"]["save_note_control"] = {
+            "existed_before": existed_before,
+            "hidden_evidence": hidden_evidence,
+            "evidence": page.evaluate(SAVE_NOTE_SCAN),
+        }
         page.close()
 
     # 1280 视口：不横向溢出（不回归）
@@ -903,6 +966,58 @@ async function main() {
     `有数据世界 rows=${att.rows} 空态谓词=${emptyWorldLooksRight(att)}`,
   );
 
+  // ---- M6：界面说清「生成即入库、卷在卷库」（真实用户提问）-----------------
+  //
+  // 来源：用户自己走完教师端后问「编辑好一个题单之后，怎么保存到题库中」。
+  // 产品**没有**保存这一步（点「生成」时就 createPaper 落库了）—— 功能是对的，
+  // 是界面没说出来。所以这条判据查的不是行为，是**可见文本有没有说清**。
+  //
+  // 判据分两层，并且**同一个谓词**要能被负对照复用（见 --self-test）：
+  //   · 结构层：说明存在，且排在「生成」按钮**之前**（卡片原话是"生成之前的可见文本"）；
+  //   · 语义层：四个要点都在 —— 没有保存步骤 / 点生成就进卷库 / 之后改动立刻生效 /
+  //     能按卷号找回。判的是**要点**，不是逐字文案：逐字文案的判据会在改一个标点时
+  //     变红，那种红是噪声，会把人训练成忽略它。
+  const saveNote = result.pages?.config?.save_note ?? {};
+  const saveNoteClaims = (evidence) => {
+    const text = typeof evidence?.text === 'string' ? evidence.text : '';
+    return {
+      存到卷库: /卷库/.test(text),
+      生成时就存: /生成/.test(text),
+      没有单独的保存步骤: /(没有|不需要|无需|不用)[^。；]{0,10}保存/.test(text),
+      之后改动立刻生效: /(立刻|立即|马上)[^。；]{0,6}(生效|保存|落库)/.test(text),
+      能按卷号找回: /卷号/.test(text),
+    };
+  };
+  const saveNoteEvidence = saveNoteClaims(saveNote);
+  console.log('\n—— 出题页说清「生成即入库」（M6，真实用户提问）——');
+  console.log(`  说明文本：${JSON.stringify(saveNote.text)}`);
+  console.log(`  四个要点：${JSON.stringify(saveNoteEvidence)}`);
+  check(
+    '出题页在「生成」按钮**之前**有可见的入库说明（不是 tooltip / placeholder）',
+    saveNote.found === true && saveNote.beforeSubmit === true,
+    `found=${saveNote.found} 排在生成按钮之前=${saveNote.beforeSubmit} 按钮文本=${JSON.stringify(saveNote.submitText)}`,
+  );
+  check(
+    '这段说明把四件事都说清了：没有保存步骤 / 点生成就进卷库 / 之后改动立刻生效 / 能按卷号找回',
+    Object.values(saveNoteEvidence).every(Boolean),
+    JSON.stringify(saveNoteEvidence),
+  );
+  // 只查文本挡不住「被悄悄藏起来」：Chromium 1223 实测 `display:none` 的元素
+  // `innerText` **仍取到文本**（规范上退化为 textContent），`opacity:0` / `font-size:0` /
+  // 移出屏幕同理。所以这里补一条**计算样式**断言 —— `display:none` 是别人最可能
+  // 随手加上去的隐藏方式，若它不红，这段说明随时可以被隐藏而不触发任何东西。
+  // （`visibility:hidden` 会让 innerText 变成 ''，本来就会被上面那条抓住。）
+  check(
+    '说明是**真的可见**的（display 不是 none、visibility 不是 hidden）—— 只查文本挡不住隐藏',
+    saveNote.visible === true,
+    `display=${JSON.stringify(saveNote.display)} visibility=${JSON.stringify(saveNote.visibility)}`,
+  );
+  check(
+    'V11 判别力：同一个谓词喂「说明被删掉」的世界必须全部为假（真实两态见 --self-test）',
+    Object.values(saveNoteClaims({ text: '' })).every((v) => v === false),
+    '空文本 → 四个要点全假，与上一行结论相反，判据不是恒真',
+  );
+
   // ---- --self-test：两条自带负对照的断言 ----
   if (result.self_test) {
     console.log('\n—— 自带负对照（--self-test）——');
@@ -936,6 +1051,33 @@ async function main() {
       '身份预置对照：不预置身份时停在身份门槛（有姓名输入框、没有"开始练习"）—— 证明预置是承重的',
       Number(st.identity_gate_inputs ?? 0) >= 1 && st.identity_gate_has_practice === false,
       `input=${st.identity_gate_inputs} hasPractice=${st.identity_gate_has_practice}`,
+    );
+
+    // M6 负对照：把出题页那段入库说明**从 DOM 里删掉**，同一个谓词必须翻面。
+    // 先断言"删除前它确实在"——否则「删掉后为假」在任何元素都不存在的世界里同样成立，
+    // 那样这条负对照就是空的（V9.2：负对照本身也要自证制造了失败条件）。
+    const noteCtl = st.save_note_control ?? {};
+    const noteMissing = saveNoteClaims(noteCtl.evidence ?? {});
+    const noteHidden = noteCtl.hidden_evidence ?? {};
+    console.log(
+      `  入库说明负对照（先 display:none、再删 DOM）：删除前存在=${noteCtl.existed_before} 隐藏后证据=${JSON.stringify(noteHidden)}`,
+    );
+    check(
+      'M6 负对照：先证明那段说明原本**在**（空集上「删掉后为假」不说明任何事）',
+      noteCtl.existed_before === true,
+      `删除前存在=${noteCtl.existed_before}`,
+    );
+    check(
+      'M6 负对照：给说明加上 display:none 后，**只有可见性判据**能把它判红（文本仍在，四要点照样全真）—— 这正是补这条的理由',
+      noteHidden.display === 'none' &&
+        noteHidden.visible === false &&
+        Object.values(saveNoteClaims(noteHidden)).every((v) => v === true),
+      `display=${JSON.stringify(noteHidden.display)} visible=${noteHidden.visible} 四要点=${JSON.stringify(saveNoteClaims(noteHidden))}`,
+    );
+    check(
+      'M6 负对照：删掉说明后同一条判据的四个要点全部为假 —— 证明这条判据真的在承重',
+      Object.values(noteMissing).every((v) => v === false),
+      JSON.stringify(noteMissing),
     );
   }
 

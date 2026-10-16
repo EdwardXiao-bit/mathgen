@@ -54,3 +54,12 @@
 .library-delete-guard {
   display: inline-flex;
 }
+
+/* M6（task-46）：「没能确认服务版本」的提示。
+   与 `.library-legacy-note`（`styles.css:1422`，用 `--mg-accent` 表示「换了个读法」）
+   刻意不同色：这一条说的是**没读到信息**，不是「读到了另一个版本」，
+   所以用次级文字色，避免把「不确定」画得像一个确定的状态。 */
+.library-probe-note {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}

@@ -1053,7 +1053,11 @@ const apiServer = createServer((req, res) => {
       }
     }
     req.parsedBody = parsedBody;
-    const entry = { method: req.method, path: url.pathname };
+    // `path` 与既有消费者（`verify-library-m3.mjs` 按 `r["path"] === "/api/papers"` 过滤）
+    // 保持逐字节不变；`query` 是**新增**字段，用来断言「前端到底发了哪套分页参数」——
+    // 只看 DOM 分不出「发了 limit/offset」和「发了 size/page 但后端恰好都能答」
+    // （M6/task-46 的探测降级缺陷正是后者）。
+    const entry = { method: req.method, path: url.pathname, query: url.searchParams.toString() };
     if (parsedBody !== null) entry.body = parsedBody;
     apiLog.push(entry);
     try {
@@ -1142,7 +1146,15 @@ function dispatchApi(req, res, url) {
   // ---- M3：卷库列表（分页 / 搜索 / 状态筛选）-----------------------------
   // MODE=legacy-list 时退化成历史形态（只有 total + papers，靠 page/size），
   // 专门用来验证前端 `detectPaginationMode` 的兜底路径真的会切换。
+  //
+  // M6（task-46）：`MATHGEN_MOCK_TAMPER=list_papers_probe` 时**只把探测那一次请求**
+  // 打红（`limit=1&offset=0` 就是探测的签名），用来构造「探测失败」这个世界：
+  // 界面必须如实说「版本没确认」并**继续按契约形态读列表**，而不是静默降级去打
+  // `size`/`page`。只认探测请求，是因为「后端整体挂了」这个世界已经由 MODE=api-down
+  // 覆盖，而本判据要区分的恰恰是「只有探测失败、列表本身是好的」。
   if (req.method === 'GET' && url.pathname === '/api/papers') {
+    const isProbe = url.searchParams.get('limit') === '1' && url.searchParams.get('offset') === '0';
+    if (isProbe) assertNoTamper('list_papers_probe');
     return json(res, 200, MODE === 'legacy-list' ? listPapersLegacy(url) : listPapers(url));
   }
 
