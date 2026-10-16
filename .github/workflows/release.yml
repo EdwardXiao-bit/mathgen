@@ -29,14 +29,20 @@ jobs:
           python3 - <<'PY'
           import os, re, sys, tomllib
           tag = os.environ["GITHUB_REF_NAME"]
-          if not tag.startswith("v"):
-              sys.exit(f"tag 必须以 v 开头：{tag}")
-          # tag 用人类习惯的 v1.0.0-rc1，PEP 440 里必须写 1.0.0rc1 —— 归一化之后再比。
-          # （tag 里的连字符不能省：下面的 prerelease 判据靠它区分预发布。）
-          want = re.sub(r"-(?=(rc|a|b|post|dev)\d)", "", tag[1:])
           py = tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"]
           src = open("backend/app/__init__.py", encoding="utf-8").read()
           got = re.search(r'__version__\s*=\s*"([^"]+)"', src).group(1)
+          if not tag.startswith("v"):
+              # 手动触发（workflow_dispatch，ref 是分支名）：没有 tag 可对，就只校验
+              # pyproject 与 app.__version__ 一致；Release / GHCR 两步都带 tag 条件，不会跑。
+              print(f"手动触发（ref={tag}）：跳过 tag 校验，只比 pyproject 与 app.__version__")
+              if py != got:
+                  sys.exit(f"版本号不一致：pyproject={py}  app.__version__={got}")
+              print(f"pyproject={py}  app.__version__={got}  ✔")
+              sys.exit(0)
+          # tag 用人类习惯的 v1.0.0-rc1，PEP 440 里必须写 1.0.0rc1 —— 归一化之后再比。
+          # （tag 里的连字符不能省：下面的 prerelease 判据靠它区分预发布。）
+          want = re.sub(r"-(?=(rc|a|b|post|dev)\d)", "", tag[1:])
           print(f"tag={tag} -> {want}   pyproject={py}   app.__version__={got}")
           if not (want == py == got):
               sys.exit("版本号三处不一致：tag / backend/pyproject.toml / backend/app/__init__.py")
@@ -78,6 +84,7 @@ jobs:
           PY
 
       - name: 生成 release 说明（取 CHANGELOG 里对应版本那一节）
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           python3 - <<'PY'
           import os, re
@@ -122,10 +129,40 @@ jobs:
       - name: 构建镜像
         run: docker build -t mathgen:ci .
 
+      - name: 浏览器通道自检（导出 503 时就靠它定位）
+        run: |
+          # PDF 导出的 503（EXPORT_NOT_READY）在容器里几乎总是「找不到 / 起不来 Chromium」。
+          # 与其在导出失败后从响应体里猜，不如先直接问它一句。
+          cat > /tmp/probe_browser.py <<'PY'
+          import os
+          from app.export import browser
+          print("PLAYWRIGHT_BROWSERS_PATH =", repr(os.environ.get("PLAYWRIGHT_BROWSERS_PATH")))
+          print("browsers_root            =", repr(browser._browsers_root()))
+          print("chromium_executable      =", repr(browser.chromium_executable()))
+          print("is_available             =", browser.is_available())
+          try:
+              browser.session().browser()
+              print("launch                   = OK")
+          except Exception as exc:
+              print("launch                   = FAIL:", type(exc).__name__, exc)
+          PY
+          docker run --rm -v /tmp/probe_browser.py:/tmp/probe_browser.py:ro \
+            mathgen:ci python /tmp/probe_browser.py
+
       - name: 冒烟测试（启动 → 出卷 → 真导出一份 PDF）
         run: |
           set -euo pipefail
           docker run -d --name smoke -p 8000:8000 mathgen:ci
+
+          # 任何一步失败都把服务日志与响应体打出来 —— 上一次失败只留下一句
+          # 「export pdf = 503, 276 字节」，定位只能靠猜。
+          dump() {
+            echo "----- 服务日志（tail 60）-----"
+            docker logs smoke 2>&1 | tail -60 || true
+            echo "----- 最后一次响应体 -----"
+            cat /tmp/out.body 2>/dev/null || true
+          }
+          trap dump EXIT
 
           ok=""
           for i in $(seq 1 60); do
@@ -134,35 +171,38 @@ jobs:
             sleep 2
           done
           if [ -z "$ok" ]; then
-            echo "服务没起来，容器日志："
-            docker logs smoke
+            echo "服务没起来"
             exit 1
           fi
           echo "openapi.json = 200"
 
           for path in /teacher /student; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8000$path")
+            code=$(curl -s -o /tmp/out.body -w '%{http_code}' "http://127.0.0.1:8000$path")
             echo "$path = $code"
             [ "$code" = "200" ]
           done
 
-          id=$(curl -s -X POST 'http://127.0.0.1:8000/api/papers?seed=1&title=ci-smoke' \
-                 -H 'content-type: application/json' \
-                 -d '{"ops":["+"],"ranges":["R1"],"question_type":"oral","count":6}' \
-               | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          curl -s -o /tmp/out.body -X POST 'http://127.0.0.1:8000/api/papers?seed=1&title=ci-smoke' \
+            -H 'content-type: application/json' \
+            -d '{"ops":["+"],"ranges":["R1"],"question_type":"oral","count":6}' -w '%{http_code}' > /tmp/out.code
+          echo "新建卷 = $(cat /tmp/out.code) $(cat /tmp/out.body)"
+          [ "$(cat /tmp/out.code)" = "201" ]
+          id=$(python3 -c 'import json,sys; print(json.load(open("/tmp/out.body"))["id"])')
           echo "新建卷 id=$id"
 
-          code=$(curl -s -o /tmp/out.pdf -w '%{http_code}' "http://127.0.0.1:8000/api/papers/$id/export?format=pdf")
-          echo "export pdf = $code, $(stat -c%s /tmp/out.pdf) 字节"
+          code=$(curl -s -o /tmp/out.body -w '%{http_code}' "http://127.0.0.1:8000/api/papers/$id/export?format=pdf")
+          echo "export pdf = $code, $(stat -c%s /tmp/out.body) 字节"
           [ "$code" = "200" ]
-          head -c 4 /tmp/out.pdf | grep -qa '%PDF'
+          head -c 4 /tmp/out.body | grep -qa '%PDF'
 
-          code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8000/api/papers/$id/sheet")
+          code=$(curl -s -o /tmp/out.body -w '%{http_code}' "http://127.0.0.1:8000/api/papers/$id/sheet")
           echo "sheet = $code"
           [ "$code" = "200" ]
 
+          echo "容器日志（tail 20）："
           docker logs smoke 2>&1 | tail -20
           docker rm -f smoke
+          trap - EXIT
 
       - name: 推送到 GHCR
         if: startsWith(github.ref, 'refs/tags/v')
