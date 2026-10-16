@@ -1,0 +1,193 @@
+{
+  "repo": "C:\\Users\\Ed\\dsh_workspace\\mathgen",
+  "min_files": 220,
+  "dirty_tree": {
+    "problems": [
+      "tree/dirty_bom.py: 以 UTF-8 BOM 开头（EF BB BF）",
+      "tree/dirty_crlf.py: CR 出现 2 次（LF 2）—— 不是纯 LF"
+    ],
+    "summary": "files=3 cr_files=1 bom_files=1 binary_skipped=0 undecodable=0 missing_roots=[]",
+    "observation": {
+      "root": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\.tmp-task51-trees\\d82b43454d",
+      "include_roots": [
+        "tree"
+      ],
+      "files": 3,
+      "cr_files": [
+        [
+          "tree/dirty_crlf.py",
+          2,
+          2
+        ]
+      ],
+      "bom_files": [
+        "tree/dirty_bom.py"
+      ],
+      "binary_skipped": [],
+      "undecodable": [],
+      "missing_roots": [],
+      "excluded_dir_reasons": {
+        ".git": "版本库内部对象，不是源文件",
+        ".venv": "venv 里的第三方包不属于本仓库维护的源文件",
+        "venv": "同上（备用名）",
+        "site-packages": "安装进来的第三方包",
+        "node_modules": "前端依赖树，第三方",
+        "dist": "构建产物（frontend/dist）",
+        "build": "构建产物",
+        "artifacts": "测试证据/原始输出（json、日志、截图），不是源文件",
+        "__pycache__": "Python 字节码缓存",
+        ".pytest_cache": "pytest 缓存",
+        ".mypy_cache": "mypy 缓存",
+        ".ruff_cache": "ruff 缓存",
+        ".pylibs": "vendored 第三方 wheel（pypdfium2 源码本身就是 CRLF，扫它只会制造噪音）",
+        ".playwright": "Playwright 浏览器缓存",
+        ".idea": "IDE 配置",
+        ".vscode": "IDE 配置"
+      }
+    }
+  },
+  "clean_tree": {
+    "problems": [],
+    "summary": "files=1 cr_files=0 bom_files=0 binary_skipped=0 undecodable=0 missing_roots=[]",
+    "observation": {
+      "root": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\.tmp-task51-trees\\fab536cf26",
+      "include_roots": [
+        "tree"
+      ],
+      "files": 1,
+      "cr_files": [],
+      "bom_files": [],
+      "binary_skipped": [],
+      "undecodable": [],
+      "missing_roots": [],
+      "excluded_dir_reasons": {
+        ".git": "版本库内部对象，不是源文件",
+        ".venv": "venv 里的第三方包不属于本仓库维护的源文件",
+        "venv": "同上（备用名）",
+        "site-packages": "安装进来的第三方包",
+        "node_modules": "前端依赖树，第三方",
+        "dist": "构建产物（frontend/dist）",
+        "build": "构建产物",
+        "artifacts": "测试证据/原始输出（json、日志、截图），不是源文件",
+        "__pycache__": "Python 字节码缓存",
+        ".pytest_cache": "pytest 缓存",
+        ".mypy_cache": "mypy 缓存",
+        ".ruff_cache": "ruff 缓存",
+        ".pylibs": "vendored 第三方 wheel（pypdfium2 源码本身就是 CRLF，扫它只会制造噪音）",
+        ".playwright": "Playwright 浏览器缓存",
+        ".idea": "IDE 配置",
+        ".vscode": "IDE 配置"
+      }
+    }
+  },
+  "empty_tree": {
+    "problems": [
+      "扫描到 0 个文件：空集不许通过（include_roots=['tree']）"
+    ],
+    "summary": "files=0 cr_files=0 bom_files=0 binary_skipped=0 undecodable=0 missing_roots=[]",
+    "observation": {
+      "root": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\.tmp-task51-trees\\678e1da305",
+      "include_roots": [
+        "tree"
+      ],
+      "files": 0,
+      "cr_files": [],
+      "bom_files": [],
+      "binary_skipped": [],
+      "undecodable": [],
+      "missing_roots": [],
+      "excluded_dir_reasons": {
+        ".git": "版本库内部对象，不是源文件",
+        ".venv": "venv 里的第三方包不属于本仓库维护的源文件",
+        "venv": "同上（备用名）",
+        "site-packages": "安装进来的第三方包",
+        "node_modules": "前端依赖树，第三方",
+        "dist": "构建产物（frontend/dist）",
+        "build": "构建产物",
+        "artifacts": "测试证据/原始输出（json、日志、截图），不是源文件",
+        "__pycache__": "Python 字节码缓存",
+        ".pytest_cache": "pytest 缓存",
+        ".mypy_cache": "mypy 缓存",
+        ".ruff_cache": "ruff 缓存",
+        ".pylibs": "vendored 第三方 wheel（pypdfium2 源码本身就是 CRLF，扫它只会制造噪音）",
+        ".playwright": "Playwright 浏览器缓存",
+        ".idea": "IDE 配置",
+        ".vscode": "IDE 配置"
+      }
+    }
+  },
+  "nonexistent_root": {
+    "problems": [
+      "扫描根不存在或不是目录: C:\\Users\\Ed\\dsh_workspace\\mathgen\\.tmp-task51-does-not-exist（解析器失明）"
+    ],
+    "summary": "files=0 cr_files=0 bom_files=0 binary_skipped=0 undecodable=0 missing_roots=[]",
+    "observation": {
+      "root": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\.tmp-task51-does-not-exist",
+      "include_roots": [
+        "tree"
+      ],
+      "files": 0,
+      "cr_files": [],
+      "bom_files": [],
+      "binary_skipped": [],
+      "undecodable": [],
+      "missing_roots": [],
+      "excluded_dir_reasons": {
+        ".git": "版本库内部对象，不是源文件",
+        ".venv": "venv 里的第三方包不属于本仓库维护的源文件",
+        "venv": "同上（备用名）",
+        "site-packages": "安装进来的第三方包",
+        "node_modules": "前端依赖树，第三方",
+        "dist": "构建产物（frontend/dist）",
+        "build": "构建产物",
+        "artifacts": "测试证据/原始输出（json、日志、截图），不是源文件",
+        "__pycache__": "Python 字节码缓存",
+        ".pytest_cache": "pytest 缓存",
+        ".mypy_cache": "mypy 缓存",
+        ".ruff_cache": "ruff 缓存",
+        ".pylibs": "vendored 第三方 wheel（pypdfium2 源码本身就是 CRLF，扫它只会制造噪音）",
+        ".playwright": "Playwright 浏览器缓存",
+        ".idea": "IDE 配置",
+        ".vscode": "IDE 配置"
+      }
+    }
+  },
+  "real_repo": {
+    "problems": [],
+    "summary": "files=273 cr_files=0 bom_files=0 binary_skipped=0 undecodable=0 missing_roots=[]",
+    "observation": {
+      "root": "C:\\Users\\Ed\\dsh_workspace\\mathgen",
+      "include_roots": [
+        "backend/app",
+        "backend/tests",
+        "frontend/src",
+        "frontend/scripts",
+        "docs"
+      ],
+      "files": 273,
+      "cr_files": [],
+      "bom_files": [],
+      "binary_skipped": [],
+      "undecodable": [],
+      "missing_roots": [],
+      "excluded_dir_reasons": {
+        ".git": "版本库内部对象，不是源文件",
+        ".venv": "venv 里的第三方包不属于本仓库维护的源文件",
+        "venv": "同上（备用名）",
+        "site-packages": "安装进来的第三方包",
+        "node_modules": "前端依赖树，第三方",
+        "dist": "构建产物（frontend/dist）",
+        "build": "构建产物",
+        "artifacts": "测试证据/原始输出（json、日志、截图），不是源文件",
+        "__pycache__": "Python 字节码缓存",
+        ".pytest_cache": "pytest 缓存",
+        ".mypy_cache": "mypy 缓存",
+        ".ruff_cache": "ruff 缓存",
+        ".pylibs": "vendored 第三方 wheel（pypdfium2 源码本身就是 CRLF，扫它只会制造噪音）",
+        ".playwright": "Playwright 浏览器缓存",
+        ".idea": "IDE 配置",
+        ".vscode": "IDE 配置"
+      }
+    }
+  }
+}
