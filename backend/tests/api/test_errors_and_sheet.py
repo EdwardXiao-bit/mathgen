@@ -57,6 +57,10 @@ CONTRACT_ERROR_CODES = {
     # D77 补入 §9（原为实现先于契约，被这条双向判据抓出来）：
     # `app/routers/exports.py:77,88` 在导出通道不可用时真的会抛它。
     "EXPORT_NOT_READY": 503,
+    # D81（M6/task-44）补入 §9：NFR-5 的服务端出口——这一卷在这个排版下**必然**有题
+    # 被跨页切开时，`exports.py` 真的会抛它（409，不是 422：六参数都在 BOUNDS 内，
+    # 请求完全合法，是「内容 × 排版」的组合放不下）。
+    "LAYOUT_DOES_NOT_FIT": 409,
     # 故意没有 `ATTEMPT_DUPLICATE`：D76 落地时删了（「HTTP 200 + 错误码」自相矛盾；
     # 重放不是错误，只是没新建记录）。docs/04 §9 里也已标注删除，两边一致。
 }

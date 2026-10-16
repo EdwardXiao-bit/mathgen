@@ -36,6 +36,11 @@ ERROR_HTTP_STATUS: Final[dict[str, int]] = {
     "NOT_FOUND": 404,
     "METHOD_NOT_ALLOWED": 405,
     "EXPORT_NOT_READY": 503,
+    # ★ 扩展（M6/task-44）NFR-5 的服务端出口：这一卷在当前排版下**必然**有题目跨页
+    # 被拆开，导出会产出违反 NFR-5 的成品 → 拒绝，并给出可照做的诊断。
+    # 为什么不是 400/422：请求本身的语法与取值都合法（六参数都在 BOUNDS 内），
+    # 是**这一卷的内容**与**这个排版**的组合放不下——409 表达「与当前资源状态冲突」。
+    "LAYOUT_DOES_NOT_FIT": 409,
 }
 
 #: HTTP 状态码 → 错误码（用于把 Starlette 的 404/405 等翻成统一结构，D57）

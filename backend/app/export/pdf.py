@@ -17,13 +17,18 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
+from app.layout.fitting import LayoutTooLarge, guard_layout_of_html
+from app.layout.pagination import content_width_px
 from app.layout.styles import measure_js
 from app.export.browser import BrowserError, session as browser_session
+
+from app.contracts.layout import LayoutParams
 
 __all__ = [
     "export_pdf",
     "export_pdf_report",
     "export_png",
+    "layout_of",
     "measure_page_box",
     "PdfReport",
     "PageBox",
@@ -51,13 +56,52 @@ class PdfReport:
         return tuple(self.measurement.get("rows") or ())
 
 
+def _candidate_measure(page: Any) -> Callable[[str, LayoutParams], Mapping[str, Any]]:
+    """给 `app.layout.fitting` 的重排搜索用的「量一个候选排版」回调。
+
+    只在**已经判定放不下**时才被调用（失败路径），所以这里多花几秒换一句
+    「实测把字号调到 18 号以下」是划算的：诊断里没有具体目标值，老师就只能自己猜。
+
+    视口必须跟着候选的版心宽走（`content_width_px`）——沿用主路径那条修正，
+    否则量到的行高系统性偏小，搜索会把「其实还是放不下」的组合报成能放下。
+    """
+
+    def measure_candidate(html: str, layout: LayoutParams) -> Mapping[str, Any]:
+        page.set_viewport_size(
+            {"width": int(round(content_width_px(layout))), "height": 1200}
+        )
+        page.set_content(html, wait_until="load")
+        page.emulate_media(media="print")
+        return page.evaluate(measure_js())
+
+    return measure_candidate
+
+
 def export_pdf(html: str, out_path: str) -> None:
     """把完整 HTML 打印成 A4 PDF 并写入 `out_path`（**冻结签名**）。"""
     export_pdf_report(html, out_path)
 
 
-def export_pdf_report(html: str, out_path: str, measure: bool = True) -> PdfReport:
+def export_pdf_report(
+    html: str,
+    out_path: str,
+    measure: bool = True,
+    reject_overflow: bool = False,
+) -> PdfReport:
     """导出 PDF，并返回页数与浏览器侧实测排布。
+
+    ## `reject_overflow`（NFR-5 的服务端出口，M6/task-44 决策 ii）
+
+    默认 `False`：本函数的**冻结语义**是「打印并回报」，不替调用方做策略决定，
+    所以既有的直接调用方（`tests/render` 的实物用例、`tests/e2e_m2`）行为不变。
+
+    传 `True` 时，在**打印之前**用同一份实测判「有没有哪一行连一整页都放不下」
+    （`detect_overflow`，阈值取实测标定的分页线）；有就抛 `LayoutTooLarge`，
+    **不写入 `out_path`** —— 交付物要么完整可印，要么不产生。
+
+    判定必须在这里做（而不是由调用方拿到 `PdfReport` 之后再判）：行排布是
+    `measure_js()` 在**真实打印媒体**下量出来的，调用方手上没有那份读数；
+    等 `export_pdf` 返回时 `page` 已经关掉了。
 
     ## 坏字节校验 + 一次重试（task-14）
 
@@ -91,7 +135,15 @@ def export_pdf_report(html: str, out_path: str, measure: bool = True) -> PdfRepo
             # （实测 launch 约 1.0s，而一次 pdf() 只要 0.2s）。会话由调用方或进程退出时释放。
             session = browser_session()
             browser = session.browser()
-            page = browser.new_page()
+            # 测量视口必须 = **真实打印版心宽**：否则文本折行行为与纸上不同，
+            # `measure_js` 量出的行高会系统性偏小，`detect_overflow()` /
+            # `detect_page_crossing()` 就有漏报（NFR-5 判据链的假阴性）。
+            # 详见 `app.layout.pagination.content_width_px()`。
+            # 注意：`page.pdf()` 走 Chromium 自己的分页布局，**与屏幕视口无关**
+            # （实测同一 HTML 在 1280px 与版心宽下导出的字节 sha256 相同），
+            # 所以改视口只修正测量，不改变任何交付物。
+            width = content_width_px(layout_of(html))
+            page = browser.new_page(viewport={"width": width, "height": 1200})
             try:
                 # 用 set_content 而不是 file:// —— 不落临时文件，也就没有「路径不可写」这条失败面
                 page.set_content(html, wait_until="load")
@@ -101,6 +153,14 @@ def export_pdf_report(html: str, out_path: str, measure: bool = True) -> PdfRepo
                 page.wait_for_timeout(0)
                 if measure:
                     measurement = page.evaluate(measure_js())
+                    if reject_overflow:
+                        # 判定 + 拒绝都交给 `app.layout.fitting`（单一出口）：
+                        # 它带完整诊断（行号 / 行高 / 阈值 / 可照做的建议）。
+                        guard_layout_of_html(
+                            html,
+                            measurement,
+                            measure=_candidate_measure(page),
+                        )
                 pdf_bytes = page.pdf(
                     format="A4",
                     print_background=True,
@@ -108,7 +168,10 @@ def export_pdf_report(html: str, out_path: str, measure: bool = True) -> PdfRepo
                 )
             finally:
                 page.close()
-        except BrowserError:
+        except (BrowserError, LayoutTooLarge):
+            # 两者都**不重试**：`BrowserError` 的语义是「通道坏了」；
+            # `LayoutTooLarge` 是**确定性**判定（同一份 HTML 同一份排版再量一次
+            # 必然还是超），重试只会白花一次测量。
             raise
         except Exception as exc:  # pragma: no cover - 环境分支
             last_problem = f"{type(exc).__name__}: {exc}"
@@ -204,6 +267,59 @@ def _normalise_dates(pdf_bytes: bytes) -> bytes:
 
 _PAGE_OBJ_RE = re.compile(rb"/Type\s*/Page[^s]")
 _COUNT_RE = re.compile(rb"/Count\s+(\d+)")
+_PAGE_MARGIN_RE = re.compile(r"--page-margin\s*:\s*([0-9.]+)cm")
+
+#: M6：渲染产出的 HTML 里六个排版参数都是 `--<name>: <value>` 形式（契约第 2 条）。
+#: 数值项带单位后缀，布尔项是 `display` 关键字（`block`/`none`、`grid`/`none`）。
+_LAYOUT_VAR_RES = {
+    "cols_per_row": re.compile(r"--cols-per-row\s*:\s*(\d+)"),
+    "row_gap": re.compile(r"--row-gap\s*:\s*([0-9.]+)"),
+    "font_size": re.compile(r"--font-size\s*:\s*([0-9.]+)"),
+    "page_margin": re.compile(r"--page-margin\s*:\s*([0-9.]+)"),
+}
+_ANSWER_LINE_RE = re.compile(r"--answer-line-display\s*:\s*([A-Za-z-]+)")
+_HEADER_BAR_RE = re.compile(r"--header-bar-display\s*:\s*([A-Za-z-]+)")
+
+
+def layout_of(html: str, page_margin: float | None = None) -> LayoutParams:
+    """从渲染好的 HTML 里取回**完整**排版参数（六个 CSS 变量）。
+
+    为什么不改 `export_pdf_report(html, out_path)` 的签名去多传一个 layout：
+    该函数是**冻结入口** `export_pdf` 的实现，调用方遍布导出/测试；
+    而 `render_sheet()` 产出的 HTML 里本来就带着 `:root { --page-margin: 2.0cm }`
+    （契约第 2 条要求六个参数都注入为 CSS 变量），读它既无歧义也不用改签名。
+    显式传入 `page_margin` 时优先用它。
+
+    **M6/task-44 起读全部六项**（此前只读 `page_margin`）：`LAYOUT_DOES_NOT_FIT`
+    的诊断要报出「实际参数值」，只说页边距就拼不出 `每行 6 题 / 字号 20 / 页边距 3cm`。
+    缺失或形态不认识的项**回落到默认值**——真实渲染永远写全六项，回落只服务于
+    手工构造的 HTML（测试里的 `<html></html>` 之类），不能让它们在这里抛异常。
+    """
+    values: dict[str, float | bool] = {}
+    for name, pattern in _LAYOUT_VAR_RES.items():
+        found = pattern.search(html)
+        if found is None:
+            continue
+        raw = found.group(1)
+        values[name] = float(raw) if name == "row_gap" else (
+            int(raw) if name == "cols_per_row" else float(raw)
+        )
+    if page_margin is not None:
+        values["page_margin"] = float(page_margin)
+    for name, pattern in (("answer_line", _ANSWER_LINE_RE), ("header_bar", _HEADER_BAR_RE)):
+        found = pattern.search(html)
+        if found is not None:
+            values[name] = found.group(1) not in ("none",)
+    return LayoutParams(**values)  # type: ignore[arg-type]
+
+
+def _layout_of(html: str, page_margin: float | None = None) -> LayoutParams:
+    """兼容旧名：等价于公开的 `layout_of`。
+
+    保留是因为 `measure_page_box` 与若干注释引用了这个名字（`_layout_of` 一直是
+    模块私有，没有外部调用方）；新代码请用 `layout_of`。
+    """
+    return layout_of(html, page_margin)
 
 
 def count_pdf_pages(pdf_bytes: bytes) -> int:
@@ -294,6 +410,13 @@ def measure_page_box(
     并把整个区间一并记在 `row_top_px` / `row_step_px` 里便于审计。
 
     约 `k+2` 次 `pdf()`（典型 14 次，实测 3~6s），进程内按 `cache_key` 缓存。
+
+    ## 测量视口 = 真实版心宽（M6）
+
+    页面盒是用 `measure_js()` 量到的**行几何**反解的，所以测量视口若与真实打印版心
+    不等宽，折行行为不同、`row_step_px` 就会偏小。故这里同样把视口设成
+    `content_width_px(LayoutParams(page_margin=margin))`；
+    而**判定分页线与页数**的那几次 `page.pdf()` 与视口无关（实测字节 sha256 相同）。
     """
     key = (cache_key if cache_key is not None else margin, margin, max_rows)
     if cache and key in _PAGE_BOX_CACHE:
@@ -301,7 +424,9 @@ def measure_page_box(
 
     probes = 0
     session = browser_session()
-    page = session.browser().new_page()
+    page = session.browser().new_page(
+        viewport={"width": content_width_px(LayoutParams(page_margin=margin)), "height": 1200}
+    )
 
     def pages_of(html: str) -> int:
         nonlocal probes

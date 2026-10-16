@@ -52,8 +52,20 @@ def render_sheet(ctx: SheetContext) -> str:
 def render_with_layout(ctx: SheetContext, layout: LayoutParams) -> str:
     """用指定排版参数渲染同一份卷面。
 
-    这是 NFR-5 自动微调的入口（`layout.pagination.reflow` 会反复调用它）。
-    `render_sheet` 等价于 `render_with_layout(ctx, ctx.layout)`。
+    **它是 `render_sheet` 的实现体，有真实调用者**：`render_sheet(ctx)` 的函数体就是
+    `return render_with_layout(ctx, ctx.layout)`（本文件 :49），另有测试
+    `tests/render/test_sheet_html.py::test_render_with_layout_matches_render_sheet`
+    直接对照两者。签名与 `render_sheet` 一样是**冻结**的（`app/contracts/sheet.py`）。
+
+    **但没有任何东西在用它做「NFR-5 自动微调」**：`app.layout.pagination.reflow()`
+    在 `app/**` 里是**零个生产调用点**（它的真实调用只在
+    `tests/render/test_pagination.py::TestReflow`）。本函数此前被描述为「reflow 会反复
+    调用它」，那是**从未发生的接线**——读起来像「导出时会自动降级字号」，实际不会。
+
+    NFR-5 目前的保证来自**导出前的拒绝判据**，不是来自自动降级：放不下就
+    `LAYOUT_DOES_NOT_FIT`（409）并给出可照做的建议，见 `app/layout/fitting.py`。
+    自动降级（悄悄把老师的字号改小再交付）是**刻意不做**的——那会让交付物与老师设的
+    参数不是同一个东西。谁要接这条线，`reflow()` 仍在 `app/layout/pagination.py`。
     """
     if not isinstance(ctx, SheetContext):
         raise SheetRenderError("render_sheet 只接受 SheetContext")

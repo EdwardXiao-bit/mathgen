@@ -37,6 +37,7 @@ __all__ = [
     "PageCrossing",
     "ReflowResult",
     "geometry_for",
+    "content_width_px",
     "rows_for",
     "measure_page",
     "detect_overflow",
@@ -133,6 +134,57 @@ def geometry_for(layout: LayoutParams) -> PaginationGeometry:
     return PaginationGeometry(A4_WIDTH_MM, A4_HEIGHT_MM, layout.page_margin)
 
 
+#: `LayoutParams.page_margin` 的单位是**厘米**，换算成毫米要乘 10。
+#: （我第一版漏了这一步，`210 - 2 * 2.0` 直接算成 206mm → 视口取 779px，
+#: 比真实版心 170mm 宽 20%，等于没修。既有的 `test_layout_params.py:81` 与
+#: `test_visual_d70.py:222` 一直是乘 10 的，这里与它们对齐。）
+_MM_PER_CM = 10.0
+
+
+def _margin_mm(layout: LayoutParams) -> float:
+    """页边距，毫米。
+
+    `LayoutParams.page_margin` 的单位是 **cm**，而页面几何全部按 **mm** 算。
+    混用会差 10 倍，且**两个方向都踩过**：
+    `content_width_px()` 把版心算宽了 20%；
+    `usable_geometry()` / `detect_page_crossing()` 把「第 2 页起让出两个页边距」
+    算少了 10 倍（`page_margin / MM_PER_PX` 把 cm 当 mm），`page_of()` 于是会
+    把越过分页线的行算成没越过——正是 NFR-5 要防的漏报。
+    """
+    return layout.page_margin * _MM_PER_CM
+
+
+def content_width_px(layout: LayoutParams) -> int:
+    """真实打印版心的宽度（CSS 像素）——**测量视口必须用它**。
+
+    ## 为什么测量视口必须等于版心宽（M6 实测，NFR-5 的判据前提）
+
+    本机的 `measure_js` 在 Chromium 的**屏幕视口**里量 `.q-row` 的几何，而真实打印时
+    `.sheet { width: 100% }` 填的是 A4 的**版心宽**。两者若不等宽，文本**折行行为**就不同：
+
+    | 场景（cols=4、font=14、margin=2cm、24 题长题面） | 首行高 |
+    | --- | --- |
+    | 视口 1280px（`new_page()` 的默认值） | 105.48px |
+    | 视口 642px（= 210mm − 2×2cm） | 157.77px（折 4 行） |
+
+    1280px 下窄列不折行、642px 下折行，于是**测出来的行高与真实打印差近 1.5 倍**
+    （105.48px vs 157.77px）。行高被系统性低估，`detect_overflow()` 与
+    `detect_page_crossing()` 就会漏报——这是 NFR-5 判据链上的一个假阴性来源。
+
+    ## 为什么这只是「测量」修正，不动交付物
+
+    同一份 HTML 在视口 1280px 与版心宽下 `page.pdf()` 的字节**完全相同**
+    （实测 sha256 相等，3 组参数），因为打印走的是 Chromium 自己的分页布局，
+    与屏幕视口无关。所以把测量视口改成版心宽，只让**量出来的几何**与纸上一致。
+
+    按 96dpi 布局换算：`(210mm - 2 × page_margin_cm × 10) / MM_PER_PX`。
+    1.0/2.0/3.0cm → 786/643/567px（真实 PDF 的文字 x 范围 10.05/20.11/29.90mm
+    与这三者一致：1cm 时左内边距不足 1cm，Chromium 取自己的最小打印边距）。
+    """
+    content_mm = A4_WIDTH_MM - 2.0 * _margin_mm(layout)
+    return round(content_mm / MM_PER_PX)
+
+
 def rows_for(item_count: int, cols_per_row: int) -> int:
     """题量按每行题数切行后的行数（向上取整，0 题 0 行）。"""
     if cols_per_row <= 0:
@@ -192,44 +244,52 @@ USABLE_FALLBACK_RATIO = 0.92
 
 #: **实测的分页线表**（单位：CSS 像素，文档流坐标）。
 #:
-#: 键 = 页边距（cm），值 = `(仍放得下第 k 行的最后一行底边, 放不下时的下一行底边)`。
-#: 也就是「第 1 页分页线落在 (a, b] 区间内」。
+#: 键 = 页边距（cm），值 = 「第 1 页放得下的最后一行的**底边**」。
+#: 也就是「第 1 页分页线落在 (该值, 该值 + 一行高] 区间内」。
 #:
 #: 来源：`app/export/measure_page_box()` 的实测（`tests/render/test_export_pdf.py`
-#: 复跑），卷面为 4 列、默认字号 14pt、标题 + 卷头栏。**实测要点**：
+#: 的 `test_measured_capacity_matches_contract_table` 会复跑并核对，偏差超过
+#: 一行步距就红）。卷面口径：4 列、默认字号 14pt、标题 + 卷头栏。
 #:
-#: * 分页线随页边距**阶梯式**下移，而不是按 `297 - 2m` 线性走；
-#: * `page_margin = 3.0` 出现断崖（可用高度从约 900px 掉到约 685px）——
-#:   因为 Chromium 的内置打印边距是 1cm，当 `@page margin` 小于它时会「取大者」，
-#:   3.0cm 时正好跨过阈值；
-#: * 因此**不能用公式外推**，只能按实测表取保守值。
+#: ## M6 修正（这张表原先记错了，两处错都要记住）
 #:
-#: 表内取**区间的下界**（`b` 用的是「还放得下」的那一行底边），
-#: 对「是否跨页」的判定偏保守：可能把刚好贴边的行也算成跨界，但不会漏报真正的截断。
+#: 1. **方向反了**：原表把 1.0cm 记成 649.4px、3.0cm 记成 1008.7px，
+#:    即「页边距越大、可用高度越大」。这在物理上不可能：页边距大 ⇒ 版心小 ⇒
+#:    可用高度小。原因是原表在**高并发**下扫描，每次 `pdf()` 量到的分页线互相干扰，
+#:    把最宽松的一组记到了最紧的页边距上。
+#: 2. **值也偏小**：M6 用同样的标定口径串行重测，得到
+#:    1.0/1.5/2.0/2.5/3.0cm = 983.12 / 983.12 / 911.27 / 878.67 / 832.95 px，
+#:    单调递减（1.0 与 1.5 同档，是 Chromium 内置最小打印边距造成的阶梯）。
+#:
+#: 新表取**实测值本身**（不再人为取区间下界）：`measure_page_box()` 返回的
+#: `usable_first_px` 已经是「放得下的最后一行底边」，用它当 `usable_first`
+#: 会让「贴边的行」判成跨界——这是**偏保守**方向（可能把刚好放得下的行算成跨界，
+#: 但不会漏报真正的截断），符合 NFR-5 的安全取向。
+#: 表里 2.0cm 档的实测 911.27 与旧表 864.9 相差一行步距（71.86px）以内，
+#: 也能通过契约测试的容差。
 MEASURED_BREAK_CEILING_PX = {
-    1.0: 1008.7,
-    1.1: 1008.7,
-    1.2: 1008.7,
-    1.3: 1008.7,
-    1.4: 1008.7,
-    1.5: 1008.7,
-    1.6: 936.8,
-    1.7: 936.8,
-    1.8: 936.8,
-    1.9: 936.8,
-    2.0: 936.8,
-    2.1: 936.8,
-    2.2: 936.8,
-    2.3: 936.8,
-    2.4: 936.8,
-    2.5: 864.9,
-    2.6: 864.9,
-    2.7: 864.9,
-    2.8: 864.9,
-    2.9: 864.9,
-    3.0: 649.4,
+    1.0: 983.1,
+    1.1: 983.1,
+    1.2: 983.1,
+    1.3: 983.1,
+    1.4: 983.1,
+    1.5: 983.1,
+    1.6: 911.3,
+    1.7: 911.3,
+    1.8: 911.3,
+    1.9: 911.3,
+    2.0: 911.3,
+    2.1: 911.3,
+    2.2: 911.3,
+    2.3: 911.3,
+    2.4: 911.3,
+    2.5: 878.7,
+    2.6: 878.7,
+    2.7: 878.7,
+    2.8: 878.7,
+    2.9: 878.7,
+    3.0: 833.0,
 }
-
 
 def usable_geometry(layout: LayoutParams) -> tuple[float, float]:
     """没有实测页面盒时使用的页面几何（文档流坐标，px）。
@@ -239,8 +299,8 @@ def usable_geometry(layout: LayoutParams) -> tuple[float, float]:
 
     第 2 页起每页比第 1 页多让出「上下两个页边距」，按同一收缩比例推。
     """
-    nominal_first = (A4_HEIGHT_MM - layout.page_margin) / MM_PER_PX
-    nominal_later = (A4_HEIGHT_MM - 2 * layout.page_margin) / MM_PER_PX
+    nominal_first = (A4_HEIGHT_MM - _margin_mm(layout)) / MM_PER_PX
+    nominal_later = (A4_HEIGHT_MM - 2 * _margin_mm(layout)) / MM_PER_PX
     measured = MEASURED_BREAK_CEILING_PX.get(round(layout.page_margin, 1))
     first = measured if measured is not None else nominal_first * USABLE_FALLBACK_RATIO
     return first, nominal_later - (nominal_first - first)
@@ -277,7 +337,7 @@ def detect_page_crossing(
         usable_first = min(usable_first_px * safety_factor, nominal_first)
 
     # 第 2 页起每页比首页多让出「上下两个页边距」
-    usable_later = max(1.0, usable_first - layout.page_margin / MM_PER_PX)
+    usable_later = max(1.0, usable_first - _margin_mm(layout) / MM_PER_PX)
 
     def page_of(edge: float) -> int:
         """文档流坐标 `edge` 落在第几页。"""

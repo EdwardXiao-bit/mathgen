@@ -48,7 +48,7 @@ MIN_DOC_ROWS = 10
 
 #: 当前 §9 的真实行数（M4：D77 补 `EXPORT_NOT_READY`、D78 补 `PAPER_HAS_ATTEMPTS` → 14；
 #: M5/D80 补 `ATTEMPT_NOT_FOUND` → 15）。
-EXPECTED_DOC_ROWS = 15
+EXPECTED_DOC_ROWS = 16
 
 _ROW_RE = re.compile(
     r"^\|\s*`(?P<code>[A-Z][A-Z0-9_]*)`\s*\|\s*(?P<status>\d{3})\s*\|(?P<desc>.*)\|\s*$"

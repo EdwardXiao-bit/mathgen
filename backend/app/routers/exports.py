@@ -24,6 +24,8 @@ FastAPI 直接 422 而**不会继续匹配**。这里能满足，是因为 `expo
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
@@ -117,6 +119,9 @@ def export_paper(
     fmt = parse_format(file_format)
     sheet_mode = parse_mode(mode)
     ctx = build_sheet_context(db, paper_id, sheet_mode, header_note)
+    #: Word 链路不经过 Chromium，因此**没有** NFR-5 服务端守卫（判据口径不同）；
+    #: 只有 PDF 分支可能往这里塞「守卫被跳过」的证据头。
+    skip_headers: dict[str, str] = {}
 
     if fmt == "docx":
         try:
@@ -133,18 +138,53 @@ def export_paper(
             return render_not_ready(exc.expected)
         try:
             data = pdf_export.export_pdf_bytes(html)
+        except pdf_export.ExportLayoutRejected as exc:
+            # NFR-5：这一卷在这个排版下**必然**有题被跨页切开 → 409 + 可照做的诊断。
+            # 与下面的 503 分开：这不是系统故障，重试同一个请求不会有不同结果，
+            # 老师要做的是改排版参数（诊断里写了往哪个方向改）。
+            raise ApiError("LAYOUT_DOES_NOT_FIT", str(exc)) from exc
         except pdf_export.ExportUnavailable as exc:
             raise ApiError(
                 "EXPORT_NOT_READY",
                 f"PDF 导出通道当前不可用（浏览器/打印环境问题）：{exc}",
             ) from exc
         media_type, filename = MEDIA_TYPE_PDF, f"paper-{paper_id}-{sheet_mode.value}.pdf"
+        skip_headers = _layout_guard_skip_headers(paper_id, data)
 
     return Response(
         content=data,
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', **skip_headers},
     )
+
+
+def _layout_guard_skip_headers(paper_id: int, data: object) -> dict[str, str]:
+    """守卫被跳过时，把这件事**放进响应头**并在日志里留一条 WARNING（D81 硬约束 2/3）。
+
+    为什么不能只写日志：日志在一个「没人读的地方」，等于状态不存在（task-50 的教训）。
+    判据要能在**不读日志**的情况下区分「守卫生效」与「守卫被跳过」两个世界——
+    所以跳过必须在响应里看得见。
+
+    WARNING 里必须带**卷号**与**实际溢出行数**（不是「有溢出」这种没有信息量的说法）：
+    值班主任拿到这条日志要能立刻回答「哪张卷子、跳过了几次、当时到底有几行放不下」。
+
+    普通 `bytes`（例如测试里的假导出函数）取不到 `guard_skipped`，按「没跳过」处理：
+    假函数世界里根本没有真实测量，声称跳过了反而是假信息。
+    """
+    if not getattr(data, "guard_skipped", False):
+        return {}
+    rows = tuple(getattr(data, "overflow_rows", ()) or ())
+    logging.getLogger("app.routers.exports").warning(
+        "NFR-5 排版守卫被跳过（%s=1）：卷 %s 仍有 %d 行放不下%s；"
+        "成品可能把题目跨页拆开 —— 这是应急出口，请尽快查明判据为何误报",
+        pdf_export.LAYOUT_GUARD_ENV,
+        paper_id,
+        len(rows),
+        f"（行号 {list(rows)}）" if rows else "（未量到行号）",
+    )
+    return {
+        pdf_export.LAYOUT_GUARD_SKIPPED_HEADER: pdf_export.LAYOUT_GUARD_SKIPPED_VALUE,
+    }
 
 
 @router.get(
