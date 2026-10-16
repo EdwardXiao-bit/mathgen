@@ -12,6 +12,8 @@ node_modules/
 dist/
 .vite/
 *.local
+# `npm pack` 的产物（本地试装 npx 用）：生成在 npm/ 下，不该入库。
+*.tgz
 
 # ---------- 运行时数据（数据库与导出产物不入库）----------
 data/
