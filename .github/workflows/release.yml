@@ -1,0 +1,180 @@
+name: release
+
+# 打 tag（v1.0.0-rc1 这种）时自动做三件事：
+#   1. 构建 wheel（**内含前端产物**，装上就有界面）
+#   2. 构建 Docker 镜像并**先在 runner 上冒烟跑通**（含真 PDF 导出），再推 GHCR
+#   3. 用 CHANGELOG 里对应版本那一节创建 GitHub Release，并附上 wheel
+#
+# 手动触发（workflow_dispatch）只构建与冒烟，不推 GHCR、不发 Release：
+# 镜像里有 Chromium，本机又没装 Docker，CI 是这个 Dockerfile 唯一的验证途径。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # ------------------------------------------------------------ wheel + Release
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 tag 与 pyproject / app.__version__ 一致
+        run: |
+          python3 - <<'PY'
+          import os, re, sys, tomllib
+          tag = os.environ["GITHUB_REF_NAME"]
+          if not tag.startswith("v"):
+              sys.exit(f"tag 必须以 v 开头：{tag}")
+          # tag 用人类习惯的 v1.0.0-rc1，PEP 440 里必须写 1.0.0rc1 —— 归一化之后再比。
+          # （tag 里的连字符不能省：下面的 prerelease 判据靠它区分预发布。）
+          want = re.sub(r"-(?=(rc|a|b|post|dev)\d)", "", tag[1:])
+          py = tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"]
+          src = open("backend/app/__init__.py", encoding="utf-8").read()
+          got = re.search(r'__version__\s*=\s*"([^"]+)"', src).group(1)
+          print(f"tag={tag} -> {want}   pyproject={py}   app.__version__={got}")
+          if not (want == py == got):
+              sys.exit("版本号三处不一致：tag / backend/pyproject.toml / backend/app/__init__.py")
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 构建前端
+        working-directory: frontend
+        run: |
+          corepack enable
+          # frontend/package.json 里钉了 packageManager，corepack 会去取那个版本；
+          # 因此这一步必须在这里跑（corepack 是从当前目录的 package.json 读的）
+          pnpm --version
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: 把前端产物放进包里（安装版才有界面）
+        run: cp -r frontend/dist backend/app/static
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 构建 wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build backend --outdir dist
+          python - <<'PY'
+          import glob, zipfile
+          whl = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(whl).namelist()
+          static = [n for n in names if "/static/" in n]
+          print(f"{whl}: {len(names)} 个条目，其中 static/{len(static)} 个")
+          assert static, "wheel 里没有前端产物 —— `cp -r frontend/dist backend/app/static` 或 package-data 配错了"
+          assert any(n.endswith("index.html") for n in static), "static 里没有 index.html"
+          PY
+
+      - name: 生成 release 说明（取 CHANGELOG 里对应版本那一节）
+        run: |
+          python3 - <<'PY'
+          import os, re
+          want = os.environ["GITHUB_REF_NAME"][1:]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(rf"^## \[{re.escape(want)}\].*?$(.*?)(?=^## \[|\Z)", text, re.S | re.M)
+          body = m.group(0).strip() if m else f"## {want}\n\n（CHANGELOG.md 里没有这一节）"
+          install = """
+          ---
+
+          ### 怎么跑起来（四种方式，任选一种）
+
+          | 方式 | 命令 | 需要什么 |
+          | --- | --- | --- |
+          | 源码一键脚本 | `scripts\\start.ps1`（Windows）/ `./scripts/start.sh`（macOS / Linux） | Python 3.12+ |
+          | Docker | `docker run --rm -p 8000:8000 -v mathgen-data:/data ghcr.io/edwardxiao-bit/mathgen:TAG` | Docker |
+          | npm 启动器 | `npx mathgen@TAG` | Node 18+ 与 Python 3.12+ |
+          | pip | `pip install 下面这个 wheel`，然后 `mathgen` | Python 3.12+ |
+
+          跑起来后浏览器打开 <http://127.0.0.1:8000/teacher>；要让学生在同一局域网访问，
+          用 `--host 0.0.0.0`（脚本里是 `-Lan`）并放行 8000 端口。
+          """.replace("TAG", os.environ["GITHUB_REF_NAME"])
+          open("RELEASE_NOTES.md", "w", encoding="utf-8").write(body + install)
+          PY
+
+      - name: 创建 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: mathgen ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: dist/*.whl
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # ------------------------------------------------------------ Docker 镜像
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 构建镜像
+        run: docker build -t mathgen:ci .
+
+      - name: 冒烟测试（启动 → 出卷 → 真导出一份 PDF）
+        run: |
+          set -euo pipefail
+          docker run -d --name smoke -p 8000:8000 mathgen:ci
+
+          ok=""
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/openapi.json || true)
+            if [ "$code" = "200" ]; then ok=yes; break; fi
+            sleep 2
+          done
+          if [ -z "$ok" ]; then
+            echo "服务没起来，容器日志："
+            docker logs smoke
+            exit 1
+          fi
+          echo "openapi.json = 200"
+
+          for path in /teacher /student; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8000$path")
+            echo "$path = $code"
+            [ "$code" = "200" ]
+          done
+
+          id=$(curl -s -X POST 'http://127.0.0.1:8000/api/papers?seed=1&title=ci-smoke' \
+                 -H 'content-type: application/json' \
+                 -d '{"ops":["+"],"ranges":["R1"],"question_type":"oral","count":6}' \
+               | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          echo "新建卷 id=$id"
+
+          code=$(curl -s -o /tmp/out.pdf -w '%{http_code}' "http://127.0.0.1:8000/api/papers/$id/export?format=pdf")
+          echo "export pdf = $code, $(stat -c%s /tmp/out.pdf) 字节"
+          [ "$code" = "200" ]
+          head -c 4 /tmp/out.pdf | grep -qa '%PDF'
+
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8000/api/papers/$id/sheet")
+          echo "sheet = $code"
+          [ "$code" = "200" ]
+
+          docker logs smoke 2>&1 | tail -20
+          docker rm -f smoke
+
+      - name: 推送到 GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/${owner}/mathgen"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag mathgen:ci "${image}:${tag}"
+          docker push "${image}:${tag}"
+          # 预发布（rc / beta）不覆盖 latest，免得把 rc 当成稳定版发出去
+          if [[ "$tag" != *-* ]]; then
+            docker tag mathgen:ci "${image}:latest"
+            docker push "${image}:latest"
+          fi
+          echo "已推送 ${image}:${tag}"
