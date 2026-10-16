@@ -1,0 +1,323 @@
+{
+  "kind": "50 条同时出发的 POST /api/attempts（每线程独立 httpx.Client，threading.Barrier 对齐起跑）",
+  "stats": {
+    "n": 50,
+    "arrived": 50,
+    "ok": 50,
+    "success_rate": 1.0,
+    "status_counts": {
+      "201": 50
+    },
+    "transport_errors": 0,
+    "workers": 50,
+    "min_ms": 508.25,
+    "p50_ms": 976.19,
+    "p95_ms": 2021.49,
+    "max_ms": 2297.43,
+    "mean_ms": 1070.25,
+    "total_wall_ms": 2440.57
+  },
+  "problems": [],
+  "responses": [
+    {
+      "index": 0,
+      "status": 201,
+      "elapsed_ms": 821.6,
+      "body": "{\"attempt_id\":10,\"total\":40,\"correct\":0,\"score\":0,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":null,\"is_correct\":false},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":null,\"is_correct\":false},{\"seq\":3,\"d"
+    },
+    {
+      "index": 1,
+      "status": 201,
+      "elapsed_ms": 877.41,
+      "body": "{\"attempt_id\":16,\"total\":40,\"correct\":1,\"score\":3,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":null,\"is_correct\":false},{\"seq\":3,\"di"
+    },
+    {
+      "index": 2,
+      "status": 201,
+      "elapsed_ms": 2297.43,
+      "body": "{\"attempt_id\":50,\"total\":40,\"correct\":2,\"score\":5,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"dis"
+    },
+    {
+      "index": 3,
+      "status": 201,
+      "elapsed_ms": 1755.69,
+      "body": "{\"attempt_id\":45,\"total\":40,\"correct\":3,\"score\":8,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"dis"
+    },
+    {
+      "index": 4,
+      "status": 201,
+      "elapsed_ms": 1108.06,
+      "body": "{\"attempt_id\":28,\"total\":40,\"correct\":4,\"score\":10,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 5,
+      "status": 201,
+      "elapsed_ms": 1160.96,
+      "body": "{\"attempt_id\":31,\"total\":40,\"correct\":5,\"score\":13,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 6,
+      "status": 201,
+      "elapsed_ms": 988.34,
+      "body": "{\"attempt_id\":21,\"total\":40,\"correct\":6,\"score\":15,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 7,
+      "status": 201,
+      "elapsed_ms": 818.84,
+      "body": "{\"attempt_id\":12,\"total\":40,\"correct\":7,\"score\":18,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 8,
+      "status": 201,
+      "elapsed_ms": 782.34,
+      "body": "{\"attempt_id\":5,\"total\":40,\"correct\":8,\"score\":20,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"dis"
+    },
+    {
+      "index": 9,
+      "status": 201,
+      "elapsed_ms": 800.08,
+      "body": "{\"attempt_id\":13,\"total\":40,\"correct\":9,\"score\":23,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 10,
+      "status": 201,
+      "elapsed_ms": 508.25,
+      "body": "{\"attempt_id\":1,\"total\":40,\"correct\":10,\"score\":25,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 11,
+      "status": 201,
+      "elapsed_ms": 1084.7,
+      "body": "{\"attempt_id\":27,\"total\":40,\"correct\":11,\"score\":28,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 12,
+      "status": 201,
+      "elapsed_ms": 919.88,
+      "body": "{\"attempt_id\":20,\"total\":40,\"correct\":12,\"score\":30,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 13,
+      "status": 201,
+      "elapsed_ms": 1641.9,
+      "body": "{\"attempt_id\":44,\"total\":40,\"correct\":13,\"score\":33,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 14,
+      "status": 201,
+      "elapsed_ms": 1097.02,
+      "body": "{\"attempt_id\":30,\"total\":40,\"correct\":14,\"score\":35,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 15,
+      "status": 201,
+      "elapsed_ms": 769.54,
+      "body": "{\"attempt_id\":6,\"total\":40,\"correct\":15,\"score\":38,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 16,
+      "status": 201,
+      "elapsed_ms": 764.55,
+      "body": "{\"attempt_id\":11,\"total\":40,\"correct\":16,\"score\":40,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 17,
+      "status": 201,
+      "elapsed_ms": 2021.49,
+      "body": "{\"attempt_id\":48,\"total\":40,\"correct\":17,\"score\":43,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 18,
+      "status": 201,
+      "elapsed_ms": 1384.12,
+      "body": "{\"attempt_id\":41,\"total\":40,\"correct\":18,\"score\":45,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 19,
+      "status": 201,
+      "elapsed_ms": 824.23,
+      "body": "{\"attempt_id\":15,\"total\":40,\"correct\":19,\"score\":48,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 20,
+      "status": 201,
+      "elapsed_ms": 1226.56,
+      "body": "{\"attempt_id\":35,\"total\":40,\"correct\":20,\"score\":50,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 21,
+      "status": 201,
+      "elapsed_ms": 976.19,
+      "body": "{\"attempt_id\":23,\"total\":40,\"correct\":21,\"score\":53,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 22,
+      "status": 201,
+      "elapsed_ms": 793.87,
+      "body": "{\"attempt_id\":14,\"total\":40,\"correct\":22,\"score\":55,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 23,
+      "status": 201,
+      "elapsed_ms": 697.86,
+      "body": "{\"attempt_id\":4,\"total\":40,\"correct\":23,\"score\":58,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 24,
+      "status": 201,
+      "elapsed_ms": 934.53,
+      "body": "{\"attempt_id\":22,\"total\":40,\"correct\":24,\"score\":60,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 25,
+      "status": 201,
+      "elapsed_ms": 2097.86,
+      "body": "{\"attempt_id\":49,\"total\":40,\"correct\":25,\"score\":63,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 26,
+      "status": 201,
+      "elapsed_ms": 550.96,
+      "body": "{\"attempt_id\":2,\"total\":40,\"correct\":26,\"score\":65,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 27,
+      "status": 201,
+      "elapsed_ms": 1241.64,
+      "body": "{\"attempt_id\":38,\"total\":40,\"correct\":27,\"score\":68,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 28,
+      "status": 201,
+      "elapsed_ms": 625.33,
+      "body": "{\"attempt_id\":3,\"total\":40,\"correct\":28,\"score\":70,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 29,
+      "status": 201,
+      "elapsed_ms": 1101.47,
+      "body": "{\"attempt_id\":33,\"total\":40,\"correct\":29,\"score\":73,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 30,
+      "status": 201,
+      "elapsed_ms": 694.25,
+      "body": "{\"attempt_id\":9,\"total\":40,\"correct\":30,\"score\":75,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 31,
+      "status": 201,
+      "elapsed_ms": 1732.08,
+      "body": "{\"attempt_id\":46,\"total\":40,\"correct\":31,\"score\":78,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 32,
+      "status": 201,
+      "elapsed_ms": 1090.6,
+      "body": "{\"attempt_id\":34,\"total\":40,\"correct\":32,\"score\":80,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 33,
+      "status": 201,
+      "elapsed_ms": 1126.3,
+      "body": "{\"attempt_id\":36,\"total\":40,\"correct\":33,\"score\":83,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 34,
+      "status": 201,
+      "elapsed_ms": 1174.5,
+      "body": "{\"attempt_id\":37,\"total\":40,\"correct\":34,\"score\":85,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 35,
+      "status": 201,
+      "elapsed_ms": 990.29,
+      "body": "{\"attempt_id\":29,\"total\":40,\"correct\":35,\"score\":88,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 36,
+      "status": 201,
+      "elapsed_ms": 777.35,
+      "body": "{\"attempt_id\":17,\"total\":40,\"correct\":36,\"score\":90,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 37,
+      "status": 201,
+      "elapsed_ms": 790.49,
+      "body": "{\"attempt_id\":18,\"total\":40,\"correct\":37,\"score\":93,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 38,
+      "status": 201,
+      "elapsed_ms": 1012.22,
+      "body": "{\"attempt_id\":32,\"total\":40,\"correct\":38,\"score\":95,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 39,
+      "status": 201,
+      "elapsed_ms": 1802.5,
+      "body": "{\"attempt_id\":47,\"total\":40,\"correct\":39,\"score\":98,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"d"
+    },
+    {
+      "index": 40,
+      "status": 201,
+      "elapsed_ms": 866.34,
+      "body": "{\"attempt_id\":25,\"total\":40,\"correct\":40,\"score\":100,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\""
+    },
+    {
+      "index": 41,
+      "status": 201,
+      "elapsed_ms": 879.55,
+      "body": "{\"attempt_id\":26,\"total\":40,\"correct\":0,\"score\":0,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":null,\"is_correct\":false},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":null,\"is_correct\":false},{\"seq\":3,\"d"
+    },
+    {
+      "index": 42,
+      "status": 201,
+      "elapsed_ms": 869.96,
+      "body": "{\"attempt_id\":24,\"total\":40,\"correct\":1,\"score\":3,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":null,\"is_correct\":false},{\"seq\":3,\"di"
+    },
+    {
+      "index": 43,
+      "status": 201,
+      "elapsed_ms": 651.19,
+      "body": "{\"attempt_id\":7,\"total\":40,\"correct\":2,\"score\":5,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"disp"
+    },
+    {
+      "index": 44,
+      "status": 201,
+      "elapsed_ms": 1222.58,
+      "body": "{\"attempt_id\":40,\"total\":40,\"correct\":3,\"score\":8,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"dis"
+    },
+    {
+      "index": 45,
+      "status": 201,
+      "elapsed_ms": 638.48,
+      "body": "{\"attempt_id\":8,\"total\":40,\"correct\":4,\"score\":10,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"dis"
+    },
+    {
+      "index": 46,
+      "status": 201,
+      "elapsed_ms": 767.05,
+      "body": "{\"attempt_id\":19,\"total\":40,\"correct\":5,\"score\":13,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 47,
+      "status": 201,
+      "elapsed_ms": 1341.64,
+      "body": "{\"attempt_id\":43,\"total\":40,\"correct\":6,\"score\":15,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 48,
+      "status": 201,
+      "elapsed_ms": 1157.54,
+      "body": "{\"attempt_id\":39,\"total\":40,\"correct\":7,\"score\":18,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    },
+    {
+      "index": 49,
+      "status": 201,
+      "elapsed_ms": 1254.77,
+      "body": "{\"attempt_id\":42,\"total\":40,\"correct\":8,\"score\":20,\"items\":[{\"seq\":1,\"display\":\"80 + 16 = ____\",\"question_type\":\"oral\",\"answer\":\"96\",\"student_answer\":\"96\",\"is_correct\":true},{\"seq\":2,\"display\":\"71 - 42 = ____\",\"question_type\":\"oral\",\"answer\":\"29\",\"student_answer\":\"29\",\"is_correct\":true},{\"seq\":3,\"di"
+    }
+  ]
+}

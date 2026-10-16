@@ -1,0 +1,40 @@
+{
+  "kind": "同样的 50 条请求，一条一条发（对照，不是并发证据）",
+  "stats": {
+    "n": 50,
+    "arrived": 50,
+    "ok": 50,
+    "success_rate": 1.0,
+    "status_counts": {
+      "201": 50
+    },
+    "transport_errors": 0,
+    "workers": 1,
+    "min_ms": 21.83,
+    "p50_ms": 26.48,
+    "p95_ms": 50.87,
+    "max_ms": 58.71,
+    "mean_ms": 32.16,
+    "total_wall_ms": 1675.69
+  },
+  "problems": [],
+  "concurrent_stats": {
+    "n": 50,
+    "arrived": 50,
+    "ok": 50,
+    "success_rate": 1.0,
+    "status_counts": {
+      "201": 50
+    },
+    "transport_errors": 0,
+    "workers": 50,
+    "min_ms": 508.25,
+    "p50_ms": 976.19,
+    "p95_ms": 2021.49,
+    "max_ms": 2297.43,
+    "mean_ms": 1070.25,
+    "total_wall_ms": 2440.57
+  },
+  "wall_ratio_concurrent_over_serial": 1.456,
+  "note": "只回答「并发有没有比串行更糟」；乘积没有阈值，数字进报告由人判读"
+}

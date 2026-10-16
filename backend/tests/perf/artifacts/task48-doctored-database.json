@@ -1,0 +1,63 @@
+{
+  "kind": "把主世界的库拷一份出来逐项改坏，喂同一批判据",
+  "doctored_db": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\perf\\artifacts\\task48-doctored.db",
+  "witnesses": {
+    "real_db_refused_duplicate": {
+      "outcome": "IntegrityError: UNIQUE constraint failed: attempt.student_id, attempt.attempt_uuid",
+      "elapsed_ms": 2.8
+    },
+    "constraint_removed": {
+      "outcome": "ok",
+      "before_had_constraint": true,
+      "after_has_constraint": false
+    }
+  },
+  "observations": {
+    "duplicate_uuid": [
+      "(student_id=11, attempt_uuid=02f8e02ef8154452920a3c32892239f0) 落了 2 条（D76 要求恰好 1 条）：attempt id=[1, 102]"
+    ],
+    "dropped_item": [
+      "attempt id=1（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=39",
+      "attempt id=1：correct=10 ≠ 明细里 is_correct=1 的行数=9",
+      "attempt id=102（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=0",
+      "attempt id=102：correct=10 ≠ 明细里 is_correct=1 的行数=0"
+    ],
+    "blank_payload": [
+      "attempt id=1（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=39",
+      "attempt id=1：correct=10 ≠ 明细里 is_correct=1 的行数=9",
+      "attempt id=102（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=0",
+      "attempt id=102：correct=10 ≠ 明细里 is_correct=1 的行数=0",
+      "attempt_item id=2 的 payload 为空（半写）"
+    ],
+    "bad_is_correct": [
+      "attempt id=1（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=39",
+      "attempt id=1：correct=10 ≠ 明细里 is_correct=1 的行数=8",
+      "attempt id=102（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=0",
+      "attempt id=102：correct=10 ≠ 明细里 is_correct=1 的行数=0",
+      "attempt_item id=2 的 payload 为空（半写）",
+      "attempt_item id=3 的 is_correct=7（只能是 0/1）"
+    ],
+    "wrong_correct": [
+      "attempt id=1（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=39",
+      "attempt id=1：correct=999 ≠ 明细里 is_correct=1 的行数=8",
+      "attempt id=1：correct=999 / total=40 不成话",
+      "attempt id=102（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=0",
+      "attempt id=102：correct=10 ≠ 明细里 is_correct=1 的行数=0",
+      "attempt_item id=2 的 payload 为空（半写）",
+      "attempt_item id=3 的 is_correct=7（只能是 0/1）"
+    ],
+    "orphan_item": [
+      "attempt id=1（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=39",
+      "attempt id=1：correct=999 ≠ 明细里 is_correct=1 的行数=8",
+      "attempt id=1：correct=999 / total=40 不成话",
+      "attempt id=102（uuid=02f8e02ef8154452920a3c32892239f0）：total=40 ≠ attempt_item 行数=0",
+      "attempt id=102：correct=10 ≠ 明细里 is_correct=1 的行数=0",
+      "attempt_item id=2 的 payload 为空（半写）",
+      "attempt_item id=3 的 is_correct=7（只能是 0/1）",
+      "attempt_item id=4041 指向不存在的 attempt 999999（孤儿行）"
+    ],
+    "batch_5xx": [
+      "第 4 条返回 500（5xx）：Internal Server Error"
+    ]
+  }
+}

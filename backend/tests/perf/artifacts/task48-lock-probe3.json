@@ -1,0 +1,48 @@
+{
+  "port": 54006,
+  "db": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\perf\\artifacts\\task48-probe3-server.db",
+  "log": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\perf\\artifacts\\task48-probe3-server.log",
+  "ready": true,
+  "student_status": 201,
+  "lock_proof": {
+    "held": true,
+    "error": "OperationalError: database is locked"
+  },
+  "timeline": [
+    {
+      "t_s": 3.0,
+      "client_alive": true,
+      "log_bytes": 0
+    },
+    {
+      "t_s": 6.0,
+      "client_alive": true,
+      "log_bytes": 0
+    },
+    {
+      "t_s": 9.0,
+      "client_alive": false,
+      "log_bytes": 8697
+    },
+    {
+      "t_s": 9.0,
+      "event": "锁已释放"
+    },
+    {
+      "t_s": 12.0,
+      "client_alive": false,
+      "log_bytes": 8697
+    }
+  ],
+  "released_at_s": 9.0,
+  "request": {
+    "alive": false,
+    "status": 500,
+    "body": "Internal Server Error",
+    "elapsed_ms": 7461.5,
+    "still_alive_after_release": false,
+    "waited_s": 12.0
+  },
+  "rows": 0,
+  "log_text": "^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\starlette\\concurrency.py\", line 34, in run_in_threadpool\n    return await anyio.to_thread.run_sync(func)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\anyio\\to_thread.py\", line 65, in run_sync\n    return await get_async_backend().run_sync_in_worker_thread(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\anyio\\_backends\\_asyncio.py\", line 2706, in run_sync_in_worker_thread\n    return await future\n           ^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\anyio\\_backends\\_asyncio.py\", line 1100, in run\n    result = context.run(func, *args)\n             ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\fastapi\\telemetry\\_api.py\", line 244, in _run_sync_endpoint\n    return function(**arguments)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\app\\routers\\attempts.py\", line 53, in submit_attempt\n    outcome = attempt_service.submit(\n              ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\app\\services\\attempt_service.py\", line 141, in submit\n    ensure_attempt_schema(db)\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\app\\services\\attempt_service.py\", line 101, in ensure_attempt_schema\n    if \"attempt\" in inspector.get_table_names():\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\engine\\reflection.py\", line 414, in get_table_names\n    return self.dialect.get_table_names(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<sqlalchemy generated cache() wrapper for sqlalchemy.dialects.sqlite.base.SQLiteDialect.get_table_names>\", line 2, in get_table_names\n    return target(fn, self, connection, schema=schema, sqlite_include_internal=sqlite_include_internal, **kw)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\engine\\reflection.py\", line 107, in cache\n    ret = fn(self, con, *args, **kw)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\dialects\\sqlite\\base.py\", line 2401, in get_table_names\n    names = connection.exec_driver_sql(query).scalars().all()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\engine\\base.py\", line 1758, in exec_driver_sql\n    ret = self._execute_context(\n          ^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\engine\\base.py\", line 1825, in _execute_context\n    return self._exec_single_context(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\engine\\base.py\", line 1965, in _exec_single_context\n    self._handle_dbapi_exception(\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\engine\\base.py\", line 2335, in _handle_dbapi_exception\n    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\engine\\base.py\", line 1946, in _exec_single_context\n    self.dialect.do_execute(\n  File \"C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\engine\\default.py\", line 1192, in do_execute\n    cursor.execute(statement, parameters)\nsqlalchemy.exc.OperationalError: (sqlite3.OperationalError) database is locked\n[SQL: SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite~_%' ESCAPE '~' ORDER BY name]\n(Background on this error at: https://sqlalche.me/e/21/e3q8)\n"
+}

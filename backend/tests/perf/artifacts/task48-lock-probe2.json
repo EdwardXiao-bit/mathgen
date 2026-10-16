@@ -1,0 +1,76 @@
+{
+  "A_in_process_testclient": {
+    "student_status": 201,
+    "openapi_no_db": {
+      "outcome": "ok",
+      "value": 200,
+      "elapsed_ms": 149.3
+    },
+    "lock_proof": {
+      "held": true,
+      "error": "OperationalError: database is locked"
+    },
+    "post_under_lock": {
+      "alive": false,
+      "outcome": "OperationalError: (sqlite3.OperationalError) database is locked\n[SQL: SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite~_%' ESCAPE '~' ORDER BY name]\n(Background on this error at: https://sqlalche.me/e/21/e3q8)",
+      "elapsed_ms": 7384.8,
+      "waited_s": 7.4,
+      "still_blocked": false,
+      "finished_after_release": true
+    },
+    "rows_while_blocked": {
+      "outcome": "OperationalError: database is locked",
+      "elapsed_ms": 7403.8
+    },
+    "post_after_release": {
+      "alive": false,
+      "outcome": "ok",
+      "value": {
+        "status": 201
+      },
+      "elapsed_ms": 46.2,
+      "waited_s": 0.0,
+      "still_blocked": false
+    },
+    "rows_after_release": {
+      "outcome": "ok",
+      "value": 1,
+      "elapsed_ms": 4.3
+    }
+  },
+  "B_real_uvicorn_release_after_12s": {
+    "lock_proof": {
+      "held": true,
+      "error": "OperationalError: database is locked"
+    },
+    "no_db_endpoint_under_lock": {
+      "outcome": "ok",
+      "value": 200,
+      "elapsed_ms": 247.2
+    },
+    "blocked_at_12s": true,
+    "rows_while_blocked": {
+      "outcome": "OperationalError: database is locked",
+      "elapsed_ms": 7405.8
+    },
+    "released_at_s": 19.4,
+    "post": {
+      "alive": false,
+      "outcome": "ok",
+      "value": {
+        "status": null,
+        "error": "ReadTimeout: timed out",
+        "elapsed_ms": 47435.8
+      },
+      "elapsed_ms": 47519.0,
+      "still_blocked_at_end": false,
+      "waited_s": 47.5
+    },
+    "rows_after": {
+      "outcome": "ok",
+      "value": 0,
+      "elapsed_ms": 2.2
+    },
+    "server_log_len": 0
+  }
+}

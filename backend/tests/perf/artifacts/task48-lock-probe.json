@@ -1,0 +1,78 @@
+{
+  "environment": {
+    "python": "3.12.14",
+    "sqlite3_module": "2.6.0",
+    "sqlite_library": "3.53.1",
+    "probe_db": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\perf\\artifacts\\task48-probe.db"
+  },
+  "raw_sqlite3": {
+    "lock_acquired": true,
+    "select_timeout_0.5": {
+      "outcome": "OperationalError: database is locked",
+      "elapsed_ms": 1109.7,
+      "hit_deadline": false
+    },
+    "ddl_timeout_0.5": {
+      "outcome": "OperationalError: database is locked",
+      "elapsed_ms": 1125.9,
+      "hit_deadline": false
+    },
+    "select_timeout_5.0": {
+      "outcome": "OperationalError: database is locked",
+      "elapsed_ms": 7445.8,
+      "hit_deadline": false
+    },
+    "ddl_timeout_5.0": {
+      "outcome": "OperationalError: database is locked",
+      "elapsed_ms": 7539.1,
+      "hit_deadline": false
+    }
+  },
+  "product_engine": {
+    "url": "sqlite+pysqlite:///C%3A/Users/Ed/dsh_workspace/mathgen/backend/tests/perf/artifacts/task48-probe.db",
+    "create_connect_args": "(['C:\\\\Users\\\\Ed\\\\dsh_workspace\\\\mathgen\\\\backend\\\\tests\\\\perf\\\\artifacts\\\\task48-probe.db'], {'check_same_thread': False})",
+    "kwargs": "{'check_same_thread': False}",
+    "select_under_lock": {
+      "outcome": "OperationalError: (sqlite3.OperationalError) database is locked\n[SQL: SELECT count(*) FROM t]\n(Background on this error at: https://sqlalche.me/e/21/e3q8)",
+      "elapsed_ms": 7436.4,
+      "hit_deadline": false
+    }
+  },
+  "http_under_lock": {
+    "kind": "锁被一直持有，1 条提交（客户端只等 12 秒）",
+    "batch": {
+      "results": [
+        {
+          "index": 0,
+          "status": null,
+          "elapsed_ms": 19458.536699879915,
+          "error": "ReadTimeout: timed out"
+        }
+      ],
+      "wall_ms": 19536.146900150925,
+      "workers": 1
+    },
+    "rows_after_release": []
+  },
+  "http_after_short_lock": {
+    "kind": "持锁约 4 秒后释放，1 条提交（客户端等 30 秒）",
+    "batch": {
+      "results": [
+        {
+          "index": 0,
+          "status": null,
+          "elapsed_ms": 30012.95159989968,
+          "error": "ReadTimeout: timed out"
+        }
+      ],
+      "wall_ms": 30080.018299864605,
+      "workers": 1
+    },
+    "release": {
+      "at_ms": 4000.0,
+      "lock_released": true,
+      "release_observed_after_ms": 30108.3
+    }
+  },
+  "server_log": ""
+}

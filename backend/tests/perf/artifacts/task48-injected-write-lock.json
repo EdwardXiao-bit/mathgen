@@ -1,0 +1,39 @@
+{
+  "kind": "另一个连接 `BEGIN EXCLUSIVE` 拿住写锁，然后打 4 条并发提交（同一条 submit_batch_problems 判据）",
+  "lock_self_proof": {
+    "held": true,
+    "error": "OperationalError: database is locked"
+  },
+  "stats": {
+    "n": 4,
+    "arrived": 4,
+    "ok": 0,
+    "success_rate": 0.0,
+    "status_counts": {
+      "500": 4
+    },
+    "transport_errors": 0,
+    "workers": 4,
+    "min_ms": 8282.7,
+    "p50_ms": 8306.14,
+    "p95_ms": 8308.83,
+    "max_ms": 8308.83,
+    "mean_ms": 8301.34,
+    "total_wall_ms": 8383.0
+  },
+  "problems": [
+    "第 1 条返回 500（5xx）：Internal Server Error",
+    "第 2 条返回 500（5xx）：Internal Server Error",
+    "第 3 条返回 500（5xx）：Internal Server Error",
+    "第 4 条返回 500（5xx）：Internal Server Error"
+  ],
+  "rows_landed_while_locked": 0,
+  "server_log_bytes": 34788,
+  "server_log_mentions": [
+    "database is locked",
+    "OperationalError",
+    "ensure_attempt_schema"
+  ],
+  "server_log_path": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\perf\\artifacts\\task48-lock-server.log",
+  "note": "产线没有 WAL、也没有显式 busy_timeout（backend/app/db.py:53-65）→ 写锁等待上限就是 pysqlite 默认的 5.0 秒（实测忙等回调粒度让它变成 7.4~7.5 秒），到点后 submit 路径抛 `database is locked` → 500。"
+}

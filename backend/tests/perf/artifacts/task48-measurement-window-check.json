@@ -1,0 +1,18 @@
+{
+  "before": {
+    "root": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\app",
+    "files": 61,
+    "sha256_16": "397376fe995e8a98",
+    "sha256": "397376fe995e8a98f4e6cfde1076c7fc9180d094f42376b1be90fbeda067a0f0",
+    "newest_mtime": 1792117935.6725273
+  },
+  "now": {
+    "root": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\app",
+    "files": 61,
+    "sha256_16": "397376fe995e8a98",
+    "sha256": "397376fe995e8a98f4e6cfde1076c7fc9180d094f42376b1be90fbeda067a0f0",
+    "newest_mtime": 1792117935.6725273
+  },
+  "problems": [],
+  "verdict": "有效"
+}

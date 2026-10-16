@@ -1,0 +1,30 @@
+{
+  "kind": "同一个 (student_id, attempt_uuid) 的 8 线程并发重放",
+  "status_counts": {
+    "200": 7,
+    "201": 1
+  },
+  "rows_in_db": 1,
+  "attempt_ids_in_responses": [
+    "51"
+  ],
+  "stats": {
+    "n": 8,
+    "arrived": 8,
+    "ok": 8,
+    "success_rate": 1.0,
+    "status_counts": {
+      "200": 7,
+      "201": 1
+    },
+    "transport_errors": 0,
+    "workers": 8,
+    "min_ms": 64.54,
+    "p50_ms": 154.69,
+    "p95_ms": 275.68,
+    "max_ms": 275.68,
+    "mean_ms": 169.85,
+    "total_wall_ms": 347.51
+  },
+  "problems": []
+}
