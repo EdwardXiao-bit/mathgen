@@ -92,6 +92,9 @@ jobs:
           text = open("CHANGELOG.md", encoding="utf-8").read()
           m = re.search(rf"^## \[{re.escape(want)}\].*?$(.*?)(?=^## \[|\Z)", text, re.S | re.M)
           body = m.group(0).strip() if m else f"## {want}\n\n（CHANGELOG.md 里没有这一节）"
+          # 下面两处**都不能直接用 tag 名**（GITHUB_REF_NAME = v1.0.0-rc1）：
+          #   · 镜像标签去 v（与 docker push 那边的 ${GITHUB_REF_NAME#v} 必须一致）
+          #   · npm 版本号本来就没有 v 前缀（写成 @v1.0.0-rc1 会 404，第一版发布时真的写错过）
           install = """
           ---
 
@@ -100,13 +103,13 @@ jobs:
           | 方式 | 命令 | 需要什么 |
           | --- | --- | --- |
           | 源码一键脚本 | `scripts\\start.ps1`（Windows）/ `./scripts/start.sh`（macOS / Linux） | Python 3.12+ |
-          | Docker | `docker run --rm -p 8000:8000 -v mathgen-data:/data ghcr.io/edwardxiao-bit/mathgen:TAG` | Docker |
-          | npm 启动器 | `npx mathgen@TAG` | Node 18+ 与 Python 3.12+ |
+          | Docker | `docker run --rm -p 8000:8000 -v mathgen-data:/data ghcr.io/edwardxiao-bit/mathgen:VER` | Docker（目前只有 `linux/amd64`） |
+          | npm 启动器 | `npx mathgen@VER` | Node 18+ 与 Python 3.12+ |
           | pip | `pip install 下面这个 wheel`，然后 `mathgen` | Python 3.12+ |
 
           跑起来后浏览器打开 <http://127.0.0.1:8000/teacher>；要让学生在同一局域网访问，
           用 `--host 0.0.0.0`（脚本里是 `-Lan`）并放行 8000 端口。
-          """.replace("TAG", os.environ["GITHUB_REF_NAME"])
+          """.replace("VER", want)
           open("RELEASE_NOTES.md", "w", encoding="utf-8").write(body + install)
           PY
 

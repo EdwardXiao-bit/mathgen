@@ -4,8 +4,11 @@
 不需要注册、不需要联网、不需要服务器。
 
 ```sh
-npx mathgen
+npx mathgen@rc          # 或写死版本：npx mathgen@1.0.0-rc1
 ```
+
+> **当前是预发布版（release candidate）**：它在 npm 上发在 **`rc`** 标签下，不在 `latest`，
+> 所以要用 `@rc` 或写死版本号；等正式版发布后 `npx mathgen` 才会直接指向它。
 
 跑起来后浏览器打开 <http://127.0.0.1:8000/teacher>。
 

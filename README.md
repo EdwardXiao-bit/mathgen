@@ -46,7 +46,7 @@
 | --- | --- | --- |
 | **一键脚本** | 双击就跑，脚本自己建虚拟环境、装依赖、下 Chromium | Python 3.12+ |
 | **Docker** | 一条 `docker run`，镜像里连 Chromium 都带了 | Docker |
-| **npm 启动器** | `npx mathgen`，自动装到 `~/.mathgen` | Node 18+ 与 Python 3.12+ |
+| **npm 启动器** | `npx mathgen@rc`，自动装到 `~/.mathgen` | Node 18+ 与 Python 3.12+ |
 | **pip** | 下载 wheel 装上，用 `mathgen` 命令 | Python 3.12+ |
 
 不管哪种方式，跑起来之后都是：**浏览器打开 <http://127.0.0.1:8000/teacher>**。
@@ -103,6 +103,9 @@ docker compose up -d
 ```sh
 npx mathgen@1.0.0-rc1
 ```
+
+> 当前是**预发布版**，在 npm 上发在 `rc` 标签下（`npx mathgen@rc` 等价），
+> `latest` 要等正式版；三条已上线的渠道见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 它会：找一个 Python 3.12+ → 在 `~/.mathgen/npm-1.0.0-rc1/venv` 建**独立**虚拟环境 →
 从 GitHub Release 装后端 wheel（**wheel 里自带前端产物**）→ 需要时下 Chromium → 启动。

@@ -25,8 +25,10 @@ npm 启动器、GitHub Release），**没有新增任何功能**。
 - 成绩：老师端成绩列表与明细、逐题对错、导出；得分口径全系统唯一（`score_of`）。
 - 交付与部署形态：
   - 源码一键脚本 `scripts/start.ps1`（Windows）与 `scripts/start.sh`（macOS / Linux）
-  - Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen`（自带前端产物与 Chromium，开箱即用）
-  - npm 启动器 `npx mathgen@1.0.0-rc1`（自动建虚拟环境并拉起服务）
+  - Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1`（自带前端产物与 Chromium，开箱即用；
+    **只提供 `linux/amd64`**，Apple Silicon 用 Docker Desktop 的模拟运行）
+  - npm 启动器 `npx mathgen@rc`（等价 `npx mathgen@1.0.0-rc1`；预发布版发在 **`rc`** 标签下，
+    `latest` 留给正式版）
   - `pip install ./backend` 后可用 `mathgen` 命令
 - 工程基座：后端 1254 个用例、前端 12 步门禁；契约冻结（`docs/04`）与文档—代码对账判据。
 
