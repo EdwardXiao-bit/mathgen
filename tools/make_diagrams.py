@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""生成 mathgen 课程文档所需的 10 张配图。
+"""生成 mathgen 课程文档所需的 13 张配图。
 
 需求分析：用例图、功能结构图、老师出卷流程图、学生答题流程图
 技术设计：系统架构图、类图、数据库 ER 图、卷状态机图、答题判分时序图、部署图
+测试文档（M7）：测试分层图、测试闭环流程图、缺陷分布图
 """
 import os
 import sys
@@ -481,10 +482,181 @@ def fig_deployment():
     return cv.save(os.path.join(OUT, "fig-deployment.png"))
 
 
+# ---------------------------------------------------------------- 11 测试分层
+def fig_test_levels():
+    """测试分层图（课程《测试文档》第 11 张图）。"""
+    cv = Canvas(1900, 1330)
+    cv.text(950, 52, "测试分层：六个层次 + 一条前端门禁链", size=26, bold=True)
+    cv.text(950, 90, "数字是各分域的用例规模（互为子集，不能相加；全量一次跑 1254 个用例）",
+            size=16, color=C["line"])
+
+    rows = [
+        ("L1", "单元", C["box_fill"], C["box_edge"],
+         "引擎出题 / 判分 / 排版容量模型（纯逻辑，不碰数据库与网络）",
+         "unittest（标准库，零依赖）", "engine 8 个测试文件"),
+        ("L2", "契约", C["alt_fill"], C["alt_edge"],
+         "数据结构 / API 出入参 / 依赖方向 / 冻结契约 sha256 / 源文件文本卫生",
+         "unittest + sha256 守卫", "contract 121 个用例"),
+        ("L3", "安全", C["uc_fill"], C["uc_edge"],
+         "学生端取题响应不得含 answer / steps（契约 §9 冻结）",
+         "unittest + 响应体逐键断言", "security 3 个测试文件"),
+        ("L4", "渲染", C["warm_fill"], C["warm_edge"],
+         "卷面 HTML / A4 分页 / 页边距 / NFR-5 排版容量守卫",
+         "Playwright + Chromium", "render 8 个测试文件"),
+        ("L5", "端到端", "#eef7ff", "#2563eb",
+         "老师出卷 → 打印；学生扫码 → 作答 → 判分 → 成绩",
+         "Playwright + 真机双档（Chrome / 微信）",
+         "e2e_m4 68 · e2e_m5 50 · e2e_m6 45"),
+        ("L6", "性能", "#f4f4f5", "#6b7280",
+         "并发提交不阻塞（NFR-4：50 名学生同时交卷）",
+         "unittest + 时延统计", "perf 10 个用例"),
+        ("FE", "前端门禁", "#fdf2f8", "#db2777",
+         "老师端 / 学生端界面与构建产物（12 步，fail-fast）",
+         "node 脚本 + Playwright", "12 步 + 2 项前置自检"),
+    ]
+    y0, rh, gap = 145, 130, 20
+    for i, (code, name, fill, edge, scope, tool, scale) in enumerate(rows):
+        y = y0 + i * (rh + gap)
+        cv.rect(50, y, 290, rh, fill=fill, outline=edge, radius=8)
+        cv.text(195, y + 46, code, size=30, bold=True)
+        cv.text(195, y + 92, name, size=18)
+        cv.box(360, y, 700, rh, scope, size=17, fill="#ffffff", outline=C["band_edge"])
+        cv.box(1080, y, 360, rh, tool, size=16, fill="#f9fafb", outline=C["band_edge"])
+        cv.box(1460, y, 390, rh, scale, size=16, bold=True,
+               fill="#f9fafb", outline=C["band_edge"])
+        if i < len(rows) - 1:
+            cv.text(195, y + rh + gap / 2, "▼", size=13, color=C["band_edge"])
+
+    cv.note(50, 1185, 1800, 120,
+            "L1–L6 是后端用例的分域口径（互为子集，横竖都不可相加；全量一次跑 1254 个用例 OK）。"
+            "FE 是另一条独立的门禁链：前端 12 步全 PASS、189 秒，跑在 node 脚本 + Playwright 上，"
+            "不并入后端计数。同一条判据可能同时被分域跑与全量跑覆盖，所以「各域数字之和 > 全量数字」是正常的。",
+            size=16)
+    return cv.save(os.path.join(OUT, "fig-test-levels.png"))
+
+
+# ---------------------------------------------------------------- 12 测试闭环
+def fig_test_flow():
+    """一次「判据 → 失败 → 定位 → 修复 → 回归」闭环（含 V8 哈希夹逼）。"""
+    cv = Canvas(1700, 1180)
+    cx = 850
+    cv.stadium(cx, 70, 340, 62, "新增风险点 / 要验的行为")
+
+    flow_box(cv, cx, 205, 420, 92, "① 先写判据\n（附留在仓库里的负对照，V9）")
+    flow_box(cv, cx, 345, 420, 92, "② 跑门禁（一条命令）\n运行窗口内源码冻结（V8）")
+    cv.diamond(cx, 480, 280, 110, "③ 全绿？")
+    flow_box(cv, 1320, 480, 380, 96, "④ 保存失败原始输出\n命令 / 时间 / 日志路径")
+    flow_box(cv, 1320, 620, 380, 96, "⑤ 定位根因\n（最小探针 / 对照实验）")
+    flow_box(cv, 1320, 760, 380, 96, "⑥ 修产品代码\n（不迁就判据去改期望）")
+    flow_box(cv, cx, 640, 440, 96, "⑦ V8 夹逼核对\n跑门禁前后源码逐字节相同（T1 == T3）")
+    flow_box(cv, cx, 790, 440, 96, "⑧ 结论 + 证据落盘\n文档 §9.x 小节 + 原始日志")
+    cv.stadium(cx, 930, 340, 62, "可复查的验收记录")
+
+    vseq(cv, cx, 101, cx, 155)
+    vseq(cv, cx, 251, cx, 295)
+    vseq(cv, cx, 391, cx, 421)
+    cv.arrow([(990, 480), (1124, 480)], label="否", label_dy=-18)
+    vseq(cv, 1320, 528, 1320, 568)
+    vseq(cv, 1320, 668, 1320, 708)
+    cv.arrow([(1510, 760), (1630, 760), (1630, 345), (1054, 345)])
+    cv.text(1420, 318, "回归：改完就重跑", size=15, anchor="mm")
+    vseq(cv, cx, 535, cx, 588, label="是")
+    vseq(cv, cx, 688, cx, 738)
+    vseq(cv, cx, 838, cx, 895)
+
+    cv.note(50, 1000, 1600, 155,
+            "为什么要夹逼：用来验收源码的那套脚本本身也是源码。它若在门禁运行时被改写，"
+            "「跑前绿、跑后红」就没有可信的比对基线。实测把 frontend/src 与 frontend/scripts 的 68 个文件"
+            "按「相对路径 + 内容 SHA-256」聚合成一个值，跑门禁前后逐字节相同（8D48933C…759D）。"
+            "同一天对 backend/app、backend/tests、e2e_m5 / e2e_m4 用例域、frontend_dist 也各做一次，"
+            "八组全部相同——这是「这条结论没有被运行期间的编辑污染」的机器证据。",
+            size=16)
+    return cv.save(os.path.join(OUT, "fig-test-flow.png"))
+
+
+# ---------------------------------------------------------------- 13 缺陷分布
+def fig_defect_stats():
+    """缺陷按发现阶段与性质的分布（数据出处见 docs/08 的缺陷记录表）。"""
+    cv = Canvas(1800, 1170)
+    cats = [
+        ("真实缺陷（产品 / 交付物）", "#dc2626"),
+        ("契约漂移（文档 ≠ 实现）", "#f59e0b"),
+        ("门禁 / 测试设施故障", "#2563eb"),
+        ("验证方假阳性 / 局限", "#7c3aed"),
+        ("环境 / 流程 / 未定论", "#6b7280"),
+    ]
+    # 逐条对应 docs/08-测试文档.md 的缺陷记录表（BG-01…BG-46）
+    stages = [
+        ("M1", [1, 4, 0, 0, 0]),   # 5
+        ("M2", [6, 5, 0, 1, 0]),   # 12
+        ("M3", [1, 2, 2, 1, 2]),   # 8
+        ("M4", [2, 2, 7, 0, 0]),   # 11
+        ("M5", [1, 0, 1, 0, 0]),   # 2
+        ("M6", [2, 2, 1, 1, 0]),   # 6
+        ("M7", [2, 0, 0, 0, 1]),   # 3（BG-45 外部工具 + BG-46 文档工具链 + BG-47 机制缺口）
+    ]
+    total = sum(sum(v) for _, v in stages)
+
+    cv.text(900, 52, f"缺陷按发现阶段的分布（共 {total} 条，每条都能指到仓库里的记录）",
+            size=26, bold=True)
+    cv.text(900, 90,
+            "横轴＝缺陷被发现的里程碑（不是引入的里程碑）；纵轴＝条数；颜色＝性质。"
+            "分类规则见 docs/08 表 6.1。",
+            size=16, color=C["line"])
+
+    base, unit = 810, 52.0
+    x_left, x_right = 200, 1370
+    cv.line([(x_left, base), (x_right, base)], color=C["line"], width=2)
+    cv.line([(x_left, base), (x_left, 170)], color=C["line"], width=2)
+    for v in range(0, 13, 2):
+        y = base - v * unit
+        cv.line([(x_left, y), (x_right, y)], color="#e5e7eb", width=1)
+        cv.text(x_left - 16, y, str(v), size=15, anchor="rm")
+
+    step = (x_right - x_left - 80) / len(stages)
+    for i, (name, vals) in enumerate(stages):
+        cx = x_left + 40 + step * (i + 0.5)
+        w = 132
+        y = base
+        for (label, color), v in zip(cats, vals):
+            if not v:
+                continue
+            h = v * unit
+            cv.rect(cx - w / 2, y - h, w, h, fill=color, outline="#ffffff", radius=3)
+            if h >= 40:
+                cv.text(cx, y - h / 2, str(v), size=17, bold=True, color="#ffffff")
+            y -= h
+        cv.text(cx, y - 26, str(sum(vals)), size=20, bold=True)
+        cv.text(cx, base + 30, name, size=22, bold=True)
+        cv.text(cx, base + 64, f"{sum(vals)} 条", size=16)
+
+    cat_total = [sum(v[k] for _, v in stages) for k in range(len(cats))]
+    ly = 210
+    for (label, color), n in zip(cats, cat_total):
+        cv.rect(1420, ly, 32, 32, fill=color, outline="#ffffff", radius=3)
+        cv.text(1466, ly + 16, label, size=16, anchor="lm")
+        cv.text(1466, ly + 44, f"{n} 条（{round(n * 100 / total)}%）", size=15,
+                anchor="lm", color=C["line"])
+        ly += 92
+
+    cv.note(40, 930, 1720, 200,
+            "三个值得注意的形状：① 最多的一类之一是「文档与实现漂移」（15 条，32%）——"
+            "本项目后来专门为它建了机器对账门禁（docs/02 建表语句 ↔ models.py、docs/04 码表 ↔ 实现常量、"
+            "docs/04 §7 路由表 ↔ 两个 App.tsx）；"
+            "② 真实缺陷也是 15 条（32%），其中 M4 的两条（学生端文档根边距、缺卷库收纳）"
+            "都是用户上手用的时候才发现的——「我们做完的」与「用户要的」之间那道缝只有真用户看得见；"
+            "③ M7 的 3 条都是终检期发现的：BG-45 是外部工具（LibreOffice 光栅渲染放大版心），"
+            "BG-46 是文档工具（把 markdown 转义竖线当列分隔符，静默丢掉「对应 FR」整列），"
+            "BG-47 是机制缺口（源 md 改了、派生的 01/02 Word 从未重建，D37 只有规则没有判据）。",
+            size=16)
+    return cv.save(os.path.join(OUT, "fig-defect-stats.png"))
+
+
 def main():
     jobs = [fig_usecase, fig_function_tree, fig_teacher_flow, fig_student_flow,
             fig_architecture, fig_class_diagram, fig_er, fig_state,
-            fig_sequence, fig_deployment]
+            fig_sequence, fig_deployment,
+            fig_test_levels, fig_test_flow, fig_defect_stats]
     for job in jobs:
         path = job()
         print("OK", os.path.basename(path), os.path.getsize(path) // 1024, "KB")
