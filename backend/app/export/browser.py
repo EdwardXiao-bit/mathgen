@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -81,10 +82,25 @@ def _ensure_tmp_env() -> str:
 
 
 def _browsers_root() -> str:
-    return os.environ.get(
-        "PLAYWRIGHT_BROWSERS_PATH",
-        os.path.join(os.environ.get("LOCALAPPDATA", ""), "ms-playwright"),
-    )
+    """Playwright 存放浏览器（chromium-<版本>）的根目录。
+
+    优先 `PLAYWRIGHT_BROWSERS_PATH`（容器里必设），否则**按平台默认**：
+    Windows `%LOCALAPPDATA%\\ms-playwright`、macOS `~/Library/Caches/ms-playwright`、
+    Linux `~/.cache/ms-playwright`。
+
+    **不能只认 `LOCALAPPDATA`**：非 Windows 上它是空的，`os.path.join("", "ms-playwright")`
+    会得到一个**相对路径** `ms-playwright`，于是 `is_available()` 永远为假、
+    PDF 导出在 Linux / macOS 上永远 503。发布版要在三种系统上跑，所以这里必须分平台。
+    """
+    explicit = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if explicit:
+        return explicit
+    if sys.platform == "win32":
+        return os.path.join(os.environ.get("LOCALAPPDATA", ""), "ms-playwright")
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Caches", "ms-playwright")
+    cache_home = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(cache_home, "ms-playwright")
 
 
 def chromium_executable() -> str | None:
