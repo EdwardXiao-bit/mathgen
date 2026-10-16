@@ -1,6 +1,7 @@
 """FastAPI 应用装配（T-M2-BE）。
 
-启动：`& $VPY -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend`
+启动：`& $VPY -m app`（等价于安装后的 `mathgen` 命令，见 `app/__main__.py`）。
+本模块只负责装配应用；命令行参数、数据目录与前端产物的解析都在启动器里。
 
 统一错误结构（契约 §5.4）：所有异常出口都是
 `{"error": {"code": ..., "message": ...}}`，由本模块的异常处理器兜底，
@@ -22,6 +23,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.engine import Engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import __version__
 from app import db as db_module
 from app.engine.types import ConfigError, InsufficientQuestions
 from app.routers import attempts as attempts_router
@@ -136,8 +138,8 @@ def create_app(
 
     application = FastAPI(
         title="mathgen 后端",
-        version="0.2.0",
-        description="小学四则运算练习题生成与批改系统 —— 老师端 API（M3：卷库 / 答案版形式 / 单一服务托管）",
+        version=__version__,
+        description="小学四则运算练习题生成与批改系统 —— 老师端 API（出卷 / 卷库 / 学生扫码答题 / 判分与成绩）",
         lifespan=lifespan,
     )
     if explicit_engine is not None:

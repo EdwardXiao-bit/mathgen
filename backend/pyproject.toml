@@ -1,8 +1,20 @@
 [project]
 name = "mathgen-backend"
-version = "0.1.0"
-description = "mathgen 后端：出题引擎、判分、渲染与导出"
+version = "1.0.0rc1"
+description = "mathgen —— 小学四则运算练习题生成与批改系统的后端：出题引擎、判分、A4 排版、PDF/Word 导出与 REST API"
+readme = "README.md"
 requires-python = ">=3.12"
+# SPDX 表达式（PEP 639）。旧写法 `license = { text = "MIT" }` 已被 setuptools 标记弃用，
+# 2027-02-18 之后直接报错，所以在第一版就换掉。
+license = "MIT"
+# 构建根是 `backend/`，而 setuptools 拒绝带 `..` 的 pattern，所以 `backend/LICENSE`
+# 是仓库根 `/LICENSE` 的逐字副本。改动任一份时要同步另一份。
+license-files = ["LICENSE"]
+authors = [
+  { name = "肖铭皓" },
+  { name = "胡宇书" },
+]
+keywords = ["education", "arithmetic", "worksheet", "fastapi", "teacher"]
 dependencies = [
     "fastapi>=0.143",
     "uvicorn>=0.54",
@@ -15,12 +27,28 @@ dependencies = [
     "python-docx>=1.2",
 ]
 
+[project.urls]
+Homepage = "https://github.com/EdwardXiao-bit/mathgen"
+Repository = "https://github.com/EdwardXiao-bit/mathgen"
+Issues = "https://github.com/EdwardXiao-bit/mathgen/issues"
+
+[project.scripts]
+mathgen = "app.__main__:main"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["app", "app.engine", "app.grading", "app.contracts"]
+# 必须用 find：原来写死的 packages 清单漏掉了 app.routers / app.services / app.layout /
+# app.render / app.export —— 这样装出来的包在 `import app.main` 那一刻就 ImportError。
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+# 发布时把前端产物拷到 `app/static/`（见 .github/workflows/release.yml），
+# 让 `pip install` / `npx mathgen` 装出来的包**自带界面**，不必再下第二次。
+# 源码树里没有这个目录：开发时后端读的是 `<repo>/frontend/dist`（优先序见 static_site.resolve_static_dir）。
+[tool.setuptools.package-data]
+app = ["static/**/*", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

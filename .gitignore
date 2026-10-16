@@ -24,6 +24,10 @@ coverage/
 .playwright/
 test-results/
 
+# 发布时把前端产物拷到这里，让 wheel 自带界面（见 .github/workflows/release.yml）。
+# 它是**构建产物**：源码树里不该有，开发时后端读的是 frontend/dist（browser/static_site 的优先序）。
+backend/app/static/
+
 # verify 自装的独立库（如 pypdfium2）：只在本地目录，不入库
 .pylibs/
 
