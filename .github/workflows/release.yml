@@ -48,9 +48,11 @@ jobs:
       - name: 构建前端
         working-directory: frontend
         run: |
-          corepack enable
-          # frontend/package.json 里钉了 packageManager，corepack 会去取那个版本；
-          # 因此这一步必须在这里跑（corepack 是从当前目录的 package.json 读的）
+          # pnpm 版本显式钉死（与 Dockerfile 同一口径）：不依赖 package.json 的
+          # packageManager 字段，因为该字段会让部分 pnpm 安装往 lockfile 里补写
+          # packageManagerDependencies，使 --frozen-lockfile 失败
+          # （实测：CI run 38940469884 的 docker job）。
+          npm i -g pnpm@12.5.1
           pnpm --version
           pnpm install --frozen-lockfile
           pnpm build

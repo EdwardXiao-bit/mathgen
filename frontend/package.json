@@ -4,7 +4,6 @@
   "version": "1.0.0-rc1",
   "type": "module",
   "description": "mathgen 老师端界面：出题配置 / 预览改题 / 排版面板 / 打印",
-  "packageManager": "pnpm@12.5.1",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

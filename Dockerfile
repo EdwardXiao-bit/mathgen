@@ -12,8 +12,17 @@
 # ------------------------------------------------------------------ 1. 前端
 FROM node:22-alpine AS web
 WORKDIR /web
-RUN corepack enable
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+# pnpm 版本在这里**显式钉死**，不依赖 corepack + package.json 的 packageManager 字段。
+# 原因（实测，见 CI run 38940469884 的 docker job）：
+#   `packageManager` 字段会让某些 pnpm 安装（npm 装的 pnpm / Windows 上）
+#   往 pnpm-lock.yaml 里补写 `packageManagerDependencies` 段，
+#   于是 `pnpm install --frozen-lockfile` 直接报
+#   ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE 而失败。
+#   去掉字段 + 在这里显式钉版本，两边都稳（本地 frozen-lockfile 已验证通过）。
+RUN npm i -g pnpm@12.5.1
+# pnpm-workspace.yaml 必须一起进来：它里面有 `allowBuilds: esbuild`，
+# 少了它 pnpm 会按默认策略拒绝执行 esbuild 的安装脚本（ERR_PNPM_IGNORED_BUILDS）。
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
