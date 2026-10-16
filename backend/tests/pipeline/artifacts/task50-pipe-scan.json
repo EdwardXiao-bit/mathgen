@@ -1,0 +1,87 @@
+{
+  "sites": [
+    {
+      "file": "tests\\e2e_m4\\artifacts\\tier1_dryrun.py",
+      "sites": [
+        {
+          "line": 35,
+          "call": "Popen",
+          "kwargs": [
+            "stdout"
+          ]
+        }
+      ],
+      "mentions_uvicorn": false,
+      "reads_child_output_somewhere_in_file": true,
+      "in_deliberate_negative_control": false,
+      "caught_by_guard": false
+    },
+    {
+      "file": "tests\\pipeline\\_pipeline_support.py",
+      "sites": [
+        {
+          "line": 99,
+          "call": "Popen",
+          "kwargs": [
+            "stdout"
+          ]
+        }
+      ],
+      "mentions_uvicorn": true,
+      "reads_child_output_somewhere_in_file": false,
+      "in_deliberate_negative_control": true,
+      "caught_by_guard": false
+    },
+    {
+      "file": "tests\\pipeline\\artifacts\\task50_pipe_matrix.py",
+      "sites": [
+        {
+          "line": 133,
+          "call": "Popen",
+          "kwargs": [
+            "stdout"
+          ]
+        }
+      ],
+      "mentions_uvicorn": true,
+      "reads_child_output_somewhere_in_file": true,
+      "in_deliberate_negative_control": true,
+      "caught_by_guard": false
+    },
+    {
+      "file": "tests\\pipeline\\artifacts\\task50_pipeline_probe.py",
+      "sites": [
+        {
+          "line": 178,
+          "call": "Popen",
+          "kwargs": [
+            "stdout"
+          ]
+        }
+      ],
+      "mentions_uvicorn": true,
+      "reads_child_output_somewhere_in_file": false,
+      "in_deliberate_negative_control": true,
+      "caught_by_guard": false
+    },
+    {
+      "file": "tests\\pipeline\\artifacts\\task50_stage_probe.py",
+      "sites": [
+        {
+          "line": 94,
+          "call": "Popen",
+          "kwargs": [
+            "stdout"
+          ]
+        }
+      ],
+      "mentions_uvicorn": true,
+      "reads_child_output_somewhere_in_file": true,
+      "in_deliberate_negative_control": true,
+      "caught_by_guard": false
+    }
+  ],
+  "unparsed": [],
+  "scanned_root": "tests",
+  "guard_rule": "mentions_uvicorn && !in tests/pipeline/ → 必须为空"
+}

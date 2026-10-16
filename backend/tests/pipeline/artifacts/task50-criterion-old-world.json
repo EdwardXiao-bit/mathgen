@@ -1,0 +1,40 @@
+{
+  "world": "old-pipe-no-reader",
+  "how": "Popen(stdout=PIPE, stderr=STDOUT)，全程无人读",
+  "marker": "old-3d7cf3b7a71c",
+  "port": 64745,
+  "log_path": null,
+  "client_timeout_s": 6.0,
+  "popen_pid": 33720,
+  "ready": true,
+  "pid_route": {
+    "path": "/pid",
+    "status": 200,
+    "seconds": 0.062,
+    "body": "{\"pid\": 52708, \"ppid\": 33720, \"marker\": \"old-3d7cf3b7a71c\"}",
+    "marker": "old-3d7cf3b7a71c"
+  },
+  "writer_pid": 52708,
+  "writer_ppid": 33720,
+  "boom": {
+    "path": "/boom",
+    "error": "ReadTimeout",
+    "seconds": 6.063
+  },
+  "explode": {
+    "path": "/explode",
+    "error": "ReadTimeout",
+    "seconds": 6.094
+  },
+  "log_source": "pipe-after-kill",
+  "log_bytes": 0,
+  "log_has_boom_marker": false,
+  "log_has_traceback": false,
+  "log_head": "",
+  "problems": [
+    "[旧世界] boom：客户端没拿到响应（ReadTimeout，6.063s）—— 服务端被堵在写日志上",
+    "[旧世界] explode：客户端没拿到响应（ReadTimeout，6.094s）—— 服务端被堵在写日志上",
+    "[旧世界] 日志为空（0 字节）—— 失败现场没有留下来"
+  ],
+  "verdict": "red"
+}

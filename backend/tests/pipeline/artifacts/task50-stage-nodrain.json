@@ -1,0 +1,39 @@
+{
+  "task": "task-50",
+  "kind": "分步探针：/boom 卡在哪一步",
+  "big_chars": 30000,
+  "drain": false,
+  "marker": "stage-3b5c04c0e0fb",
+  "popen_pid": 32688,
+  "port": 58386,
+  "ready": true,
+  "pid_before": {
+    "status": 200,
+    "seconds": 0.078,
+    "body": "{\"pid\": 24948, \"ppid\": 32688, \"marker\": \"stage-3b5c04c0e0fb\"}"
+  },
+  "boom": {
+    "error": "ReadTimeout",
+    "seconds": 8.125
+  },
+  "pid_after_timeout": {
+    "error": "ReadTimeout",
+    "seconds": 5.079
+  },
+  "drained": {
+    "first_read_bytes": 30054,
+    "bytes": 30105,
+    "boom_line_complete": false,
+    "has_after_print": true,
+    "has_after_response": false,
+    "line_count": 2,
+    "head": "BOOM-LINE marker=stage-3b5c04c0e0fb pid=24948 payload=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "tail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\r\nAFTER-PRINT marker=stage-3b5c04c0e0fb pid=24948\r\n"
+  },
+  "pid_after_drain": {
+    "status": 200,
+    "seconds": 0.078,
+    "body": "{\"pid\": 24948, \"ppid\": 32688, \"marker\": \"stage-3b5c04c0e0fb\"}"
+  },
+  "process_alive_after_drain": true
+}

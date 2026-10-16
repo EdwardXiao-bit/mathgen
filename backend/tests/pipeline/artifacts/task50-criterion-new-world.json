@@ -1,0 +1,36 @@
+{
+  "world": "new-file-redirect",
+  "how": "boot_uvicorn(log_path=task50-600a9b7a9f.log)",
+  "marker": "new-e9601734addb",
+  "port": 49849,
+  "log_path": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\pipeline\\artifacts\\task50-600a9b7a9f.log",
+  "client_timeout_s": 6.0,
+  "popen_pid": 43184,
+  "ready": true,
+  "pid_route": {
+    "path": "/pid",
+    "status": 200,
+    "seconds": 0.063,
+    "body": "{\"pid\": 32160, \"ppid\": 43184, \"marker\": \"new-e9601734addb\"}",
+    "marker": "new-e9601734addb"
+  },
+  "writer_pid": 32160,
+  "writer_ppid": 43184,
+  "boom": {
+    "path": "/boom",
+    "status": 200,
+    "seconds": 0.078
+  },
+  "explode": {
+    "path": "/explode",
+    "status": 500,
+    "seconds": 0.078
+  },
+  "log_source": "file",
+  "log_bytes": 38933,
+  "log_has_boom_marker": true,
+  "log_has_traceback": true,
+  "log_head": "BOOM-LINE marker=new-e9601734addb pid=32160 payload=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "problems": [],
+  "verdict": "green"
+}

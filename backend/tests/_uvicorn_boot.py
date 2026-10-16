@@ -27,6 +27,27 @@
 无条件设了 `SO_REUSEADDR`**；Windows 的 `SO_REUSEADDR` 没有 Unix 那种共享语义，
 于是「已被占用」被翻译成了「访问权限不允许」。
 
+## task-50：子进程的输出去哪（PIPE → **文件**）
+
+原先这里用 `Popen(..., stdout=PIPE, stderr=STDOUT)` 起 uvicorn，而**没有任何人读那段管道**。
+服务端一波比管道缓冲更大的输出（一次真实异常 traceback 实测 8697 字节；本机也实测过 ~30KB 的
+大批日志）会把 uvicorn 的**事件循环线程堵在 `write()` 上**：已经排好队的响应再也刷不出去，
+新连接也不再被 accept。观察者看到的是「客户端 `ReadTimeout` + 收尾时日志 0 字节」——
+**真实故障被伪装成环境问题**。
+
+判别实验（`backend/tests/pipeline/artifacts/task50_stage_probe.py`）：三段 STAGE 标记
+（`BOOM-LINE` → `AFTER-PRINT` → `AFTER-RESPONSE`）全部写进了管道，客户端仍然超时；而把管道
+**读干之后同一秒服务就恢复**（`/pid` → 200，0.078 s）。所以「有没有人读」是决定性的。
+
+修法选**重定向到文件**，不是加读者线程，理由：
+
+* 文件不会满，`write()` 永不阻塞 —— 从机制上消除，而不是靠「读者追得上」；
+* 线程只搬运不持久：`terminate()` 时管道里剩的字节会被系统丢掉（**这正是 0 字节日志的来源**），
+  文件里的字节留得住，失败现场事后仍可读；
+* 没调 `drain` 的套件（大多数）同样安全 —— 线程方案要求每个调用点都记得启动与停掉；
+* 代价是磁盘：每次尝试一份日志，落在仓库内 `.tmp-uvicorn-logs/`（随 `.tmp-*` 忽略）。
+  极端情形（输出大到写满磁盘）本设施仍然看不见，见 task-50 报告 §7。
+
 ## 本模块的两条纪律（V11：判据要对两种世界给出不同结论）
 
 1. `looks_like_bind_failure(output)` **按证据**判「是不是 bind 失败」——
@@ -37,14 +58,22 @@
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 import socket
 
+#: 仓库根（`backend/tests/_uvicorn_boot.py` → 上三级）。
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+#: 没指定 `log_path`/`log_dir` 时，子进程日志落在这里（`.tmp-*` 已 gitignore）。
+DEFAULT_LOG_DIR = os.path.join(REPO_ROOT, ".tmp-uvicorn-logs")
+
 __all__ = [
-    "BIND_FAILURE_HINT", "BIND_FAILURE_MARKERS", "MAX_BOOT_ATTEMPTS", "UvicornBootError",
+    "BIND_FAILURE_HINT", "BIND_FAILURE_MARKERS", "DEFAULT_LOG_DIR", "MAX_BOOT_ATTEMPTS",
+    "REPO_ROOT", "UvicornBootError",
     "boot_uvicorn", "describe_bind_failure", "free_port", "http_ready",
-    "looks_like_bind_failure", "probe_free_port",
+    "looks_like_bind_failure", "probe_free_port", "read_server_log",
 ]
 
 #: 默认重试上限（第一次 + 最多 3 次换端口重试）
@@ -132,15 +161,33 @@ def http_ready(port: int, path: str = "/api/papers", host: str = "127.0.0.1",
         return False
 
 
-def _drain(process) -> str:
-    """把子进程留下的输出读干（调用前进程必须已退出，否则会阻塞）。"""
-    stream = getattr(process, "stdout", None)
-    if not stream:
+def read_server_log(log_path: str | None) -> str:
+    """读回子进程写下的日志（不存在/读不了就是空串）。"""
+    if not log_path or not os.path.exists(log_path):
         return ""
     try:
-        return stream.read() or ""
-    except (OSError, ValueError):
+        with open(log_path, "r", encoding="utf-8", errors="replace") as handle:
+            return handle.read()
+    except OSError:
         return ""
+
+
+def _resolve_log_path(log_path: str | None, log_dir: str | None,
+                      port: int, index: int) -> str:
+    """定这次尝试的日志文件。
+
+    给了固定 `log_path` 时：第 1 次用它，之后的重试加 `.attemptN` 后缀（**不覆盖**上一次的
+    证据）；没给就按端口 + 序号在 `log_dir`（默认 `DEFAULT_LOG_DIR`）下新建一份。
+    一律以 `"w"` 打开 —— 撞上同名旧文件也不会把上一次运行的日志当成这一次的。
+    """
+    if log_path:
+        if index == 0:
+            return log_path
+        stem, ext = os.path.splitext(log_path)
+        return f"{stem}.attempt{index + 1}{ext}"
+    directory = log_dir or DEFAULT_LOG_DIR
+    os.makedirs(directory, exist_ok=True)
+    return os.path.join(directory, f"uvicorn-{port}-{index + 1}.log")
 
 
 def _reap(process, *, kill: bool = False) -> None:
@@ -161,17 +208,26 @@ def _reap(process, *, kill: bool = False) -> None:
 
 
 def _one_attempt(command_for_port, port: int, *, cwd, env, is_ready, timeout: float,
-                 popen, sleep, monotonic) -> tuple[object, str, str]:
+                 log_path: str, popen, sleep, monotonic) -> tuple[object, str, str]:
     """跑一次尝试。返回 `(进程, 原始输出, 结果)`，结果 ∈ `{"ready", "bind-failure",
-    "early-exit", "timeout"}`。**失败时进程已被收掉**（不会泄漏）。"""
-    process = popen(
-        command_for_port(port), cwd=cwd, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, encoding="utf-8", errors="replace")
+    "early-exit", "timeout"}`。**失败时进程已被收掉**（不会泄漏）。
+
+    子进程的 stdout/stderr 一律落进 `log_path`（**文件**），不留在管道里 —— 见模块
+    docstring「task-50」：没人读的管道会把服务端堵死。文件句柄在启动后**立刻在父进程侧关掉**，
+    子进程持有自己的那份句柄继续写，所以关掉不会截断日志（这正是文件方案比 PIPE 可靠的地方：
+    `terminate()` 之后日志还在）。
+    """
+    directory = os.path.dirname(os.path.abspath(log_path))
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(log_path, "w", encoding="utf-8", errors="replace", newline="") as handle:
+        process = popen(
+            command_for_port(port), cwd=cwd, env=env,
+            stdout=handle, stderr=subprocess.STDOUT)
     deadline = monotonic() + timeout
     while monotonic() < deadline:
         if process.poll() is not None:
-            output = _drain(process)
+            output = read_server_log(log_path)
             outcome = "bind-failure" if looks_like_bind_failure(output) else "early-exit"
             _reap(process)
             return process, output, outcome
@@ -183,12 +239,13 @@ def _one_attempt(command_for_port, port: int, *, cwd, env, is_ready, timeout: fl
         sleep(0.3)
     # 超时且进程还活着：bind 失败会立刻退出，所以这**不是**端口竞争 → 不重试。
     _reap(process, kill=True)
-    return process, _drain(process), "timeout"
+    return process, read_server_log(log_path), "timeout"
 
 
 def boot_uvicorn(command_for_port, *, cwd, env, is_ready=None,
                  host: str = "127.0.0.1", timeout: float = 40.0,
                  max_attempts: int = MAX_BOOT_ATTEMPTS, first_port: int | None = None,
+                 log_path: str | None = None, log_dir: str | None = None,
                  popen=subprocess.Popen, sleep=time.sleep, monotonic=time.monotonic):
     """起一个 uvicorn：**bind 失败就换端口重试（有限次）**，其它失败立刻原样抛出。
 
@@ -196,18 +253,23 @@ def boot_uvicorn(command_for_port, *, cwd, env, is_ready=None,
     * `is_ready(port) -> bool`：就绪判据，默认 `http_ready`（GET `/api/papers` == 200）。
     * `first_port`：**只给负对照用** —— 把第一次尝试强制指向这个（已被占住的）端口，
       用来复现 `free_port()` 探测后被抢走的竞态。默认为 `None`（每次都由内核分配）。
+    * `log_path` / `log_dir`：子进程 stdout+stderr 落到哪个文件（默认 `DEFAULT_LOG_DIR`）。
+      给了 `log_path` 的重试会写 `.attemptN` 后缀，不会覆盖上一次的证据。
+      调用方要读日志就用 `attempts[-1]["log_path"]` 或 `read_server_log(...)`。
 
-    返回 `(process, port, attempts)`；`attempts` 含每次的端口、结果与原始输出。
+    返回 `(process, port, attempts)`；`attempts` 含每次的端口、结果、原始输出**与日志路径**。
     失败抛 `UvicornBootError`（`AssertionError` 子类，`port_race` 标明是否已判定为端口竞争）。
     """
     attempts: list[dict] = []
     for index in range(max(1, max_attempts)):
         port = first_port if (index == 0 and first_port) else probe_free_port(host)
+        attempt_log = _resolve_log_path(log_path, log_dir, port, index)
         process, output, outcome = _one_attempt(
             command_for_port, port, cwd=cwd, env=env,
             is_ready=is_ready or http_ready, timeout=timeout,
-            popen=popen, sleep=sleep, monotonic=monotonic)
-        attempts.append({"port": port, "outcome": outcome, "output": output})
+            log_path=attempt_log, popen=popen, sleep=sleep, monotonic=monotonic)
+        attempts.append({"port": port, "outcome": outcome, "output": output,
+                         "log_path": attempt_log})
         if outcome == "ready":
             return process, port, attempts
         if outcome != "bind-failure":

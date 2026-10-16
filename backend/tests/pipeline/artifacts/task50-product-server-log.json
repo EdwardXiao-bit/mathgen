@@ -1,0 +1,8 @@
+{
+  "server_log_path": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\e2e_m4\\artifacts\\server-1175e86f0b.log",
+  "stdout_is_pipe": false,
+  "live_bytes": 322,
+  "after_termination_bytes": 322,
+  "has_startup_banner": true,
+  "head": "INFO:     Started server process [9492]\nINFO:     Waiting for application startup.\nINFO:     Application startup complete.\nINFO:     Uvicorn running on http://127.0.0.1:62420 (Press CTRL+C to quit)\nIN"
+}

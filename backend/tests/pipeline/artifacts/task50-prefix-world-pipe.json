@@ -1,0 +1,55 @@
+{
+  "task": "task-50",
+  "world": "pipe",
+  "marker": "task50-d31b1b7a75d544c2a870d885111ecba7",
+  "python": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Scripts\\python.exe",
+  "client_timeout_s": 12.0,
+  "big_chars": "30000",
+  "trace_chars": "8000",
+  "boot_uvicorn_supports_log_path": false,
+  "boot": {
+    "how": "Popen(stdout=PIPE, stderr=STDOUT)，全程无人读",
+    "port": 60086,
+    "popen_pid": 46496,
+    "ready": {
+      "ready": true,
+      "status": 200
+    }
+  },
+  "pid_route": {
+    "path": "/pid",
+    "seconds": 0.094,
+    "status": 200,
+    "body": "{\"pid\": 34728, \"ppid\": 46496, \"marker\": \"task50-d31b1b7a75d544c2a870d885111ecba7\"}"
+  },
+  "boom": {
+    "path": "/boom",
+    "seconds": 12.093,
+    "error": "ReadTimeout",
+    "message": "timed out"
+  },
+  "explode": {
+    "path": "/explode",
+    "seconds": 12.11,
+    "error": "ReadTimeout",
+    "message": "timed out"
+  },
+  "after_requests": {
+    "process_alive": true,
+    "stdout_is_pipe": true
+  },
+  "pipe_peek_before_kill": {
+    "bytes_readable": 30075,
+    "head": "BOOM-LINE marker=task50-d31b1b7a75d544c2a870d885111ecba7 pid=34728 payload=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "log": {
+    "source": "pipe-after-kill",
+    "path": null,
+    "bytes": 1,
+    "marker_present": false,
+    "traceback_present": false,
+    "head": "\n",
+    "tail": "\n"
+  },
+  "port_still_open_after_kill": false
+}

@@ -1,0 +1,63 @@
+{
+  "task": "task-50",
+  "world": "boot",
+  "marker": "task50-e90828e4aa694208a91d066c48138ddf",
+  "python": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\.venv\\Scripts\\python.exe",
+  "client_timeout_s": 12.0,
+  "big_chars": "30000",
+  "trace_chars": "8000",
+  "boot_uvicorn_supports_log_path": true,
+  "boot": {
+    "how": "boot_uvicorn(log_path=…)",
+    "port": 64680,
+    "popen_pid": 24904,
+    "stdout_is_pipe": false,
+    "attempts": [
+      {
+        "port": 64680,
+        "outcome": "ready",
+        "log_path": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\pipeline\\artifacts\\task50-boot-server.log"
+      }
+    ],
+    "ready": {
+      "ready": true,
+      "status": 200
+    }
+  },
+  "pid_route": {
+    "path": "/pid",
+    "seconds": 0.11,
+    "status": 200,
+    "body": "{\"pid\": 13788, \"ppid\": 24904, \"marker\": \"task50-e90828e4aa694208a91d066c48138ddf\"}"
+  },
+  "boom": {
+    "path": "/boom",
+    "seconds": 0.093,
+    "status": 200,
+    "body": "{\"ok\": true, \"marker\": \"task50-e90828e4aa694208a91d066c48138ddf\", \"pid\": 13788}"
+  },
+  "explode": {
+    "path": "/explode",
+    "seconds": 0.094,
+    "status": 500,
+    "body": "Internal Server Error"
+  },
+  "after_requests": {
+    "process_alive": true,
+    "stdout_is_pipe": false
+  },
+  "pipe_peek_before_kill": {
+    "bytes_readable": null,
+    "note": "stdout 不是管道（新设施：已重定向到文件）"
+  },
+  "log": {
+    "source": "file",
+    "path": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\pipeline\\artifacts\\task50-boot-server.log",
+    "bytes": 39025,
+    "marker_present": true,
+    "traceback_present": true,
+    "head": "BOOM-LINE marker=task50-e90828e4aa694208a91d066c48138ddf pid=13788 payload=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "tail": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\n"
+  },
+  "port_still_open_after_kill": false
+}

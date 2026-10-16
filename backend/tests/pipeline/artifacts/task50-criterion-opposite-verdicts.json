@@ -1,0 +1,76 @@
+{
+  "old": {
+    "world": "old-pipe-no-reader",
+    "how": "Popen(stdout=PIPE, stderr=STDOUT)，全程无人读",
+    "marker": "old-c8f26a545519",
+    "port": 49221,
+    "log_path": null,
+    "client_timeout_s": 6.0,
+    "popen_pid": 42824,
+    "ready": true,
+    "pid_route": {
+      "path": "/pid",
+      "status": 200,
+      "seconds": 0.079,
+      "body": "{\"pid\": 40176, \"ppid\": 42824, \"marker\": \"old-c8f26a545519\"}",
+      "marker": "old-c8f26a545519"
+    },
+    "writer_pid": 40176,
+    "writer_ppid": 42824,
+    "boom": {
+      "path": "/boom",
+      "error": "ReadTimeout",
+      "seconds": 6.062
+    },
+    "explode": {
+      "path": "/explode",
+      "error": "ReadTimeout",
+      "seconds": 6.156
+    },
+    "log_source": "pipe-after-kill",
+    "log_bytes": 0,
+    "log_has_boom_marker": false,
+    "log_has_traceback": false,
+    "log_head": "",
+    "problems": [
+      "[旧世界] boom：客户端没拿到响应（ReadTimeout，6.062s）—— 服务端被堵在写日志上",
+      "[旧世界] explode：客户端没拿到响应（ReadTimeout，6.156s）—— 服务端被堵在写日志上",
+      "[旧世界] 日志为空（0 字节）—— 失败现场没有留下来"
+    ]
+  },
+  "new": {
+    "world": "new-file-redirect",
+    "how": "boot_uvicorn(log_path=task50-6377dbc2ab.log)",
+    "marker": "new-d7d635f468c6",
+    "port": 62462,
+    "log_path": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\pipeline\\artifacts\\task50-6377dbc2ab.log",
+    "client_timeout_s": 6.0,
+    "popen_pid": 25016,
+    "ready": true,
+    "pid_route": {
+      "path": "/pid",
+      "status": 200,
+      "seconds": 0.078,
+      "body": "{\"pid\": 49576, \"ppid\": 25016, \"marker\": \"new-d7d635f468c6\"}",
+      "marker": "new-d7d635f468c6"
+    },
+    "writer_pid": 49576,
+    "writer_ppid": 25016,
+    "boom": {
+      "path": "/boom",
+      "status": 200,
+      "seconds": 0.094
+    },
+    "explode": {
+      "path": "/explode",
+      "status": 500,
+      "seconds": 0.078
+    },
+    "log_source": "file",
+    "log_bytes": 38933,
+    "log_has_boom_marker": true,
+    "log_has_traceback": true,
+    "log_head": "BOOM-LINE marker=new-d7d635f468c6 pid=49576 payload=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "problems": []
+  }
+}

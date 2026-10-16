@@ -1,0 +1,70 @@
+{
+  "old": {
+    "world": "old-pipe-no-reader",
+    "how": "Popen(stdout=PIPE, stderr=STDOUT)，全程无人读",
+    "marker": "old-94814e7b6c1f",
+    "port": 49871,
+    "log_path": null,
+    "client_timeout_s": 6.0,
+    "popen_pid": 17552,
+    "ready": true,
+    "pid_route": {
+      "path": "/pid",
+      "status": 200,
+      "seconds": 0.062,
+      "body": "{\"pid\": 11156, \"ppid\": 17552, \"marker\": \"old-94814e7b6c1f\"}",
+      "marker": "old-94814e7b6c1f"
+    },
+    "writer_pid": 11156,
+    "writer_ppid": 17552,
+    "boom": {
+      "path": "/boom",
+      "error": "ReadTimeout",
+      "seconds": 6.079
+    },
+    "explode": {
+      "path": "/explode",
+      "error": "ReadTimeout",
+      "seconds": 6.109
+    },
+    "log_source": "pipe-after-kill",
+    "log_bytes": 0,
+    "log_has_boom_marker": false,
+    "log_has_traceback": false,
+    "log_head": ""
+  },
+  "new": {
+    "world": "new-file-redirect",
+    "how": "boot_uvicorn(log_path=task50-attribution.log)",
+    "marker": "new-5300ee8d62e1",
+    "port": 64725,
+    "log_path": "C:\\Users\\Ed\\dsh_workspace\\mathgen\\backend\\tests\\pipeline\\artifacts\\task50-attribution.log",
+    "client_timeout_s": 6.0,
+    "popen_pid": 25404,
+    "ready": true,
+    "pid_route": {
+      "path": "/pid",
+      "status": 200,
+      "seconds": 0.062,
+      "body": "{\"pid\": 16140, \"ppid\": 25404, \"marker\": \"new-5300ee8d62e1\"}",
+      "marker": "new-5300ee8d62e1"
+    },
+    "writer_pid": 16140,
+    "writer_ppid": 25404,
+    "boom": {
+      "path": "/boom",
+      "status": 200,
+      "seconds": 0.079
+    },
+    "explode": {
+      "path": "/explode",
+      "status": 500,
+      "seconds": 0.093
+    },
+    "log_source": "file",
+    "log_bytes": 38933,
+    "log_has_boom_marker": true,
+    "log_has_traceback": true,
+    "log_head": "BOOM-LINE marker=new-5300ee8d62e1 pid=16140 payload=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+}

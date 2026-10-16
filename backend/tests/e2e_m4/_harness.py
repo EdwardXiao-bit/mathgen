@@ -36,7 +36,7 @@ os.makedirs(ARTIFACTS, exist_ok=True)
 if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
 
-from tests._uvicorn_boot import boot_uvicorn, free_port  # noqa: E402,F401
+from tests._uvicorn_boot import boot_uvicorn, free_port, read_server_log  # noqa: E402,F401
 from tests.e2e_m2._browser import browser_session  # noqa: E402
 
 __all__ = [
@@ -44,7 +44,8 @@ __all__ = [
     "VPY", "WIDTHS", "AppClient", "UiServer", "aggregate_hash", "boot_uvicorn",
     "browser_session",
     "collect_page_errors", "degraded_dist", "dist_freshness", "dump_evidence",
-    "free_port", "lan_ip_candidates", "mobile_context", "record_evidence", "run_paper_flow",
+    "free_port", "lan_ip_candidates", "mobile_context", "read_server_log",
+    "record_evidence", "run_paper_flow",
     "storage_block_script", "storage_is_blocked", "warm_student_page",
 ]
 
@@ -362,6 +363,10 @@ class UiServer:
     端口**不再事先用 `free_port()` 留位**（TOCTOU：探测到的端口可能在此之后被抢走，
     Windows 上表现为误导性的 `WinError 10013`）。改用 `boot_uvicorn`：bind 失败
     （有证据）就换端口重试，其它失败一次都不重试。
+
+    **服务端日志落文件、不落管道**（task-50）：管道没人读时，服务端一波大输出（traceback、
+    大批日志）会把 uvicorn 的事件循环堵在 `write()` 上，观察者看到的是「客户端超时 + 日志为空」
+    —— 真故障被伪装成环境问题。日志路径见 `server_log_path`，读它用 `read_server_log()`。
     """
 
     def __init__(self, static_dir: str | None = None, db_path: str | None = None):
@@ -371,6 +376,9 @@ class UiServer:
         self.db_path = db_path or os.path.join(
             ARTIFACTS, f"m4-{uuid.uuid4().hex[:10]}.db")
         self.process = None
+        #: 服务端 stdout+stderr 落在哪 —— 每次实例一份，互不覆盖。
+        self.server_log_path = os.path.join(
+            ARTIFACTS, f"server-{uuid.uuid4().hex[:10]}.log")
 
     def _command(self, port: int) -> list[str]:
         return [VPY, "-m", "uvicorn", "app.main:app", "--app-dir", "backend",
@@ -388,8 +396,13 @@ class UiServer:
         else:
             env.pop("MATHGEN_STATIC_DIR", None)
         self.process, self.port, self.attempts = boot_uvicorn(
-            self._command, cwd=REPO, env=env, timeout=40.0)
+            self._command, cwd=REPO, env=env, timeout=40.0,
+            log_path=self.server_log_path)
         return self
+
+    def read_server_log(self) -> str:
+        """读服务端日志（**不终止进程**）：写的是文件，所以随时可读、也读得到。"""
+        return read_server_log(self.server_log_path)
 
     def __exit__(self, *exc):
         if self.process:
