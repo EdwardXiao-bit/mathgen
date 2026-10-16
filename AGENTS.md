@@ -3,7 +3,7 @@
 面向**小学老师**的「出题 + 批改」工具：**老师端**配置题目、生成、打印、发卷、看成绩；**学生端**局域网扫码、自主练习、自动批改。
 部署形态：跑在老师本机 / 教室内网机器，**不依赖公网**（D10）。
 
-当前阶段：**需求已冻结 → 技术设计 v0.4 → M1–M6 全部完成并验收 → 正在做 M7（课程《测试文档》Word）**；系统本体功能已完备，不依赖公网。
+当前阶段：**需求已冻结 → 技术设计 v0.4 → M1–M6 全部完成并验收 → M7 课程《测试文档》已产出 → 正在做第一版发布（`v1.0.0-rc1`）**；系统本体功能已完备，不依赖公网。
 
 ## 先读什么
 
@@ -27,7 +27,8 @@
 | 协作体系 | **已建立**（`docs/03`–`07` + `PROJECT.md`） |
 | 课程提交 Word | **三份均已产出**：需求分析、技术设计、测试文档（M7，源 `docs/08-测试文档.md`） |
 | 配图 | **13 张 PNG**，见 `docs/word/figures/` |
-| 代码 | **M1–M6 全部已验收**（引擎 / 判分 / API / 卷面渲染导出 / 老师端 / 学生端 / 卷库 / 成绩 / 导出 / 单一服务托管），后端全量 **1254 用例 OK**、前端 **12 步门禁全 PASS**；下一步 M7 收口 |
+| 代码 | **M1–M6 全部已验收**（引擎 / 判分 / API / 卷面渲染导出 / 老师端 / 学生端 / 卷库 / 成绩 / 导出 / 单一服务托管），后端全量 **1254 用例 OK**、前端 **12 步门禁全 PASS** |
+| 发布 | **`v1.0.0-rc1`**：GitHub Release（wheel 内含前端产物）+ Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen` + npm 启动器 `npx mathgen` + 一键脚本。版本号**单点定义**在 `backend/app/__init__.py` 的 `__version__`，与 `backend/pyproject.toml`、`frontend/package.json`、tag 四处必须一致（CI 会拦） |
 
 ## 文档索引
 
@@ -45,6 +46,10 @@
 | `docs/08-测试文档.md` | **课程《测试文档》源文件**（M7）：测试计划、45 条用例、45 条缺陷记录、需求覆盖分析、结论与遗留问题 |
 | `docs/word/` | 课程提交 Word / PDF / 配图 |
 | `tools/` | 文档构建脚本 |
+| `README.md` | **面向使用者的入口**：四种运行方式、老师/学生流程、FAQ |
+| `CHANGELOG.md` | **对外版本变化 + 已知限制**（Keep a Changelog 格式）；发版时 CI 从这里抽对应小节当 Release 说明 |
+| `LICENSE` | MIT（`backend/LICENSE` 是它的逐字副本，给子目录构建根用） |
+| `scripts/`、`Dockerfile`、`docker-compose.yml`、`npm/`、`.github/workflows/` | **第一版发布的四种安装形态**：一键脚本 / 容器 / `npx` 启动器 / wheel |
 
 ## 红线（违反即返工）
 
@@ -61,7 +66,7 @@
 
 | 文件 | 谁可以改 |
 | --- | --- |
-| `AGENTS.md`、`docs/PROJECT.md`、`docs/00`、`docs/03`、`docs/04`、`docs/05`、`docs/07`、`README.md` | **仅 Lead** |
+| `AGENTS.md`、`docs/PROJECT.md`、`docs/00`、`docs/03`、`docs/04`、`docs/05`、`docs/07`、`README.md`、`CHANGELOG.md`、`LICENSE`、`Dockerfile`、`docker-compose.yml`、`.dockerignore`、`scripts/**`、`npm/**`、`.github/**` | **仅 Lead** |
 | `frontend/src/design/tokens.css` | **仅 Lead**（设计令牌冻结契约，D67；实现方只读） |
 | `docs/01-需求分析.md`、`docs/02-技术设计.md` | 只读；修改需申请并同步重新生成 Word |
 | `docs/06-测试方案.md` | verify |
