@@ -22,8 +22,10 @@
 ## 其他两条硬约束
 
 * **不能写系统临时目录**：本机沙箱下子进程写 `%TEMP%` 会 `PermissionError`。
-  中间文件落在仓库内 `backend/data/exports/`（`data/` 已被 `.gitignore` 忽略），
-  可用 `MATHGEN_EXPORT_TMP` 覆盖；文件名带 uuid4，并发安全，读完即删
+  中间文件落在**第一个真正可写的候选目录**里（源码树是 `backend/data/exports/`，
+  `data/` 已被 `.gitignore` 忽略；装成 wheel 后 `site-packages` 不可写，退到家目录，
+  见 `export_common.export_tmp_dir`），可用 `MATHGEN_EXPORT_TMP` 显式覆盖；
+  文件名带 uuid4，并发安全，读完即删
   （导出**成功时不产生任何日志文件**——出错原因由子进程自己写到 `error-<token>.txt`）。
 * **串行化**：同一时刻只允许一个导出子进程（一个 Chromium），进程级锁保护。
 """

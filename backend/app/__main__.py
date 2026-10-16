@@ -170,6 +170,10 @@ def main(argv: list[str] | None = None) -> int:
         data_file = resolve_data_dir(args.data_dir) / "mathgen.db"
     os.environ["MATHGEN_DB"] = str(data_file)
     data_file.parent.mkdir(parents=True, exist_ok=True)
+    # 顺手把数据**目录**也公布出去：导出通道的中间文件目录会用它
+    # （见 `app/services/export_common.export_tmp_dir`——装成 wheel 时
+    # `site-packages` 不可写，靠这个变量把中间文件落到数据目录旁边）。
+    os.environ.setdefault("MATHGEN_DATA_DIR", str(data_file.parent))
 
     # ② 前端产物
     static_dir = resolve_static_dir(args.static_dir)
