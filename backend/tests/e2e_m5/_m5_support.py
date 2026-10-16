@@ -85,7 +85,7 @@ FORBIDDEN_RENDER = ("undefined", "null", "NaN")
 def score_by_contract(total: int, correct: int) -> int:
     """独立复述 D80 的整数公式（**不调用产品代码**）。
 
-    `docs/00-决策记录.md:92`：先把 `correct` 夹进 `[0, total]`，`total == 0` 给 0，
+    `docs/00-决策记录.md:91`：先把 `correct` 夹进 `[0, total]`，`total == 0` 给 0，
     否则精确 half-up：`(clamped * 200 + total) // (2 * total)`。
     """
     if not isinstance(total, int) or not isinstance(correct, int):
