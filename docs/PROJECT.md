@@ -11,7 +11,7 @@
 | 成员 | 肖铭皓、胡宇书 |
 | 技术栈 | Python FastAPI + SQLite + React/Vite（D18） |
 | 远程仓库 | `https://github.com/EdwardXiao-bit/mathgen.git`（分支 `main`） |
-| 当前阶段 | 需求已冻结 → 技术设计 v0.4 → **M1–M7 全部完成** → 正在做 **第一版发布 `v1.0.0-rc1`**（GitHub Release + Docker 镜像 + npm 启动器 + 一键脚本）；系统本体功能已完备 |
+| 当前阶段 | 需求已冻结 → 技术设计 v0.4 → **M1–M7 全部完成** → **第一版 `v1.0.0-rc1` 已发布**（GitHub Release + Docker 镜像已上线；npm 渠道待补凭据）；系统本体功能已完备 |
 | 唯一事实来源 | [`00-决策记录.md`](00-决策记录.md) |
 
 ---
@@ -35,7 +35,7 @@
 | **课程提交** | 测试文档 Word | `docs/word/03-测试文档.docx`（源 `docs/08-测试文档.md`） | **已产出**（3 图 34 表，40 页；45 条用例 + 47 条缺陷） |
 | 代码 | 后端引擎与判分 | `backend/app/engine/`、`backend/app/grading/` | **M1 已完成**（240 用例） |
 | 代码 | 后端服务 / 渲染导出 / 前端双端 | `backend/app/`、`frontend/` | **M2–M6 已完成**（后端全量 1254 用例 OK、前端 12 步门禁全 PASS） |
-| **发行版** | 第一版 `v1.0.0-rc1` | GitHub Release（`mathgen_backend-1.0.0rc1-py3-none-any.whl`）、`ghcr.io/edwardxiao-bit/mathgen`、npm `mathgen`、`scripts/start.*` | 构建中（CI 两个 job 全绿后转 rc 完成，见 `docs/00` D82） |
+| **发行版** | 第一版 `v1.0.0-rc1`（**预发布**） | GitHub Release `v1.0.0-rc1`（`mathgen_backend-1.0.0rc1-py3-none-any.whl`，286312 B，sha256 `01e03d334f4d224ffb408157415b4873dc1c3c0b4f36fa2bd4ffde347a186472`）、`ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1`（digest `sha256:de5fdc33…`）、npm `mathgen`（**尚未发布**：本机 npm token 失效）、`scripts/start.*` | **三条已可用**：CI run **38945145652** 两个 job 全绿（容器冒烟真导出一份 **17894 字节**的 PDF）；npm 待用户补有效凭据。形态见 `docs/00` D82 |
 
 ## 3. 范围
 

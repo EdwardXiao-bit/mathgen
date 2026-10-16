@@ -23,6 +23,9 @@ data/
 coverage/
 .playwright/
 test-results/
+# setuptools / `pip wheel` 的中间产物（`backend/build/lib/app/...`）。
+# `.dockerignore` 里早就有 `build`，`.gitignore` 之前漏了 —— 打一次包就会冒出一个未跟踪目录。
+build/
 
 # 发布时把前端产物拷到这里，让 wheel 自带界面（见 .github/workflows/release.yml）。
 # 它是**构建产物**：源码树里不该有，开发时后端读的是 frontend/dist（browser/static_site 的优先序）。

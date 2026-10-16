@@ -3,7 +3,7 @@
 面向**小学老师**的「出题 + 批改」工具：**老师端**配置题目、生成、打印、发卷、看成绩；**学生端**局域网扫码、自主练习、自动批改。
 部署形态：跑在老师本机 / 教室内网机器，**不依赖公网**（D10）。
 
-当前阶段：**需求已冻结 → 技术设计 v0.4 → M1–M6 全部完成并验收 → M7 课程《测试文档》已产出 → 正在做第一版发布（`v1.0.0-rc1`）**；系统本体功能已完备，不依赖公网。
+当前阶段：**需求已冻结 → 技术设计 v0.4 → M1–M7 全部完成并验收 → 第一版 `v1.0.0-rc1` 已发布**（GitHub Release 资产与 Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1` 已上线；npm 渠道待补有效凭据）；系统本体功能已完备，不依赖公网。
 
 ## 先读什么
 
@@ -28,7 +28,7 @@
 | 课程提交 Word | **三份均已产出**：需求分析、技术设计、测试文档（M7，源 `docs/08-测试文档.md`） |
 | 配图 | **13 张 PNG**，见 `docs/word/figures/` |
 | 代码 | **M1–M6 全部已验收**（引擎 / 判分 / API / 卷面渲染导出 / 老师端 / 学生端 / 卷库 / 成绩 / 导出 / 单一服务托管），后端全量 **1254 用例 OK**、前端 **12 步门禁全 PASS** |
-| 发布 | **`v1.0.0-rc1`**：GitHub Release（wheel 内含前端产物）+ Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen` + npm 启动器 `npx mathgen` + 一键脚本。版本号**单点定义**在 `backend/app/__init__.py` 的 `__version__`，与 `backend/pyproject.toml`、`frontend/package.json`、tag 四处必须一致（CI 会拦） |
+| 发布 | **`v1.0.0-rc1`（预发布，已上线）**：GitHub Release 资产 `mathgen_backend-1.0.0rc1-py3-none-any.whl`（wheel 内含前端产物）+ Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1` + **npm 启动器 `npx mathgen`（尚未发布：本机 npm token 失效）** + 一键脚本。CI run 38945145652 两个 job 全绿，容器冒烟真导出 PDF 17894 字节。版本号**单点定义**在 `backend/app/__init__.py` 的 `__version__`，与 `backend/pyproject.toml`、`frontend/package.json`、tag 四处必须一致（CI 会拦） |
 
 ## 文档索引
 
