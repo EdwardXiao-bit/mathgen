@@ -7,15 +7,14 @@
 npx mathgen-cli@rc          # 或写死版本：npx mathgen-cli@1.0.0-rc1
 ```
 
-> **当前是预发布版（release candidate）**：它在 npm 上发在 **`rc`** 标签下，不在 `latest`，
-> 所以要用 `@rc` 或写死版本号；等正式版发布后 `npx mathgen-cli` 才会直接指向它。
+> **当前是预发布版（release candidate）**：npm 上 `rc` 与 `latest` **都指向 `1.0.0-rc1`**
+> （新包上架时 npm 把 `latest` 指到了当时唯一的版本），所以 `@rc`、`@1.0.0-rc1` 与裸写
+> `npx mathgen-cli` 拿到的是同一份；要钉住版本就用写死的那条，正式版发布时会把 `latest` 挪过去。
 >
-> **⚠ 上架前要过 npm 的人工审核（staged publishing）**：提交已被接收，但 registry 上
-> 现在只有 npm 自动放的占位版 `0.0.0-stage`，`1.0.0-rc1` 还在审核队列里 ——
-> 审核通过前上面这条命令会 404（裸写 `npx mathgen-cli` 会取到那个什么也不做的占位版）。
-> 查状态：`npm view mathgen-cli versions`；等不及可以先从
-> [GitHub Release](https://github.com/EdwardXiao-bit/mathgen/releases/tag/v1.0.0-rc1)
-> 下 wheel 或直接用 Docker 镜像。
+> **✅ 已上架并实测（2026-10-16）**：这个包名是新包，要先过 npm 的 **staged publishing 人工审核**；
+> 提交后于 18:43:24Z 通过，npm 自动放的临时占位版 `0.0.0-stage` 已被替换。**从零实测**：
+> `npx mathgen-cli@1.0.0-rc1 --version` → 从 [GitHub Release](https://github.com/EdwardXiao-bit/mathgen/releases/tag/v1.0.0-rc1)
+> 下载 wheel → 装好依赖与 Chromium → 打印 `mathgen 1.0.0rc1`。查状态：`npm view mathgen-cli versions`。
 >
 > **包名为什么不是 `mathgen`？** npm 上那个名字被判定与已有的 `math-gen` 太像（去标点后同名），
 > `npm publish` 直接 403。包名改成 `mathgen-cli`，但里面的命令仍然是 `mathgen`，

@@ -110,10 +110,9 @@ jobs:
           | npm 启动器 | `npx mathgen-cli@VER` | Node 18+ 与 Python 3.12+ |
           | pip | `pip install 下面这个 wheel`，然后 `mathgen` | Python 3.12+ |
 
-          > **npm 那条眼下还取不到**：npm 对**新包名**走 staged publishing，**上架前有人工审核**。
-          > 我们的提交已被接收，但 registry 上现在只有 npm 自动放的占位版 `0.0.0-stage`（333 字节，什么也不做），
-          > 所以 `npx mathgen-cli@VER` 会 404；裸写 `npx mathgen-cli` 反而会取到那个占位版。
-          > 查当前状态：`npm view mathgen-cli versions`。其余三条今天就能跑。
+          > npm 启动器是**新包名**，npm 对它有 staged publishing 的**人工审核**这一步；
+          > 本版本已通过审核，`rc` 与 `latest` 都指向它，所以 `npx mathgen-cli@VER` 与裸写
+          > `npx mathgen-cli` 拿到的是同一份。查已发布的版本：`npm view mathgen-cli versions`。
 
           跑起来后浏览器打开 <http://127.0.0.1:8000/teacher>；要让学生在同一局域网访问，
           用 `--host 0.0.0.0`（脚本里是 `-Lan`）并放行 8000 端口。

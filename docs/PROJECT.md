@@ -11,7 +11,7 @@
 | 成员 | 肖铭皓、胡宇书 |
 | 技术栈 | Python FastAPI + SQLite + React/Vite（D18） |
 | 远程仓库 | `https://github.com/EdwardXiao-bit/mathgen.git`（分支 `main`） |
-| 当前阶段 | 需求已冻结 → 技术设计 v0.4 → **M1–M7 全部完成** → **第一版 `v1.0.0-rc1` 已发布**（GitHub Release + Docker 镜像已上线；npm 渠道待补凭据）；系统本体功能已完备 |
+| 当前阶段 | 需求已冻结 → 技术设计 v0.4 → **M1–M8 全部完成** → **第一版 `v1.0.0-rc1` 已发布**（GitHub Release + Docker 镜像 + npm 启动器 `mathgen-cli` 三条渠道均已上线并实测）；系统本体功能已完备 |
 | 唯一事实来源 | [`00-决策记录.md`](00-决策记录.md) |
 
 ---
@@ -35,7 +35,7 @@
 | **课程提交** | 测试文档 Word | `docs/word/03-测试文档.docx`（源 `docs/08-测试文档.md`） | **已产出**（3 图 34 表，40 页；45 条用例 + 47 条缺陷） |
 | 代码 | 后端引擎与判分 | `backend/app/engine/`、`backend/app/grading/` | **M1 已完成**（240 用例） |
 | 代码 | 后端服务 / 渲染导出 / 前端双端 | `backend/app/`、`frontend/` | **M2–M6 已完成**（后端全量 **1275** 用例 OK、前端 12 步门禁全 PASS；M6 验收跑时为 1254，之后随导出目录与发行说明两处判据增至 1275） |
-| **发行版** | 第一版 `v1.0.0-rc1`（**预发布**） | GitHub Release `v1.0.0-rc1`（`mathgen_backend-1.0.0rc1-py3-none-any.whl`，286312 B，sha256 `01e03d334f4d224ffb408157415b4873dc1c3c0b4f36fa2bd4ffde347a186472`）、`ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1`（digest `sha256:de5fdc33…`）、npm `mathgen-cli`（包名不叫 `mathgen`：被 npm 判为与 `math-gen` 太像而 403；**已提交、正在 npm 人工审核**，registry 上眼下只有占位版 `0.0.0-stage`）、`scripts/start.*` | **三条已可用、npm 在审核**：CI run **38945145652** 两个 job 全绿（容器冒烟真导出一份 **17894 字节**的 PDF）；`npx mathgen-cli@rc` 要等 npm 审核通过，进度见 `docs/05` T-M8-08。形态见 `docs/00` D82 |
+| **发行版** | 第一版 `v1.0.0-rc1`（**预发布**） | GitHub Release `v1.0.0-rc1`（`mathgen_backend-1.0.0rc1-py3-none-any.whl`，286312 B，sha256 `01e03d334f4d224ffb408157415b4873dc1c3c0b4f36fa2bd4ffde347a186472`）、`ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1`（digest `sha256:de5fdc33…`）、npm `mathgen-cli@1.0.0-rc1`（包名不叫 `mathgen`：被 npm 判为与 `math-gen` 太像而 403；新包名要过 staged publishing 人工审核，**2026-10-16T18:43:24Z 已通过**，`rc` 与 `latest` 都指向它）、`scripts/start.*` | **四条渠道全部可用并逐项实测**：CI run **38945145652** 两个 job 全绿（容器冒烟真导出一份 **17894 字节**的 PDF）；`npx mathgen-cli@1.0.0-rc1 --version` 从零实测打印 `mathgen 1.0.0rc1`。形态见 `docs/00` D82，验收证据见 `docs/05` T-M8-08 |
 
 ## 3. 范围
 
@@ -70,7 +70,7 @@
 | **M5** | 成绩：列表、逐题明细、CSV/Excel 导出 | FR-T11–T13 通过 | **已完成**（用户 2026-10-16 确认；后端全树 1117 用例 OK；独立验收 50 条判据；提交 `89b271b`/`ed1ad51` 已推送） |
 | **M6** | 打磨：排版样张定稿、并发压测、离线验证 | NFR-5 / NFR-9 通过 | **已完成**（2026-10-16；后端全树 1254 用例 OK、前端 12 步门禁全 PASS；提交 `0185e02`…`e041adb` 已推送） |
 | **M7** | 课程测试文档（Word） | 三份交付物齐备 | **已完成**（2026-10-16；`docs/08-测试文档.md` → 03 Word 40 页 / 3 图 / 34 表，45 条用例 + 47 条缺陷；提交 `54721bb`…`910fedf` 已推送） |
-| **M8** | 第一版发布：打包与四种安装形态 | 用户能装上并跑起来 | **进行中**（`v1.0.0-rc1`：GitHub Release 资产 + GHCR 镜像 + 一键脚本**已上线并逐项验证**；`npx mathgen-cli` 已提交、**正在 npm 人工审核**，审核通过前会 404；任务卡 T-M8-x 见 `docs/05`） |
+| **M8** | 第一版发布：打包与四种安装形态 | 用户能装上并跑起来 | **已完成**（2026-10-17；四条渠道全部上线并逐项实测：一键脚本 / wheel 资产 / GHCR 镜像 / npm `mathgen-cli@1.0.0-rc1`；任务卡 T-M8-x 见 `docs/05`） |
 
 > 任务级分解、依赖与写域见 [`05-任务板.md`](05-任务板.md)。
 
