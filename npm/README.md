@@ -10,6 +10,13 @@ npx mathgen-cli@rc          # 或写死版本：npx mathgen-cli@1.0.0-rc1
 > **当前是预发布版（release candidate）**：它在 npm 上发在 **`rc`** 标签下，不在 `latest`，
 > 所以要用 `@rc` 或写死版本号；等正式版发布后 `npx mathgen-cli` 才会直接指向它。
 >
+> **⚠ 上架前要过 npm 的人工审核（staged publishing）**：提交已被接收，但 registry 上
+> 现在只有 npm 自动放的占位版 `0.0.0-stage`，`1.0.0-rc1` 还在审核队列里 ——
+> 审核通过前上面这条命令会 404（裸写 `npx mathgen-cli` 会取到那个什么也不做的占位版）。
+> 查状态：`npm view mathgen-cli versions`；等不及可以先从
+> [GitHub Release](https://github.com/EdwardXiao-bit/mathgen/releases/tag/v1.0.0-rc1)
+> 下 wheel 或直接用 Docker 镜像。
+>
 > **包名为什么不是 `mathgen`？** npm 上那个名字被判定与已有的 `math-gen` 太像（去标点后同名），
 > `npm publish` 直接 403。包名改成 `mathgen-cli`，但里面的命令仍然是 `mathgen`，
 > 用法与仓库 README 里写的完全一样。

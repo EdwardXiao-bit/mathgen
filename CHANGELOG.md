@@ -30,8 +30,11 @@ npm 启动器、GitHub Release），**没有新增任何功能**。
   - npm 启动器 `mathgen-cli`：`npx mathgen-cli@rc`（等价 `npx mathgen-cli@1.0.0-rc1`；预发布版发在 **`rc`** 标签下，
     `latest` 留给正式版。包名不叫 `mathgen` 是因为 npm 判定它与已有的 `math-gen` 太像，
     `npm publish mathgen` 被 403 挡住；里面转交的命令仍然是 `mathgen`）
+    —— **这条渠道上架前要过 npm 的人工审核**：提交已被接收，registry 上目前只有 npm 自动放的占位版
+    `mathgen-cli@0.0.0-stage`（2 个文件 / 333 字节，正文写着「awaiting a staged release」），
+    `1.0.0-rc1` 仍在审核队列里，所以 `npx mathgen-cli@rc` 眼下会 404。查状态：`npm view mathgen-cli versions`
   - `pip install ./backend` 后可用 `mathgen` 命令
-- 工程基座：后端 1254 个用例、前端 12 步门禁；契约冻结（`docs/04`）与文档—代码对账判据。
+- 工程基座：后端 1275 个用例、前端 12 步门禁；契约冻结（`docs/04`）与文档—代码对账判据。
 
 ### 已知限制
 - 打印保护是**两层**：主机制是卷面 CSS 的 `break-inside: avoid`（三条路径共用同一份 HTML），

@@ -46,7 +46,7 @@
 | --- | --- | --- |
 | **一键脚本** | 双击就跑，脚本自己建虚拟环境、装依赖、下 Chromium | Python 3.12+ |
 | **Docker** | 一条 `docker run`，镜像里连 Chromium 都带了 | Docker |
-| **npm 启动器** | `npx mathgen-cli@rc`，自动装到 `~/.mathgen` | Node 18+ 与 Python 3.12+ |
+| **npm 启动器** | `npx mathgen-cli@rc`，自动装到 `~/.mathgen` —— **正在 npm 人工审核中**，审核通过前会 404 | Node 18+ 与 Python 3.12+ |
 | **pip** | 下载 wheel 装上，用 `mathgen` 命令 | Python 3.12+ |
 
 不管哪种方式，跑起来之后都是：**浏览器打开 <http://127.0.0.1:8000/teacher>**。
@@ -108,6 +108,15 @@ npx mathgen-cli@1.0.0-rc1
 > `latest` 要等正式版。**包名不叫 `mathgen`**：npm 判定它与早已存在的 `math-gen` 太像，
 > `npm publish mathgen` 直接 403，所以包名是 `mathgen-cli` —— 但它里面转交的命令仍是 `mathgen`。
 > 四条渠道的现状见 [`CHANGELOG.md`](CHANGELOG.md)。
+>
+> **⚠ 这条渠道还没生效（2026-10-16）**：npm 对**新包名**走的是
+> [staged publishing](https://docs.npmjs.com/staged-publishing)，**上架前有人工审核**。我们的提交已被接收，
+> registry 上现在只有 npm 自动放的占位版 `mathgen-cli@0.0.0-stage`（2 个文件 / 333 字节，
+> 正文写着「awaiting a staged release」），`1.0.0-rc1` **还在审核队列里** ——
+> 在此之前 `npx mathgen-cli@rc` 与 `npx mathgen-cli@1.0.0-rc1` 都会 404，
+> 裸写 `npx mathgen-cli` 更会取到那个什么也不做的占位版。
+> 查当前状态：`npm view mathgen-cli versions`。等不及就用上面三种方式（一键脚本 / Docker / wheel），
+> 它们**今天就能跑**。
 
 它会：找一个 Python 3.12+ → 在 `~/.mathgen/npm-1.0.0-rc1/venv` 建**独立**虚拟环境 →
 从 GitHub Release 装后端 wheel（**wheel 里自带前端产物**）→ 需要时下 Chromium → 启动。
@@ -187,7 +196,7 @@ mathgen                                   # 启动
 - 成绩明细、逐题正确率、导出
 
 **工程**
-- 后端 1254 个用例、前端 12 步门禁，全部通过
+- 后端 1275 个用例、前端 12 步门禁，全部通过
 - 接口契约冻结在 `docs/04`，有「文档 ↔ 实现」的机器对账判据
 - 单一服务托管前后端，一个进程一个端口，没有额外组件
 
