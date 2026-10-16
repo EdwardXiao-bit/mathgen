@@ -1,0 +1,39 @@
+{
+  "name": "mathgen",
+  "version": "1.0.0-rc1",
+  "description": "小学四则运算练习题生成与批改系统 —— 一条命令在本机拉起老师端与学生端",
+  "bin": {
+    "mathgen": "cli.js"
+  },
+  "files": [
+    "cli.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/EdwardXiao-bit/mathgen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EdwardXiao-bit/mathgen.git"
+  },
+  "bugs": {
+    "url": "https://github.com/EdwardXiao-bit/mathgen/issues"
+  },
+  "keywords": [
+    "math",
+    "arithmetic",
+    "education",
+    "teacher",
+    "worksheet",
+    "primary-school",
+    "四则运算",
+    "口算"
+  ]
+}
