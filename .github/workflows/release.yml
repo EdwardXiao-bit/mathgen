@@ -92,9 +92,12 @@ jobs:
           text = open("CHANGELOG.md", encoding="utf-8").read()
           m = re.search(rf"^## \[{re.escape(want)}\].*?$(.*?)(?=^## \[|\Z)", text, re.S | re.M)
           body = m.group(0).strip() if m else f"## {want}\n\n（CHANGELOG.md 里没有这一节）"
-          # 下面两处**都不能直接用 tag 名**（GITHUB_REF_NAME = v1.0.0-rc1）：
+          # 下面三处都**不能照抄人写的样子**：
           #   · 镜像标签去 v（与 docker push 那边的 ${GITHUB_REF_NAME#v} 必须一致）
           #   · npm 版本号本来就没有 v 前缀（写成 @v1.0.0-rc1 会 404，第一版发布时真的写错过）
+          #   · npm 的**包名是 mathgen-cli**，不是 `mathgen`：npm 判定 `mathgen` 与早已存在的
+          #     `math-gen` 太像（去标点后同名），`npm publish mathgen` 被 403 挡住；
+          #     而包里的命令仍然叫 `mathgen`（`bin` 没变），所以命令要写 `npx mathgen-cli@VER`
           install = """
           ---
 
@@ -104,8 +107,13 @@ jobs:
           | --- | --- | --- |
           | 源码一键脚本 | `scripts\\start.ps1`（Windows）/ `./scripts/start.sh`（macOS / Linux） | Python 3.12+ |
           | Docker | `docker run --rm -p 8000:8000 -v mathgen-data:/data ghcr.io/edwardxiao-bit/mathgen:VER` | Docker（目前只有 `linux/amd64`） |
-          | npm 启动器 | `npx mathgen@VER` | Node 18+ 与 Python 3.12+ |
+          | npm 启动器 | `npx mathgen-cli@VER` | Node 18+ 与 Python 3.12+ |
           | pip | `pip install 下面这个 wheel`，然后 `mathgen` | Python 3.12+ |
+
+          > **npm 那条眼下还取不到**：npm 对**新包名**走 staged publishing，**上架前有人工审核**。
+          > 我们的提交已被接收，但 registry 上现在只有 npm 自动放的占位版 `0.0.0-stage`（333 字节，什么也不做），
+          > 所以 `npx mathgen-cli@VER` 会 404；裸写 `npx mathgen-cli` 反而会取到那个占位版。
+          > 查当前状态：`npm view mathgen-cli versions`。其余三条今天就能跑。
 
           跑起来后浏览器打开 <http://127.0.0.1:8000/teacher>；要让学生在同一局域网访问，
           用 `--host 0.0.0.0`（脚本里是 `-Lan`）并放行 8000 端口。
