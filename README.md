@@ -5,9 +5,11 @@
 
 [![release](https://img.shields.io/github/v/release/EdwardXiao-bit/mathgen?include_prereleases&label=release)](https://github.com/EdwardXiao-bit/mathgen/releases)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/mathgen-cli?label=npm)](https://www.npmjs.com/package/mathgen-cli)
 
-> **当前版本 v1.0.0-rc1**：功能已经做完并逐项验收，发布形态还在打磨。
-> 已知限制写在 [CHANGELOG](CHANGELOG.md) 里，请先看一眼再用到真实课堂上。
+> **当前版本 `v1.0.0-rc1`（预发布）**：功能已全部做完并逐项验收，四种安装方式都已上线、逐条实测过。
+> 它还没转成正式版 `1.0.0`，建议先在一两节课上试用一轮；
+> 已知限制写在 [CHANGELOG](CHANGELOG.md) 里。
 
 **目录**　[它解决什么问题](#它解决什么问题) ·
 [四种运行方式](#四种运行方式) ·
@@ -44,7 +46,7 @@
 
 | 方式 | 一句话 | 需要先装 |
 | --- | --- | --- |
-| **一键脚本** | 双击就跑，脚本自己建虚拟环境、装依赖、下 Chromium | Python 3.12+ |
+| **一键脚本** | 双击就跑，脚本自己建虚拟环境、装依赖、下 Chromium | Python 3.12+ 与 Git |
 | **Docker** | 一条 `docker run`，镜像里连 Chromium 都带了 | Docker |
 | **npm 启动器** | `npx mathgen-cli@rc`，自动装到 `~/.mathgen` | Node 18+ 与 Python 3.12+ |
 | **pip** | 下载 wheel 装上，用 `mathgen` 命令 | Python 3.12+ |
@@ -101,32 +103,24 @@ docker compose up -d
 ### 3. npm 启动器
 
 ```sh
-npx mathgen-cli@1.0.0-rc1
+npx mathgen-cli@rc
 ```
-
-> 当前是**预发布版**，npm 上 `rc` 与 `latest` **都指向 `1.0.0-rc1`**（新包上架时 npm 把 `latest`
-> 指到了当时唯一的版本），所以 `npx mathgen-cli@rc`、`npx mathgen-cli@1.0.0-rc1` 与裸写
-> `npx mathgen-cli` 拿到的是同一份；要钉住版本就用带版本号的那条，正式版发布时会把 `latest` 挪过去。
-> **包名不叫 `mathgen`**：npm 判定它与早已存在的 `math-gen` 太像，`npm publish mathgen` 直接 403，
-> 所以包名是 `mathgen-cli` —— 但它里面转交的命令仍是 `mathgen`。
-> 四条渠道的现状见 [`CHANGELOG.md`](CHANGELOG.md)。
->
-> **✅ 已上架并实测（2026-10-16）**：新包名要先过 npm 的
-> [staged publishing](https://docs.npmjs.com/staged-publishing) **人工审核**；提交后于 18:43:24Z 通过，
-> npm 自动放的临时占位版 `0.0.0-stage` 已被替换。**从零实测**（先把 `~/.mathgen` 移走）：
-> `npx mathgen-cli@1.0.0-rc1 --version` → 从 GitHub Release 下载 wheel → pip 装 29 个包 →
-> Chromium 就绪 → 打印 `mathgen 1.0.0rc1`，全程 exit 0。查当前状态：`npm view mathgen-cli versions`。
 
 它会：找一个 Python 3.12+ → 在 `~/.mathgen/npm-1.0.0-rc1/venv` 建**独立**虚拟环境 →
 从 GitHub Release 装后端 wheel（**wheel 里自带前端产物**）→ 需要时下 Chromium → 启动。
 参数原样透传：
 
 ```sh
-npx mathgen-cli@1.0.0-rc1 --host 0.0.0.0 --port 9000
+npx mathgen-cli@rc --host 0.0.0.0 --port 9000
 ```
 
 它**不**自带 Python 运行时：后端是 Python 写的，Node 里跑不了，所以本机仍需 Python 3.12+。
 也**不会**动你的系统 Python，全部装在 `~/.mathgen` 下，删掉那个目录就干净了。
+
+> **包名是 `mathgen-cli`，转交的命令仍是 `mathgen`**：npm 上 `mathgen` 被判定与早已存在的
+> `math-gen` 太像（`npm publish mathgen` 直接 403），所以包名让了一步。
+> 当前 `rc` 与 `latest` 都指向 **`1.0.0-rc1`**，因此 `@rc`、`@1.0.0-rc1` 与裸写 `npx mathgen-cli`
+> 拿到的是同一份；要钉住版本就用带版本号的那条。查已发布的版本：`npm view mathgen-cli versions`。
 
 ### 4. pip
 
@@ -134,8 +128,18 @@ npx mathgen-cli@1.0.0-rc1 --host 0.0.0.0 --port 9000
 
 ```sh
 pip install mathgen_backend-1.0.0rc1-py3-none-any.whl
+mathgen --version                        # 验证装好了，应打印 mathgen 1.0.0rc1
 python -m playwright install chromium    # PDF 导出需要；不装则导出返回 503
-mathgen                                   # 启动
+mathgen                                  # 启动
+```
+
+如果 `pip install` 被系统拦下（macOS / 新版 Linux 有「externally managed」保护），
+放进虚拟环境再装：
+
+```sh
+python -m venv .venv
+source .venv/bin/activate                 # Windows PowerShell: .venv\Scripts\Activate.ps1
+pip install mathgen_backend-1.0.0rc1-py3-none-any.whl
 ```
 
 `mathgen` 命令的参数：
@@ -278,7 +282,7 @@ scripts\start.ps1
 | [`docs/06-测试方案.md`](docs/06-测试方案.md) | 测试策略、门禁清单、判据与原始证据 |
 | [`docs/07-设计规范.md`](docs/07-设计规范.md) | 视觉与交互规范 |
 | [`docs/08-测试文档.md`](docs/08-测试文档.md) | 课程《测试文档》：用例、缺陷记录、覆盖分析 |
-| [`docs/00-决策记录.md`](docs/00-决策记录.md) | 全部工程决策（D1–D81）与理由 |
+| [`docs/00-决策记录.md`](docs/00-决策记录.md) | 全部工程决策（D1–D82）与理由 |
 
 课程提交材料（Word 打开后按 **F9 更新目录**；配图源文件在 [`docs/word/figures/`](docs/word/figures/)）：
 
