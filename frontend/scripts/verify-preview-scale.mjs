@@ -177,6 +177,18 @@ def measure(page):
                     frameBg: frame ? getComputedStyle(frame).backgroundColor : null,
                 };
             })(),
+            scrollbar: (() => {
+                const stage = document.querySelector('.mg-paper-stage');
+                if (!stage) return null;
+                const cs = getComputedStyle(stage);
+                const root = getComputedStyle(document.documentElement);
+                return {
+                    color: cs.scrollbarColor,
+                    width: cs.scrollbarWidth,
+                    desk1: root.getPropertyValue('--mg-desk-1').trim(),
+                    desk2: root.getPropertyValue('--mg-desk-2').trim(),
+                };
+            })(),
             scrollW: document.documentElement.scrollWidth,
             innerW: window.innerWidth,
             overflowing: Array.from(document.querySelectorAll('*'))
@@ -412,6 +424,45 @@ async function main() {
     'A9-8 预览区外 Ctrl+滚轮被 preventDefault（浏览器整页缩放被禁用）',
     (wheel.windowWheel ?? []).some((event) => event.ctrl === true && event.prevented === true),
     `父文档收到 ${JSON.stringify(wheel.windowWheel ?? [])}`,
+  );
+
+  console.log('\n—— A9-9 滚动条和灰底不能长得一样（用户 2026-10-28）——');
+  const scrollbar = v1440.scrollbar ?? {};
+  const parseColor = (text) => {
+    const match = String(text ?? '').match(/(?:rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+))|#([0-9a-f]{6})/i);
+    if (!match) return null;
+    if (match[4]) {
+      const hex = match[4];
+      return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    }
+    return [match[1], match[2], match[3]].map((n) => parseFloat(n));
+  };
+  const luminance = (rgb) => {
+    const [r, g, b] = rgb.map((v) => {
+      const s = v / 255;
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a, b) => {
+    const la = luminance(a);
+    const lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+  const thumb = parseColor(scrollbar.color);
+  const desk1 = parseColor(scrollbar.desk1);
+  const desk2 = parseColor(scrollbar.desk2);
+  const c1 = thumb && desk1 ? contrast(thumb, desk1) : null;
+  const c2 = thumb && desk2 ? contrast(thumb, desk2) : null;
+  check(
+    'A9-9 滚动条拇指与桌面两端色的对比都 ≥ 3:1（非文本控件底线）',
+    c1 !== null && c2 !== null && Math.min(c1, c2) >= 3,
+    `拇指 ${scrollbar.color}；对 ${scrollbar.desk1} = ${c1?.toFixed(2)}:1、对 ${scrollbar.desk2} = ${c2?.toFixed(2)}:1`,
+  );
+  check(
+    'A9-9 滚动条是「细」的（不抢纸面）',
+    scrollbar.width === 'thin',
+    `scrollbar-width=${scrollbar.width}`,
   );
 
   check('无 pageerror', (result.console_errors ?? []).length === 0, (result.console_errors ?? []).join(' ; ').slice(0, 200));
