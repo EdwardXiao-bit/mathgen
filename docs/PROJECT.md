@@ -35,7 +35,7 @@
 | **课程提交** | 测试文档 Word | `docs/word/03-测试文档.docx`（源 `docs/08-测试文档.md`） | **已产出**（3 图 34 表，40 页；45 条用例 + 47 条缺陷） |
 | 代码 | 后端引擎与判分 | `backend/app/engine/`、`backend/app/grading/` | **M1 已完成**（240 用例） |
 | 代码 | 后端服务 / 渲染导出 / 前端双端 | `backend/app/`、`frontend/` | **M2–M6 已完成**（后端全量 **1275** 用例 OK、前端 12 步门禁全 PASS；M6 验收跑时为 1254，之后随导出目录与发行说明两处判据增至 1275） |
-| **发行版** | 第二版 `v1.0.0-rc2`（**预发布**） | GitHub Release `v1.0.0-rc2`（`mathgen_backend-1.0.0rc2-py3-none-any.whl` + `SHA256SUMS`）、`ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc2`、npm `mathgen-cli@1.0.0-rc2`（`rc` 与 `latest` 都指向它；包名不叫 `mathgen`：被 npm 判为与 `math-gen` 太像而 403）、`scripts/start.*` | 与 rc1 同一套形态与验证方式（`docs/00` D82、D83）；本版更新内容见 `CHANGELOG.md` 与 `docs/05` T-M10-01；上一版证据见 T-M8-07 / T-M8-08 |
+| **发行版** | 第二版 `v1.0.0-rc2`（**预发布**） | GitHub Release `v1.0.0-rc2`（`mathgen_backend-1.0.0rc2-py3-none-any.whl` **1394464 B / sha256 `1093df00…`** + `SHA256SUMS`，匿名下载后 `sha256sum -c` 通过）、`ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc2`（匿名拉取 200，digest `sha256:60a0ed20…`）、npm `mathgen-cli@1.0.0-rc2`（`2026-10-28T06:43:18Z` 发布，`rc` 与 `latest` 都指向它，tarball `shasum ab105c75…`；包名不叫 `mathgen`：被 npm 判为与 `math-gen` 太像而 403）、`scripts/start.*` | 与 rc1 同一套形态与验证方式（`docs/00` D82、D83）；本版更新内容见 `CHANGELOG.md` 与 `docs/05` T-M10-01；上一版证据见 T-M8-07 / T-M8-08 |
 
 ## 3. 范围
 
@@ -73,7 +73,7 @@
 | **M8** | 第一版发布：打包与四种安装形态 | 用户能装上并跑起来 | **已完成**（2026-10-17；四条渠道全部上线并逐项实测：一键脚本 / wheel 资产 / GHCR 镜像 / npm `mathgen-cli@1.0.0-rc1`；任务卡 T-M8-x 见 `docs/05`） |
 
 | **M9** | 入口页：`/` 变成老师装好后的欢迎页 | 装好后打开就知道怎么开始 | **已完成**（2026-10-28；`frontend/public/welcome.html`；后端 `WELCOME_ENTRY` 优先返回、没有则回落 index；`TestWelcomeEntry` 3 条判据随 374 用例通过；页面 lint 0 FAIL / inspect 0 FAIL；任务卡 T-M9-01） |
-| **M10** | 第二版发布 `v1.0.0-rc2` | 用户看得见的修复发出去 | **进行中**（版本号四处 + `SHA256SUMS` 资产 + npm `rc`/`latest` 前移；任务卡 T-M10-01） |
+| **M10** | 第二版发布 `v1.0.0-rc2` | 用户看得见的修复发出去 | **已完成**（2026-10-28；版本号四处 + Release 增 `SHA256SUMS` + npm `rc`/`latest` 前移到 `1.0.0-rc2`；CI run 40644375612 两个 job 绿；三条渠道均从消费者侧实测通过；任务卡 T-M10-01） |
 
 > 任务级分解、依赖与写域见 [`05-任务板.md`](05-任务板.md)。
 

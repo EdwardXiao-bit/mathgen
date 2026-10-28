@@ -121,7 +121,7 @@ npx mathgen-cli@rc --host 0.0.0.0 --port 9000
 
 > **包名是 `mathgen-cli`，转交的命令仍是 `mathgen`**：npm 上 `mathgen` 被判定与早已存在的
 > `math-gen` 太像（`npm publish mathgen` 直接 403），所以包名让了一步。
-> 当前 `rc` 与 `latest` 都指向 **`1.0.0-rc2`**，因此 `@rc`、`@1.0.0-rc1` 与裸写 `npx mathgen-cli`
+> 当前 `rc` 与 `latest` 都指向 **`1.0.0-rc2`**，因此 `@rc`、`@1.0.0-rc2` 与裸写 `npx mathgen-cli`
 > 拿到的是同一份；要钉住版本就用带版本号的那条。查已发布的版本：`npm view mathgen-cli versions`。
 
 ### 4. pip
