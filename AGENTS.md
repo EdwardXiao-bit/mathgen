@@ -3,7 +3,7 @@
 面向**小学老师**的「出题 + 批改」工具：**老师端**配置题目、生成、打印、发卷、看成绩；**学生端**局域网扫码、自主练习、自动批改。
 部署形态：跑在老师本机 / 教室内网机器，**不依赖公网**（D10）。
 
-当前阶段：**需求已冻结 → 技术设计 v0.4 → M1–M7 全部完成并验收 → 第一版 `v1.0.0-rc1` 已发布**（GitHub Release 资产、Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1`、npm 启动器 `mathgen-cli` 三条都已上线并逐项实测，见 `docs/05` T-M8-08）；系统本体功能已完备，不依赖公网。
+当前阶段：**需求已冻结 → 技术设计 v0.4 → M1–M7 全部完成并验收 → 第二版 `v1.0.0-rc2` 已发布**（GitHub Release 资产、Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc2`、npm 启动器 `mathgen-cli@1.0.0-rc2` 三条都已上线并逐项实测，见 `docs/05` T-M8-08、T-M10-01）；系统本体功能已完备，不依赖公网。
 
 ## 先读什么
 
@@ -28,14 +28,14 @@
 | 课程提交 Word | **三份均已产出**：需求分析、技术设计、测试文档（M7，源 `docs/08-测试文档.md`） |
 | 配图 | **13 张 PNG**，见 `docs/word/figures/` |
 | 代码 | **M1–M6 全部已验收**（引擎 / 判分 / API / 卷面渲染导出 / 老师端 / 学生端 / 卷库 / 成绩 / 导出 / 单一服务托管），后端全量 **1275 用例 OK**（2026-10-17 复跑，`Ran 1275 tests in 580.223s`；M6 验收时为 1254）、前端 **12 步门禁全 PASS** |
-| 发布 | **`v1.0.0-rc1`（预发布，已上线）**：GitHub Release 资产 `mathgen_backend-1.0.0rc1-py3-none-any.whl`（wheel 内含前端产物）+ Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1` + **npm 启动器 `mathgen-cli`**（包名不叫 `mathgen`：npm 判定它与已有的 `math-gen` 太像，`npm publish` 报 403。新包名要过 npm 的 [staged publishing](https://docs.npmjs.com/staged-publishing) **人工审核**，**2026-10-16T18:43:24Z 已通过**：`mathgen-cli@1.0.0-rc1` 上架，`rc` 与 `latest` 都指向它；已从零实测 `npx mathgen-cli@1.0.0-rc1 --version` → `mathgen 1.0.0rc1`） + 一键脚本。CI run 38945145652（tag，创建 Release）与 38950476311（main，纯校验）两个 job 均全绿，容器冒烟真导出 PDF 17894 字节。版本号**单点定义**在 `backend/app/__init__.py` 的 `__version__`，与 `backend/pyproject.toml`、`frontend/package.json`、tag 四处必须一致（CI 会拦） |
+| 发布 | **`v1.0.0-rc2`（预发布，已上线）**：GitHub Release 资产 `mathgen_backend-1.0.0rc2-py3-none-any.whl` + `SHA256SUMS`（wheel 内含前端产物）+ Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc2` + **npm 启动器 `mathgen-cli@1.0.0-rc2`**（包名不叫 `mathgen`：npm 判定它与已有的 `math-gen` 太像，`npm publish` 报 403；新包名要过 [staged publishing](https://docs.npmjs.com/staged-publishing) 人工审核，2026-10-16 已通过；`rc` 与 `latest` 都随版本前移）+ 一键脚本。上一版 `v1.0.0-rc1` 的实证见 `docs/05` T-M8-07/T-M8-08，本版见 T-M10-01。版本号**单点定义**在 `backend/app/__init__.py` 的 `__version__`，与 `backend/pyproject.toml`、`frontend/package.json`、`npm/package.json`、tag **五处**必须一致（CI 会拦） |
 
 ## 文档索引
 
 | 文件 | 作用 |
 | --- | --- |
 | `docs/PROJECT.md` | **项目总览与导航**：范围、里程碑、约束、文档地图 |
-| `docs/00-决策记录.md` | **唯一事实来源**：已定决策 D1–D82 + 待决问题 |
+| `docs/00-决策记录.md` | **唯一事实来源**：已定决策 D1–D83 + 待决问题 |
 | `docs/01-需求分析.md` | 需求分析文档（v1.2 冻结） |
 | `docs/02-技术设计.md` | 技术设计文档（v0.4，含设计理由与 DQ） |
 | `docs/03-协作规范.md` | **多智能体协作硬规则**：写域、交接、冲突、验证 |
