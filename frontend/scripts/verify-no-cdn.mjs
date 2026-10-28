@@ -15,7 +15,12 @@
  * 所以现在的判据是**位置感知**的 —— 判「这个 URL 出现在资源位吗」，而不是判「出现过没有」：
  *
  *   A. **只把资源位的 URL 当违规**：
- *      - HTML 属性：`src=` / `href=` / `srcset=` / `poster=` / `action=` / `data=` / `formaction=`
+ *      - HTML 属性：`src=` / `<link href=>` / `<use href=>` / `srcset=` / `poster=` /
+ *        `action=` / `formaction=` / `data=`
+ *      - **`href` 按标签区分**（第二版修正）：`<link href>` 会加载样式表并产生请求，
+ *        `<a href>` 只是一次导航、用户不点就不发请求。欢迎页页脚指向仓库的那条
+ *        `<a href="https://github.com/...">` 曾被判红，属于判据把「会不会自动产生请求」
+ *        错当成「出现过 href」。
  *      - CSS：`url(...)` / `@import`
  *      - JS 网络原语：`fetch(...)` / `import(...)` / `new Worker(...)` / `new Image().src=...`
  *        等，且**参数是绝对 http(s) URL 字面量**（相对路径不算，跨域才算）
@@ -66,7 +71,12 @@ const ALLOWED = [
 const RESOURCE_SLOTS = [
   // HTML 属性（单双引号、无引号都覆盖）
   { name: 'HTML src=', re: /\bsrc\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi },
-  { name: 'HTML href=', re: /\bhref\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi },
+  // `href` 要分语境：`<link href>` 是**加载**样式表/图标，会产生请求；
+  // `<a href>` 是**导航**，只有用户点击才离开本页，不破坏离线可用。
+  // 第一版把两者一起判，结果页脚一条指向仓库的 `<a href>` 就被判红——
+  // 判的是「会不会自动产生请求」，所以按标签区分，而不是按属性名区分。
+  { name: 'HTML <link href=>', re: /<link\b[^>]*\bhref\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi },
+  { name: 'HTML <use href=>', re: /<use\b[^>]*\bhref\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi },
   { name: 'HTML srcset=', re: /\bsrcset\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi },
   { name: 'HTML poster=', re: /\bposter\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi },
   { name: 'HTML action=', re: /\baction\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi },
@@ -98,6 +108,58 @@ async function walk(dir) {
 
 const URL_RE = /https?:\/\/[^\s"'`)<>\\]+/g;
 
+/** 一行里落在「资源位」的 URL 原文集合（自测与主扫描共用同一套规则）。 */
+function resourceUrlsIn(line) {
+  const urls = new Set();
+  for (const slot of RESOURCE_SLOTS) {
+    slot.re.lastIndex = 0;
+    let m;
+    while ((m = slot.re.exec(line)) !== null) urls.add(m[1]);
+  }
+  return urls;
+}
+
+/**
+ * 自测（V9.1：判据自己也要能被证明会红）。
+ *
+ * 只放宽 `href` 那条规则而不带负对照，等于「把红改成绿还不留证据」。
+ * 这里用合成行把两种语境各钉一条，随门禁一起跑（`--self-test` 可单跑）。
+ */
+const SELF_TEST_CASES = [
+  { line: '<link rel="stylesheet" href="https://cdn.example.com/x.css">', expect: true, why: '外部样式表会被加载' },
+  { line: '<use href="https://cdn.example.com/sprite.svg#i">', expect: true, why: '外部 sprite 会被加载' },
+  { line: '<img src="https://cdn.example.com/a.png" alt="">', expect: true, why: '外部图片会被加载' },
+  { line: 'background: url(https://fonts.example.com/x.woff2)', expect: true, why: '外部字体会被加载' },
+  { line: '<a href="https://github.com/EdwardXiao-bit/mathgen" target="_blank">', expect: false, why: '普通链接只是导航，不自动请求' },
+  { line: '<a href="/teacher">出题</a>', expect: false, why: '站内相对链接不受影响' },
+];
+
+function runSelfTest(log) {
+  let failed = 0;
+  for (const testCase of SELF_TEST_CASES) {
+    const flagged = resourceUrlsIn(testCase.line).size > 0;
+    const ok = flagged === testCase.expect;
+    if (!ok) failed += 1;
+    const verdict = ok ? 'PASS' : `FAIL（期望${testCase.expect ? '判红' : '判绿'}，实际${flagged ? '判红' : '判绿'}）`;
+    log(`  [${verdict}] ${testCase.why}`);
+  }
+  return failed;
+}
+
+const SELF_TEST_ONLY = process.argv.includes('--self-test');
+
+if (SELF_TEST_ONLY) {
+  console.log('资源位规则自测：');
+  const failures = runSelfTest(console.log);
+  console.log(failures === 0 ? '\n结论：6 条自测全部通过。' : `\n结论：${failures} 条自测失败。`);
+  process.exit(failures === 0 ? 0 : 1);
+}
+
+const selfTestFailures = (() => {
+  console.log('资源位规则自测（负对照）：');
+  return runSelfTest(console.log);
+})();
+
 const files = await walk(DIST_DIR);
 const offenders = [];
 const allowedHits = [];
@@ -112,14 +174,7 @@ for (const file of files) {
     if (!matches) return;
 
     // 本行里「资源位」覆盖到的 URL 原文集合
-    const resourceUrls = new Set();
-    for (const slot of RESOURCE_SLOTS) {
-      slot.re.lastIndex = 0;
-      let m;
-      while ((m = slot.re.exec(line)) !== null) {
-        resourceUrls.add(m[1]);
-      }
-    }
+    const resourceUrls = resourceUrlsIn(line);
 
     for (const url of matches) {
       totalUrls.count += 1;
@@ -181,6 +236,11 @@ if (offenders.length > 0) {
     console.log(`  [FAIL] ${hit.file}:${hit.line}  ${hit.url}`);
   }
   console.log('\n结论：产物在资源位引用了外部地址，破坏离线可用（NFR-9 / 红线 6）。');
+  process.exit(1);
+}
+
+if (selfTestFailures > 0) {
+  console.log(`\n结论：资源位规则自测有 ${selfTestFailures} 条失败，判据本身不可信。`);
   process.exit(1);
 }
 

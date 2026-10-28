@@ -44,8 +44,8 @@ WORKFLOW = os.path.join(REPO, ".github", "workflows", "release.yml")
 CHANGELOG = os.path.join(REPO, "CHANGELOG.md")
 NPM_MANIFEST = os.path.join(REPO, "npm", "package.json")
 
-REF = "v1.0.0-rc1"
-VERSION = "1.0.0-rc1"
+REF = "v1.0.0-rc3"
+VERSION = "1.0.0-rc3"
 IMAGE = "ghcr.io/edwardxiao-bit/mathgen"
 
 #: 发行说明里那一节在 CHANGELOG 里的标题（用来确认正文不是兜底文案）。
@@ -208,14 +208,45 @@ class TestTheCriterionIsGreenOnTheRealWorkflow(ReleaseNotesCase):
         self.assertIn(f"npx {name}@{VERSION}", self.notes_for(self.workflow))
 
     def test_dist_tag_reference_is_allowed(self) -> None:
-        """说明里同时给精确版本号和 dist-tag（`@rc`），两种都合法，都不该被判为问题。"""
-        notes = self.notes_for(self.workflow)
-        self.assertIn(f"npx {package_name()}@{dist_tag_for(VERSION)}", notes)
+        """说明里同时给精确版本号和 dist-tag（`@rc`），两种都合法，都不该被判为问题。
+
+        这里不再依赖真实 CHANGELOG 的正文——正文会随版本变（rc3 那节就没提 `@rc`），
+        判据要审的是**规则**，所以自己造一份只提 dist-tag 的小节来喂它。
+        """
+        name = package_name()
+        tag = dist_tag_for(VERSION)
+        synthetic = (
+            "## [" + VERSION + "] - 2026-10-28\n\n"
+            "装法：`npx " + name + "@" + tag + "`（也可以钉死成 `npx " + name + "@" + VERSION + "`）。\n"
+        )
+        notes = generate_notes(self.workflow, synthetic)
+        self.assertIn(f"npx {name}@{tag}", synthetic)
         self.assert_notes_ok(notes)
 
     def test_dist_tag_rules(self) -> None:
         self.assertEqual(dist_tag_for("1.0.0-rc1"), "rc")
         self.assertEqual(dist_tag_for("1.0.0"), "latest")
+
+
+class TestTheVersionConstantsTrackTheNewestChangelogSection(ReleaseNotesCase):
+    """REF / VERSION 必须等于 CHANGELOG 里**最新的那个版本小节**。
+
+    每发一版都要改这两个常量；忘了改，判据就会拿着上一版的版本号去审这一版的
+    发行说明——仍然全绿，但审的是过期的目标。所以在这里让它直接红。
+    """
+
+    def test_constants_match_the_newest_released_section(self) -> None:
+        versions = re.findall(r"^## \[([^\]]+)\] - ", self.changelog, re.MULTILINE)
+        self.assertTrue(versions, "CHANGELOG 里一个小节都没找到")
+        newest, is_prerelease = versions[0], "-" in versions[0]
+        self.assertEqual(
+            newest,
+            VERSION,
+            f"CHANGELOG 最新小节是 {newest}，而判据里的 VERSION 还是 {VERSION}；"
+            "发版时把 REF / VERSION 一起改掉",
+        )
+        expected_ref = f"v{newest}" if is_prerelease else f"v{newest}"
+        self.assertEqual(REF, expected_ref, f"REF 应写成 {expected_ref}")
 
 
 class TestTheExtractorDistinguishesTheTwoHeredocs(ReleaseNotesCase):

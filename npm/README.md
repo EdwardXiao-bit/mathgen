@@ -4,11 +4,11 @@
 不需要注册、不需要联网、不需要服务器。
 
 ```sh
-npx mathgen-cli@rc          # 或写死版本：npx mathgen-cli@1.0.0-rc2
+npx mathgen-cli@rc          # 或写死版本：npx mathgen-cli@1.0.0-rc3
 ```
 
-> **当前是预发布版（release candidate）**：npm 上 `rc` 与 `latest` 都指向 `1.0.0-rc2`，
-> 所以 `@rc`、`@1.0.0-rc2` 与裸写 `npx mathgen-cli` 拿到的是同一份；要钉住版本就写死版本号。
+> **当前是预发布版（release candidate）**：npm 上 `rc` 与 `latest` 都指向 `1.0.0-rc3`，
+> 所以 `@rc`、`@1.0.0-rc3` 与裸写 `npx mathgen-cli` 拿到的是同一份；要钉住版本就写死版本号。
 >
 > **包名为什么不是 `mathgen`？** npm 上那个名字被判定与已有的 `math-gen` 太像（去标点后同名），
 > `npm publish` 直接 403。包名改成 `mathgen-cli`，但里面的命令仍然是 `mathgen`，
@@ -65,16 +65,16 @@ npx mathgen-cli@rc --no-browser                # 不要自动开浏览器
 
 ```sh
 # 用启动器建出来的那个环境
-~/.mathgen/npm-1.0.0-rc2/venv/bin/python -m playwright install chromium
+~/.mathgen/npm-1.0.0-rc3/venv/bin/python -m playwright install chromium
 ```
 
-（Windows 上是 `%USERPROFILE%\.mathgen\npm-1.0.0-rc2\venv\Scripts\python.exe`）
+（Windows 上是 `%USERPROFILE%\.mathgen\npm-1.0.0-rc3\venv\Scripts\python.exe`）
 
 **下载 wheel 失败？** 可以指定别的下载地址或本地文件：
 
 ```sh
-MATHGEN_WHEEL_URL=https://你的镜像/mathgen_backend-1.0.0rc2-py3-none-any.whl npx mathgen-cli@rc
-MATHGEN_WHEEL_PATH=D:\build\mathgen_backend-1.0.0rc2-py3-none-any.whl npx mathgen-cli@rc
+MATHGEN_WHEEL_URL=https://你的镜像/mathgen_backend-1.0.0rc3-py3-none-any.whl npx mathgen-cli@rc
+MATHGEN_WHEEL_PATH=D:\build\mathgen_backend-1.0.0rc3-py3-none-any.whl npx mathgen-cli@rc
 ```
 
 **想彻底卸载？** 删掉 `~/.mathgen` 即可。

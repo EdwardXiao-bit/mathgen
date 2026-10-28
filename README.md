@@ -6,10 +6,10 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/mathgen-cli?label=npm)](https://www.npmjs.com/package/mathgen-cli)
 
-> **当前版本 `v1.0.0-rc2`（预发布）**：功能已全部做完并逐项验收，四种安装方式都已上线、逐条实测过。
+> **当前版本 `v1.0.0-rc3`（预发布）**：功能已全部做完并逐项验收，四种安装方式都已上线、逐条实测过。
 > 这一版相对 rc1：新增**入口页**（打开就是「进入使用 / 我是学生」两个门＋四步图解）、发卷页对已发布的卷
 > 也显示卷号与二维码、表格数字列右对齐、窄屏不再挤成一字一行，界面里不再出现开发者措辞；
-> 细节见 [CHANGELOG.md](CHANGELOG.md) 的 `1.0.0-rc2` 一节。
+> 细节见 [CHANGELOG.md](CHANGELOG.md) 的 `1.0.0-rc3` 一节。
 > 还没转成正式版 `1.0.0`，建议先在一两节课上试用一轮。
 > 已知限制写在 [CHANGELOG](CHANGELOG.md) 里，请先看一眼再用到真实课堂上。
 
@@ -88,7 +88,7 @@ Windows 首次可能弹防火墙提示，需要允许。
 ### 2. Docker
 
 ```sh
-docker run --rm -p 8000:8000 -v mathgen-data:/data ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc2
+docker run --rm -p 8000:8000 -v mathgen-data:/data ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc3
 ```
 
 或者用仓库里的 compose 文件（数据放在命名卷里，`docker compose down` 不会丢）：
@@ -108,7 +108,7 @@ docker compose up -d
 npx mathgen-cli@rc
 ```
 
-它会：找一个 Python 3.12+ → 在 `~/.mathgen/npm-1.0.0-rc2/venv` 建**独立**虚拟环境 →
+它会：找一个 Python 3.12+ → 在 `~/.mathgen/npm-1.0.0-rc3/venv` 建**独立**虚拟环境 →
 从 GitHub Release 装后端 wheel（**wheel 里自带前端产物**）→ 需要时下 Chromium → 启动。
 参数原样透传：
 
@@ -121,7 +121,7 @@ npx mathgen-cli@rc --host 0.0.0.0 --port 9000
 
 > **包名是 `mathgen-cli`，转交的命令仍是 `mathgen`**：npm 上 `mathgen` 被判定与早已存在的
 > `math-gen` 太像（`npm publish mathgen` 直接 403），所以包名让了一步。
-> 当前 `rc` 与 `latest` 都指向 **`1.0.0-rc2`**，因此 `@rc`、`@1.0.0-rc2` 与裸写 `npx mathgen-cli`
+> 当前 `rc` 与 `latest` 都指向 **`1.0.0-rc3`**，因此 `@rc`、`@1.0.0-rc3` 与裸写 `npx mathgen-cli`
 > 拿到的是同一份；要钉住版本就用带版本号的那条。查已发布的版本：`npm view mathgen-cli versions`。
 
 ### 4. pip
@@ -129,8 +129,8 @@ npx mathgen-cli@rc --host 0.0.0.0 --port 9000
 从 [Releases](https://github.com/EdwardXiao-bit/mathgen/releases) 下载 wheel：
 
 ```sh
-pip install mathgen_backend-1.0.0rc2-py3-none-any.whl
-mathgen --version                        # 验证装好了，应打印 mathgen 1.0.0rc2
+pip install mathgen_backend-1.0.0rc3-py3-none-any.whl
+mathgen --version                        # 验证装好了，应打印 mathgen 1.0.0rc3
 python -m playwright install chromium    # PDF 导出需要；不装则导出返回 503
 mathgen                                  # 启动
 ```
@@ -140,7 +140,7 @@ mathgen                                  # 启动
 ```sh
 python -m venv .venv
 source .venv/bin/activate                 # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install mathgen_backend-1.0.0rc2-py3-none-any.whl
+pip install mathgen_backend-1.0.0rc3-py3-none-any.whl
 ```
 
 `mathgen` 命令的参数：
