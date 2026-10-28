@@ -224,6 +224,22 @@ with sync_playwright() as p:
                     itemFontSize: doc.querySelector('.q-item')
                         ? getComputedStyle(doc.querySelector('.q-item')).fontSize : null,
                     sheetPadding: sheet ? getComputedStyle(sheet).paddingLeft : null,
+                    // 切页签（题目版 ↔ 答案版）之后，滚动区高度必须跟着内容走。
+                    // 这里量的是「卷面内容高（body）」「iframe 元素高」「舞台滚动高」三者，
+                    // 用来抓「切到答案版再切回来，第 2 页拖出一大截空白」这类高度只涨不落的 bug。
+                    contentH: doc.body ? Math.ceil(doc.body.getBoundingClientRect().height) : null,
+                    sheetH: sheet ? Math.ceil(sheet.getBoundingClientRect().height) : null,
+                    iframeOffsetH: frame ? frame.offsetHeight : null,
+                    iframeScale: frame && frame.offsetHeight
+                        ? +(frame.getBoundingClientRect().height / frame.offsetHeight).toFixed(4) : null,
+                    stageScrollH: (() => {
+                        const s = document.querySelector('.mg-paper-stage');
+                        return s ? Math.ceil(s.scrollHeight) : null;
+                    })(),
+                    stageClientH: (() => {
+                        const s = document.querySelector('.mg-paper-stage');
+                        return s ? Math.ceil(s.clientHeight) : null;
+                    })(),
                     dump: (document.querySelector('[data-testid="css-var-dump"]') || {}).textContent || '',
                 };
             }""")
@@ -673,6 +689,25 @@ async function main() {
 
   check('答案版页签：iframe 重新加载为含答案区的卷面', result.answer_tab?.sheetMode === 'answer' && (result.answer_tab?.answerItems ?? 0) > 0, `mode=${result.answer_tab?.sheetMode} 答案条数=${result.answer_tab?.answerItems}`);
   check('题目版页签：卷面不含答案区', result.question_tab?.sheetMode === 'question' && result.question_tab?.answerItems === 0, `mode=${result.question_tab?.sheetMode} 答案条数=${result.question_tab?.answerItems}`);
+  // 用户 2026-10-28：「50 题，先预览题单时正常，切换到答案版，再切回预览题单，第 2 页就会很长」。
+  // 根因是卷面高度取的是 documentElement.scrollHeight —— iframe 视口被撑高之后，scrollHeight
+  // 至少等于视口高，于是高度只涨不落，切回题目版时滚动区还留着答案版的高度。
+  const qTab = result.question_tab ?? {};
+  const aTab = result.answer_tab ?? {};
+  check(
+    '切回题目版：iframe 高度跟得上内容（不许留着答案版的高度）',
+    typeof qTab.contentH === 'number' && typeof qTab.iframeOffsetH === 'number'
+      && Math.abs(qTab.iframeOffsetH - qTab.contentH) <= 2,
+    `iframe 高 ${qTab.iframeOffsetH} / 卷面内容高 ${qTab.contentH}（答案版是 ${aTab.iframeOffsetH}）`,
+  );
+  check(
+    '切回题目版：滚动区高度 == 内容高 × 缩放 + 内边距（不许拖出空白）',
+    typeof qTab.stageScrollH === 'number' && typeof qTab.contentH === 'number'
+      && typeof qTab.iframeScale === 'number'
+      && Math.abs(qTab.stageScrollH - (Math.ceil(qTab.contentH * qTab.iframeScale) + 48)) <= 4,
+    `舞台滚动高 ${qTab.stageScrollH} / 应为 ${Math.ceil((qTab.contentH ?? 0) * (qTab.iframeScale ?? 0)) + 48}`
+      + `（答案版 ${aTab.stageScrollH}）`,
+  );
   check('页面无 console error / pageerror', (result.console_errors ?? []).length === 0, (result.console_errors ?? []).join(' ; ') || '(无)');
 
   const failed = checks.filter((c) => !c.ok);

@@ -234,8 +234,12 @@ export function paginateDocument(doc: Document): PageGeometry | null {
     if (Math.abs(delta) > 0.5) tail.style.height = `${(tailHeight + delta).toFixed(2)}px`;
   }
 
-  const docHeight = Math.ceil(doc.documentElement.scrollHeight);
-  return { pages: tops.length, tops, height: docHeight };
+  // 量「内容」高度，不能量 `documentElement.scrollHeight`：
+  // iframe 自身的视口一旦被撑高，scrollHeight 至少等于视口高，于是高度只会涨不会落 ——
+  // 切到答案版（6 页）再切回题目版（2 页）时，第 2 页就会拖出一大截空白。
+  // body 没设 height，所以它的高度就是卷面内容高度。
+  const contentHeight = Math.ceil(doc.body.getBoundingClientRect().height);
+  return { pages: tops.length, tops, height: Math.max(contentHeight, Math.ceil(sheet.getBoundingClientRect().height)) };
 }
 
 /**
