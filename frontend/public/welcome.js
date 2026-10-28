@@ -122,13 +122,46 @@
     if (current) current.classList.add("is-on");
   }
 
+  /* 回到顶部：页脚那个按钮 + 右下角浮动按钮共用一套滚动逻辑 */
+  function initToTop() {
+    var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var float = document.querySelector("[data-to-top]");
+    var behavior = reduce ? "auto" : "smooth";
+
+    function toTop(event) {
+      if (event) event.preventDefault();
+      window.scrollTo({ top: 0, behavior: behavior });
+    }
+
+    document.querySelectorAll(".foot-top-btn, [data-to-top]").forEach(function (el) {
+      el.addEventListener("click", toTop);
+    });
+
+    if (!float) return;
+
+    var ticking = false;
+    function update() {
+      float.classList.toggle("is-on", window.scrollY > window.innerHeight * 0.9);
+      ticking = false;
+    }
+
+    window.addEventListener("scroll", function () {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(update);
+    }, { passive: true });
+
+    update();
+  }
+
   /* 入场：标题、句子、图，各按 60–90ms 错开 */
   function initReveal() {
     var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var targets = document.querySelectorAll(
       ".intro-copy > *, .intro-media, .make-title, .make-stage, .make-block, " +
       ".showcase-list > *, .showcase-stage, .step, .install-title, .install-say, " +
-      ".install-row, .install-foot, .faq-grid > *, .close-say, .close-media, .foot-line"
+      ".install-row, .install-foot, .faq-grid > *, .score-media, .score-copy > *, " +
+      ".close-say, .foot-top, .foot-repo"
     );
 
     if (reduce || !("IntersectionObserver" in window)) {
@@ -195,6 +228,7 @@
     initShowcase();
     initReveal();
     initParallax();
+    initToTop();
   }
 
   if (document.readyState === "loading") {

@@ -13,7 +13,7 @@
 <!-- ============================== 首屏 ============================== -->
 <header class="hero" id="top">
   <div class="shell hero-top">
-    <p class="wordmark">mathgen<span class="wordmark-sub">老师端</span></p>
+    <p class="wordmark">mathgen<span class="wordmark-sub">老师端</span><span class="wordmark-badge">v1.0.0-rc3</span></p>
     <nav class="hero-nav" aria-label="页面目录">
       <a href="#make">出题</a>
       <a href="#look">排版</a>
@@ -188,6 +188,22 @@
   </div>
 </section>
 
+<!-- ============================== 成绩 ============================== -->
+<section class="score" id="score">
+  <div class="shell score-grid">
+    <figure class="score-media">
+      <img src="assets/welcome/attempts.png" width="1440" height="1156" alt="成绩页：九次作答的学生、卷子、得分、答对题数、用时与提交时间，右上角是导出 CSV 与导出 Excel" loading="lazy">
+    </figure>
+    <div class="score-copy">
+      <h2 class="serif-title">分数自己算，<br>表格自己出。</h2>
+      <p class="score-lead">交完的卷子自动汇总：谁做了、几分、答对几题、用了多久，按人、按卷都能查。</p>
+      <ul class="score-points">
+        <li><b>成绩统计</b>得分、答对题数、用时、提交时间，一列列排清楚。</li>
+        <li><b>导出格式</b>CSV 与 Excel 两种，导的就是当前筛选下的全部记录。</li>
+      </ul>
+    </div>
+  </div>
+</section>
 <!-- ============================== 安装 ============================== -->
 <section class="install" id="install">
   <div class="shell">
@@ -209,7 +225,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start.ps1 -Lan</code></pre>
         <dd>
           <p>镜像里已经带了 Chromium，一条命令起来。</p>
           <pre><code>docker run --rm -p 8000:8000 -v mathgen-data:/data \
-  ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc2</code></pre>
+  ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc3</code></pre>
         </dd>
       </div>
       <div class="install-row">
@@ -223,7 +239,7 @@ powershell -ExecutionPolicy Bypass -File scripts\start.ps1 -Lan</code></pre>
         <dt>pip</dt>
         <dd>
           <p>从 Release 下 wheel 装上，多一个 <code>mathgen</code> 命令。</p>
-          <pre><code>pip install mathgen_backend-1.0.0rc2-py3-none-any.whl
+          <pre><code>pip install mathgen_backend-1.0.0rc3-py3-none-any.whl
 mathgen --host 0.0.0.0</code></pre>
         </dd>
       </div>
@@ -282,11 +298,8 @@ mathgen --host 0.0.0.0</code></pre>
 <!-- ============================== 收尾 ============================== -->
 <section class="close">
   <div class="close-band">
-    <div class="shell close-grid">
-      <p class="close-say">下节课就想用的话，先花三分钟装上：<a class="close-link" href="#install">按上面的命令跑一遍</a>，卷子就在你自己的电脑里。</p>
-      <figure class="close-media">
-        <img src="assets/welcome/attempts.png" width="1440" height="1156" alt="成绩页的表格：九次作答的得分与用时">
-      </figure>
+    <div class="shell">
+      <p class="close-say">下次上课前想接着用：<a class="close-link" href="#install">把上面那条命令再跑一遍</a>就行，卷子和成绩都还在你电脑里。</p>
     </div>
   </div>
 </section>
@@ -297,17 +310,23 @@ mathgen --host 0.0.0.0</code></pre>
 <footer class="foot">
   <div class="shell">
     <div class="foot-top">
-      <p class="foot-note">mathgen v1.0.0-rc2 · MIT · 数据留在本机</p>
-      <p class="foot-note"><a href="#top">回到顶部</a></p>
+      <p class="foot-note">mathgen v1.0.0-rc3 · MIT · 数据留在本机</p>
+      <p class="foot-note foot-credit">Powered by FastAPI · React</p>
+      <a class="foot-top-btn" href="#top">回到顶部<span class="foot-top-arrow" aria-hidden="true">↑</span></a>
     </div>
-    <p class="foot-line"><code>npx mathgen-cli@rc</code></p>
+
+    <a class="foot-repo" href="https://github.com/EdwardXiao-bit/mathgen" target="_blank" rel="noopener">
+      <span class="foot-repo-name">@EdwardXiao-bit/mathgen</span>
+      <span class="foot-star">Star<span class="foot-star-arrow" aria-hidden="true">→</span></span>
+    </a>
+
     <div class="foot-bottom">
-      <p>源码、文档与安装包在 GitHub 上的 <code>EdwardXiao-bit/mathgen</code>（Release 里有 wheel 与镜像说明）</p>
-      <p>截图来自本机运行的 v1.0.0-rc2</p>
-      <p>2026 · 肖铭皓、胡宇书</p>
+      <p>以上均为实机运行截图</p>
     </div>
   </div>
 </footer>
+
+<button class="to-top" type="button" data-to-top aria-label="回到顶部">↑</button>
 
 <script src="welcome.js"></script>
 </body>

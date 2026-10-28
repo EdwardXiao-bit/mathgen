@@ -102,6 +102,20 @@ code {
   letter-spacing: 0;
 }
 
+.wordmark-badge {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--t1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  vertical-align: 2px;
+  white-space: nowrap;
+}
+
 .hero-nav {
   display: flex;
   flex-wrap: wrap;
@@ -711,6 +725,58 @@ code {
 
 /* ---------------------------------------------------------------- 收尾 */
 
+/* ---------------------------------------------------------------- 成绩 */
+
+.score { padding-block: var(--section) 0; }
+
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: var(--gap);
+  align-items: center;
+}
+
+.score-media {
+  grid-column: 1 / span 7;
+  margin: 0;
+  margin-left: calc(var(--pad) * -1);
+}
+
+.score-media img { width: 100%; border-radius: var(--radius); }
+
+.score-copy { grid-column: 9 / span 4; }
+
+.score-lead {
+  margin: 0;
+  max-width: 32ch;
+  color: var(--ink-body);
+}
+
+.score-points {
+  margin: clamp(20px, 3vw, 32px) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  max-width: 32ch;
+  font-size: var(--t1);
+  color: var(--ink-soft);
+}
+
+.score-points li {
+  display: grid;
+  grid-template-columns: 5.5em minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: baseline;
+}
+
+.score-points b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------- 收尾 */
+
 .close { padding-block: clamp(56px, 6vw, 88px) 0; }
 
 .close-band {
@@ -718,16 +784,9 @@ code {
   padding-block: clamp(56px, 7vw, 96px);
 }
 
-.close-grid {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  column-gap: var(--gap);
-  align-items: center;
-}
-
 .close-say {
-  grid-column: 1 / span 5;
   margin: 0;
+  max-width: 44ch;
   font-size: var(--t3);
   line-height: 1.55;
 }
@@ -740,9 +799,6 @@ code {
   text-underline-offset: 3px;
 }
 
-.close-media { grid-column: 7 / span 6; margin: 0; }
-.close-media img { width: 100%; border-radius: var(--radius); }
-
 /* ---------------------------------------------------------------- 页脚 */
 
 .foot {
@@ -752,8 +808,9 @@ code {
 }
 
 .foot-top {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
   gap: 24px;
   font-size: var(--t1);
   color: #d7dade;
@@ -763,17 +820,78 @@ code {
 .foot-note a { text-decoration: none; }
 .foot-note a:hover { text-decoration: underline; }
 
-.foot-line {
-  margin: clamp(56px, 8vw, 128px) 0 clamp(36px, 4vw, 56px);
-  font-size: var(--t4);
-  line-height: 1;
-  letter-spacing: -0.03em;
+.foot-credit { color: #b9bec5; }
+
+.foot-top-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e9eaec;
+  font-size: var(--t1);
+  text-decoration: none;
+  transition: background 160ms var(--ease), color 160ms var(--ease);
 }
 
-.foot-line code {
-  font-family: var(--mono, ui-monospace, "SFMono-Regular", Consolas, monospace);
-  color: #ffffff;
+.foot-top-btn:hover {
+  background: #e9eaec;
+  color: var(--ink);
 }
+
+.foot-top-arrow {
+  display: inline-block;
+  transition: transform 220ms var(--ease);
+}
+
+.foot-top-btn:hover .foot-top-arrow { transform: translateY(-3px); }
+
+.foot-repo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: clamp(48px, 7vw, 112px) 0 clamp(28px, 3vw, 44px);
+  padding-bottom: clamp(20px, 2.4vw, 32px);
+  text-decoration: none;
+  color: inherit;
+}
+
+.foot-repo-name {
+  font-size: var(--t4);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+  transition: opacity 160ms var(--ease);
+}
+
+.foot-star {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: var(--t1);
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 180ms var(--ease), color 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+
+.foot-star-arrow { transition: transform 220ms var(--ease); }
+
+.foot-repo:hover .foot-repo-name { opacity: 0.82; }
+
+.foot-repo:hover .foot-star,
+.foot-repo:focus-visible .foot-star {
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.foot-repo:hover .foot-star-arrow { transform: translateX(4px); }
 
 .foot-bottom {
   display: flex;
@@ -788,6 +906,38 @@ code {
 .foot-bottom p { margin: 0; }
 .foot-bottom a { text-decoration-color: #5c626a; }
 .foot-bottom a:hover { color: #ffffff; }
+
+/* ---------------------------------------------------------------- 浮动回到顶部 */
+
+.to-top {
+  position: fixed;
+  right: clamp(16px, 2vw, 28px);
+  bottom: clamp(16px, 2vw, 28px);
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--t2);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease), visibility 220ms;
+}
+
+.to-top.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.to-top:hover { transform: translateY(-2px); }
 
 /* ---------------------------------------------------------------- 入场 */
 
@@ -876,6 +1026,16 @@ code {
   .student-copy { margin-bottom: clamp(28px, 6vw, 40px); }
   .student-lead, .student-points { max-width: none; }
   .student-phones { margin-bottom: 0; }
+
+  .score-grid { display: block; }
+  .score-media { margin: 0 0 clamp(24px, 5vw, 32px); }
+  .score-lead, .score-points { max-width: none; }
+
+  .foot-top { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .foot-top-btn { justify-self: start; }
+  .foot-repo { flex-wrap: wrap; gap: 16px; }
+  .foot-repo-name { font-size: var(--t3); }
+  .to-top { width: 36px; height: 36px; }
 
   .install-row { grid-template-columns: 1fr; row-gap: 10px; }
   .install-row dt, .install-row dd { grid-column: 1; }
