@@ -255,22 +255,30 @@ code {
   overflow: hidden;
 }
 
-/* 测量层：占满纸面容器的可用区；缩放后的纸面在它里面居中。
+/* 测量层 + 滚动视口：占满纸面容器的可用区；缩放后的纸面在它里面。
    为什么不直接量 `.mg-paper-frame`：它带 `aspect-ratio`，量它会把「比例」与「可用高」
-   耦合在一起；这一层是纯弹性盒子，量到的就是真·可用空间，且**不随缩放变化**（不会形成反馈循环）。 */
+   耦合在一起；这一层是纯弹性盒子，量到的就是真·可用空间，且**不随缩放变化**（不会形成反馈循环）。
+
+   多页之后它还兼一个职责：**滚动视口**（D84）。一屏放不下整份卷子时在这里滚，
+   页码栏点击后也是滚这一层。padding 与 `SheetFrame.tsx` 的 `STAGE_PAD_PX` 必须同值。 */
 .mg-paper-stage {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  overflow: auto;
+  padding: 12px;
+  background: transparent;
+  overscroll-behavior: contain;
 }
 
 /* 缩放后的占位盒：尺寸由 JS 按同一个 k 算出（= A4 × k），让「居中」按视觉尺寸算
-   （若直接居中未缩放的 793.7px 元素，居中位置会偏）。它只占位，缩放应用在里面的 iframe 上。 */
+   （若直接居中未缩放的 793.7px 元素，居中位置会偏）。它只占位，缩放应用在里面的 iframe 上。
+   `margin-inline:auto` 而不是父层 flex 居中：放大超过视口时 flex 居中会把左半边裁掉、
+   滚不到（`justify-content:center` 的经典溢出问题）；`margin:auto` 在过约束时退化为 0。 */
 .mg-paper-scaler {
   position: relative;
   flex: none;
+  margin: 0 auto;
 }
 
 /* 预览 iframe：**卷面 HTML 来自后端**（D56 / I6），前端只给它一个窗口。
@@ -1494,12 +1502,13 @@ code {
   flex-direction: column;
 }
 
-/* 三栏：左题目列表 / 中画布 / 右面板（§7） */
+/* 四栏：左题目列表 / 中画布 / 页码栏 / 右面板（§7 + D84）
+   页码栏只有 40px：它是「第几页」的常驻读数，不是导航主体，宽了会抢纸面的横向空间。 */
 .paper-workbench {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--mg-side-w) minmax(0, 1fr) var(--mg-side-w);
+  grid-template-columns: var(--mg-side-w) minmax(0, 1fr) 40px var(--mg-side-w);
   gap: var(--mg-sp-7);
   padding: var(--mg-sp-7);
 }
@@ -1507,7 +1516,7 @@ code {
 /* 1280 宽下侧栏收窄（§7）；次要元数据按同一断点隐藏 */
 @media (max-width: 1360px) {
   .paper-workbench {
-    grid-template-columns: var(--mg-side-w-narrow) minmax(0, 1fr) var(--mg-side-w-narrow);
+    grid-template-columns: var(--mg-side-w-narrow) minmax(0, 1fr) 40px var(--mg-side-w-narrow);
     gap: var(--mg-sp-5);
     padding: var(--mg-sp-5);
   }
@@ -1516,6 +1525,97 @@ code {
   .meta-secondary {
     display: none;
   }
+}
+
+/* 页码栏（多页预览）：常驻在纸面右侧，滚到第几页就点亮第几个。 */
+.mg-paper-pager {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mg-sp-3);
+  min-height: 0;
+  padding-top: var(--mg-sp-2);
+}
+
+.pager-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mg-sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.pager-page {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius-sm);
+  background: var(--mg-surface);
+  color: var(--mg-ink-soft);
+  font: inherit;
+  font-size: var(--mg-fs-12);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--mg-motion), border-color var(--mg-motion), color var(--mg-motion);
+}
+
+.pager-page:hover {
+  border-color: var(--mg-line-strong);
+  color: var(--mg-ink);
+}
+
+.pager-page:focus-visible {
+  outline: 2px solid var(--mg-primary);
+  outline-offset: 1px;
+}
+
+.pager-page.pager-on {
+  border-color: var(--mg-primary);
+  background: var(--mg-primary);
+  color: var(--mg-primary-ink);
+  font-weight: var(--mg-fw-medium);
+}
+
+.pager-count {
+  color: var(--mg-ink-faint);
+  font-size: var(--mg-fs-11);
+  font-variant-numeric: tabular-nums;
+  writing-mode: horizontal-tb;
+}
+
+/* 缩放控件（工具栏右侧）：− 百分比 ＋ 适合宽度。
+   百分比是**实际生效**的倍数（适合宽度时不是整数档），所以用 tabular-nums 防抖动。 */
+.zoom-group {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-2);
+  flex: none;
+}
+
+.zoom-step {
+  width: 24px;
+  padding-inline: 0;
+  font-size: var(--mg-fs-13);
+  line-height: 1;
+}
+
+.zoom-value {
+  min-width: 42px;
+  text-align: center;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12);
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-mini.is-on {
+  border-color: var(--mg-line-strong);
+  background: var(--mg-primary-soft);
+  color: var(--mg-ink);
 }
 
 .paper-side-column {

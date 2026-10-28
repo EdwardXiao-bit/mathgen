@@ -29,6 +29,7 @@ from app.layout.answers import (
     AnswerPlan,
     build_answer_plan,
 )
+from app.layout.pagination import page_margin_px, usable_geometry
 from app.layout.styles import (
     layout_fingerprint,
     root_style_attr,
@@ -84,7 +85,9 @@ def render_with_layout(ctx: SheetContext, layout: LayoutParams) -> str:
     body_parts = [
         '<main class="sheet" data-mode="%s"' % escape(ctx.mode.value, quote=True),
         ' data-header-bar="%s"' % ("1" if layout.header_bar else "0"),
-        ' data-answer-line="%s">' % ("1" if layout.answer_line else "0"),
+        ' data-answer-line="%s"' % ("1" if layout.answer_line else "0"),
+        _pagination_attrs(layout),
+        ">",
         _render_title(ctx),
         _render_meta(ctx),
         _render_header_bar(ctx),
@@ -95,6 +98,30 @@ def render_with_layout(ctx: SheetContext, layout: LayoutParams) -> str:
     body_parts.append("</main>")
 
     return _document(ctx, layout, "".join(body_parts))
+
+
+def _pagination_attrs(layout: LayoutParams) -> str:
+    """把**分页几何**写进卷面 DOM（屏幕预览据此切页）。
+
+    为什么由后端给而不是前端自己算：`MEASURED_BREAK_CEILING_PX`（
+    `app.layout.pagination`）是 Chromium 打印通道的**实测标定值**，是分页的唯一来源；
+    前端再推一套只会和打印通道漂移——那正是 C3 要防的「预览 ≠ 打印」。
+
+    三个值都是**文档流坐标**（正文首行顶部起算）下的 CSS 像素：
+
+    * `data-usable-first-px`：第 1 页放得下的最后一行底边；
+    * `data-usable-later-px`：第 2 页起每页的可用高度（比第 1 页少让两个页边距）；
+    * `data-page-margin-px`：页边距（前端画页间空隙用，与打印同源）。
+
+    打印/PDF 通道**完全不读**这些属性（它们是 `data-*`，不产生任何视觉效果）。
+    """
+    usable_first, usable_later = usable_geometry(layout)
+    margin_px = page_margin_px(layout)
+    return (
+        ' data-usable-first-px="%.2f"' % usable_first
+        + ' data-usable-later-px="%.2f"' % usable_later
+        + ' data-page-margin-px="%.2f"' % margin_px
+    )
 
 
 # ---------------------------------------------------------------------------

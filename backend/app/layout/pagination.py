@@ -43,6 +43,7 @@ __all__ = [
     "detect_overflow",
     "detect_page_crossing",
     "usable_geometry",
+    "page_margin_px",
     "reflow",
 ]
 
@@ -152,6 +153,17 @@ def _margin_mm(layout: LayoutParams) -> float:
     把越过分页线的行算成没越过——正是 NFR-5 要防的漏报。
     """
     return layout.page_margin * _MM_PER_CM
+
+
+def page_margin_px(layout: LayoutParams) -> float:
+    """页边距，CSS 像素（按 96dpi）。
+
+    给屏幕预览画「页间空隙」用。`LayoutParams.page_margin` 的单位是 **cm**，
+    这里必须走 `_margin_mm()` 换一次，**不能**直接 `page_margin / MM_PER_PX`：
+    那样把 cm 当 mm，2cm 会算成 7.56px（真值 75.59px），页缝塌成一条细线。
+    与 `usable_geometry()` / `page_of()` 共用同一个换算，避免两处漂移。
+    """
+    return _margin_mm(layout) / MM_PER_PX
 
 
 def content_width_px(layout: LayoutParams) -> int:

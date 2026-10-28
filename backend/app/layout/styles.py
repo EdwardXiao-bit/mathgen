@@ -33,6 +33,9 @@ __all__ = [
     "measure_js",
 ]
 
+#: 屏幕预览页间灰缝的像素高度（与前端 `SheetFrame.tsx` 的 `SEAM_GAP_PX` 一致）。
+SEAM_PX = 18
+
 #: A4 物理尺寸（docs/02-技术设计.md §9.2）
 A4_WIDTH_MM = 210.0
 A4_HEIGHT_MM = 297.0
@@ -121,9 +124,11 @@ def style_text(layout: LayoutParams) -> str:
        变量被真正消费，面板改页边距时预览立刻变化。
        `@media screen` 不影响打印/PDF 通道，NFR-5 不受影响。 */
     @media screen {{
+      /* 预览里的「桌面」由**老师端画布**提供（D68 / D84），iframe 内部不再画一层灰底：
+         多页之后纸面就贴在框架边缘，里面再垫 12mm 灰边会变成一圈多余的白框。 */
       body {{
-        background: #e9e9ec;
-        padding: 12mm 0;
+        background: #fff;
+        padding: 0;
       }}
       .sheet {{
         width: 210mm;
@@ -132,7 +137,32 @@ def style_text(layout: LayoutParams) -> str:
         padding: var({var_margin});
         background: #fff;
         margin: 0 auto;
-        box-shadow: 0 0 4px rgba(0, 0, 0, 0.25);
+        /* 一页最少占满一张 A4：短卷子（比如 6 道题）也不该在纸面下方露出一截空框。
+           多页时由内容自然撑高，这条不影响分页 —— 分页只看内容高度。 */
+        min-height: 297mm;
+      }}
+
+      /* ---- 屏幕预览的「页」 --------------------------------------------------
+         老师端预览按**后端给出的分页几何**把卷面切成页（见 `SheetFrame.tsx`）：
+         在分页点插入一个 `.page-seam`，高度 = 上一页下边距 + 灰缝 + 下一页上边距。
+         它只是**屏幕上的视觉切页**——`@media print` 里没有这条规则，
+         打印/PDF 通道完全不受影响（页由 Chromium 按同一套实测几何自己切）。
+         负 margin 让灰缝横向出血到纸边，读起来像两张纸叠在一起。 */
+      .page-seam {{
+        position: relative;
+        margin: 0 calc(-1 * var({var_margin}));
+        background: linear-gradient(
+          to bottom,
+          #fff 0,
+          #fff var({var_margin}),
+          #eceef1 var({var_margin}),
+          #eceef1 calc(var({var_margin}) + {SEAM_PX}px),
+          #fff calc(var({var_margin}) + {SEAM_PX}px),
+          #fff 100%
+        );
+        box-shadow:
+          inset 0 1px 0 rgba(0, 0, 0, 0.06),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.06);
       }}
     }}
 

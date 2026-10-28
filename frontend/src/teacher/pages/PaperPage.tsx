@@ -35,7 +35,14 @@ import { Card, EmptyState, ErrorState, FloatingPanel, List, StatusBar, Toolbar, 
 import type { StatusBarState } from '../../ui';
 import { AnswerLayoutEditor } from '../AnswerLayoutEditor';
 import { LayoutPanel } from '../LayoutPanel';
-import { SheetFrame, applyLayoutToDocument } from '../SheetFrame';
+import {
+  SheetFrame,
+  ZOOM_TIERS,
+  applyLayoutToDocument,
+  type SheetPagination,
+  type SheetPreviewHandle,
+  type ZoomMode,
+} from '../SheetFrame';
 
 export type PreviewMode = 'question' | 'answer';
 export type PrintMode = 'question' | 'answer';
@@ -44,6 +51,37 @@ export type PrintMode = 'question' | 'answer';
 export type PersistState = 'idle' | 'saving' | 'refreshing' | 'refreshed' | 'error';
 
 const PERSIST_DEBOUNCE_MS = 400;
+
+/**
+ * 预览缩放的记忆：档位是「这台设备的偏好」，不是卷子属性，所以存本机。
+ *
+ * 存的是**模式**（`fit-width` / `fit-page` / 具体倍数）而不是算出来的像素比 ——
+ * 像素比取决于窗口大小，换一台电脑打开就不该被沿用。
+ * 隐私模式下 `localStorage` 会抛，读写都包住：缩放偏好丢了不影响任何功能。
+ */
+const ZOOM_STORAGE_KEY = 'mathgen.paper.zoom';
+
+function readStoredZoom(): ZoomMode {
+  try {
+    const raw = window.localStorage.getItem(ZOOM_STORAGE_KEY);
+    if (raw === 'fit-page') return 'fit-page';
+    if (raw === 'fit-width' || raw === null) return 'fit-width';
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= ZOOM_TIERS[0] && value <= ZOOM_TIERS[ZOOM_TIERS.length - 1]
+      ? value
+      : 'fit-width';
+  } catch {
+    return 'fit-width';
+  }
+}
+
+function storeZoom(zoom: ZoomMode): void {
+  try {
+    window.localStorage.setItem(ZOOM_STORAGE_KEY, typeof zoom === 'number' ? String(zoom) : zoom);
+  } catch {
+    // 存不了就算了：下一次打开回到默认的「适合宽度」
+  }
+}
 
 
 function parsePaperId(raw: string | undefined): number | null {
@@ -276,15 +314,40 @@ export function PaperPage() {
   }, [paperId, previewMode]);
 
   /**
-   * 排版面板改动 → 立刻写到 **iframe 文档**的根元素（D56 第 2 条 / FR-T4）。
-   * 不产生任何请求：只是覆盖后端已写进 `:root` 的那六个变量。
-   * 预览 iframe 每次重新加载（换页签 / 换卷）后由 `onLoaded` 再补一次。
+   * 多页预览：页数 / 当前页由 `SheetFrame` 量真实 DOM 后回报。
+   *
+   * 不在这里另算一套页数 —— 那是后端 `MEASURED_BREAK_CEILING_PX` 的标定值决定的，
+   * 前端再推一套只会和打印漂移。
    */
+  const [pagination, setPagination] = useState<SheetPagination>({ pages: 1, activePage: 1 });
+
+  /**
+   * 缩放：只存「模式」，不存像素值 —— 像素值取决于窗口大小，换屏就失效。
+   * 默认「适合宽度」（用户确认）；档位是用户定死的七档，Ctrl+滚轮与键盘 +/- 走同一序列。
+   */
+  const [zoom, setZoom] = useState<ZoomMode>(() => readStoredZoom());
+  const [effectiveScale, setEffectiveScale] = useState(1);
+  const effectiveScaleRef = useRef(1);
+  effectiveScaleRef.current = effectiveScale;
+  const previewRef = useRef<SheetPreviewHandle | null>(null);
+
+  // 缩放档位是「设备偏好」而不是卷子属性，所以存在本机
   useEffect(() => {
-    const doc = sheetFrameRef.current?.contentDocument;
-    if (!doc?.documentElement) return;
-    applyLayoutToDocument(doc, layout);
-  }, [layout, sheetSrc]);
+    storeZoom(zoom);
+  }, [zoom]);
+
+  /** 步进到相邻档位：从当前**视觉**倍数往上/往下找，所以「适合宽度」下按 + 也能进档。 */
+  const stepZoom = useCallback((direction: 1 | -1) => {
+    setZoom((current) => {
+      const basis = typeof current === 'number' ? current : effectiveScaleRef.current;
+      if (direction === 1) {
+        const next = ZOOM_TIERS.find((tier) => tier > basis + 0.001);
+        return next ?? ZOOM_TIERS[ZOOM_TIERS.length - 1];
+      }
+      const below = ZOOM_TIERS.filter((tier) => tier < basis - 0.001);
+      return below.length > 0 ? below[below.length - 1] : ZOOM_TIERS[0];
+    });
+  }, []);
 
   /**
    * 打印：取**同一个** `/sheet` 接口的 HTML，写进隐藏 iframe，然后打印那个 iframe。
@@ -593,6 +656,41 @@ export function PaperPage() {
             >
               打印答案版
             </button>
+            <ToolbarDivider />
+            <div className="zoom-group" role="group" aria-label="预览缩放" data-testid="zoom-group">
+              <button
+                type="button"
+                className="btn btn-mini zoom-step"
+                data-testid="zoom-out"
+                aria-label="缩小预览"
+                disabled={effectiveScale <= ZOOM_TIERS[0] + 0.001}
+                onClick={() => stepZoom(-1)}
+              >
+                −
+              </button>
+              <span className="zoom-value" data-testid="zoom-value" aria-live="polite">
+                {Math.round(effectiveScale * 100)}%
+              </span>
+              <button
+                type="button"
+                className="btn btn-mini zoom-step"
+                data-testid="zoom-in"
+                aria-label="放大预览"
+                disabled={effectiveScale >= ZOOM_TIERS[ZOOM_TIERS.length - 1] - 0.001}
+                onClick={() => stepZoom(1)}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                className={`btn btn-mini${zoom === 'fit-width' ? ' is-on' : ''}`}
+                data-testid="zoom-fit"
+                aria-pressed={zoom === 'fit-width'}
+                onClick={() => setZoom('fit-width')}
+              >
+                适合宽度
+              </button>
+            </div>
           </Toolbar>
 
           {sheetError ? (
@@ -603,12 +701,18 @@ export function PaperPage() {
 
           {/* 纸面：A4 真实比例 210/297（判据在门禁 ⑥ 里量比例）。
               iframe 里的卷面 HTML 来自后端 `/sheet`，前端不自己画（D56 / I6）。
-              `data-css-vars` 挂在纸面容器上，`data-testid="print-area"` 保留原语义。 */}
+              `data-css-vars` 挂在纸面容器上，`data-testid="print-area"` 保留原语义。
+              多页时 `SheetFrame` 按后端给的分页几何切页，纸面高度随内容长。 */}
           <div className="mg-paper-frame" data-testid="print-area" data-css-vars={previewVars}>
             <SheetFrame
               src={sheetSrc}
               layout={layout}
               reloadToken={sheetReloadToken}
+              zoom={zoom}
+              onZoomStep={stepZoom}
+              onPaginationChange={setPagination}
+              onScaleChange={setEffectiveScale}
+              previewRef={previewRef}
               frameRef={sheetFrameRef}
               onLoaded={() => setSheetError(null)}
               onReloaded={() => setPersistState('refreshed')}
@@ -616,6 +720,31 @@ export function PaperPage() {
             />
           </div>
         </div>
+
+        {/* 中右：页码栏（用户指定的位置：灰底预览与右侧排版面板之间）。
+            多页卷子改到第 3 页时，没有它只能靠滚轮找；点一下就能跳过去。
+            页数来自预览实测的 DOM 分页，不是另算的估计值。 */}
+        <nav className="mg-paper-pager" aria-label="卷面页码" data-testid="paper-pager">
+          <ol className="pager-list">
+            {Array.from({ length: pagination.pages }, (_, index) => index + 1).map((page) => (
+              <li key={page}>
+                <button
+                  type="button"
+                  className={`pager-page${page === pagination.activePage ? ' pager-on' : ''}`}
+                  aria-current={page === pagination.activePage ? 'page' : undefined}
+                  aria-label={`跳到第 ${page} 页`}
+                  data-testid={`pager-page-${page}`}
+                  onClick={() => previewRef.current?.scrollToPage(page)}
+                >
+                  {page}
+                </button>
+              </li>
+            ))}
+          </ol>
+          <span className="pager-count" data-testid="pager-count">
+            {pagination.activePage} / {pagination.pages}
+          </span>
+        </nav>
 
         {/* 右：排版面板 + 答案版形式 + 验收用的变量 dump */}
         <div className="paper-side-column">
@@ -692,6 +821,7 @@ export function PaperPage() {
       <PaperStatusBar
         layout={layout}
         itemCount={paper.items.length}
+        pagination={pagination}
         persistState={persistState}
         persistError={persistError}
         answerLayoutState={answerLayoutState}
@@ -709,12 +839,14 @@ export function PaperPage() {
 function PaperStatusBar({
   layout,
   itemCount,
+  pagination,
   persistState,
   persistError,
   answerLayoutState,
 }: {
   layout: LayoutIn;
   itemCount: number;
+  pagination: SheetPagination;
   persistState: PersistState;
   persistError: string | null;
   answerLayoutState: 'idle' | 'saving' | 'saved' | 'error';
@@ -755,7 +887,7 @@ function PaperStatusBar({
           题目 <b>{itemCount}</b> 道
         </>,
         <>
-          页码 <b>1 / 1</b>
+          页码 <b>{pagination.activePage} / {pagination.pages}</b>
         </>,
         <>
           每行 <b>{layout.cols_per_row}</b> 题 · 共 <b>{rows}</b> 行
