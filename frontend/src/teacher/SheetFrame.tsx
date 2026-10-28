@@ -226,6 +226,9 @@ export function SheetFrame({
   const onZoomStepRef = useRef(onZoomStep);
   onZoomStepRef.current = onZoomStep;
 
+  /** 上一次滚轮缩放的时间戳：滚轮/触控板一次手势会连发多个事件，攒一下再走一档。 */
+  const lastWheelZoomRef = useRef(0);
+
   /** 分页结果的「页顶」表：滚动定位与当前页判定都读它（用 ref 避免闭包拿到旧值）。 */
   const topsRef = useRef<number[]>([0]);
   const pagesRef = useRef(1);
@@ -352,24 +355,65 @@ export function SheetFrame({
   }, []);
 
   /**
-   * Ctrl/Alt + 滚轮缩放。
+   * Ctrl/Cmd + 滚轮缩放预览。
    *
-   * 必须是**原生非 passive** 监听器：React 的 `onWheel` 在根容器上是 passive，
-   * `preventDefault()` 会被忽略，那时浏览器会把自己的整页缩放也做一遍
-   * （用户实测过「旁边变大、中间变小」）。挂在舞台而不是 window 上，
-   * 指针离开预览区时 Ctrl+滚轮仍归浏览器。
+   * 三条都是实测撞出来的约束：
+   * - 必须是**原生非 passive** 监听器：React 的 `onWheel` 在根容器上是 passive，
+   *   `preventDefault()` 被忽略，浏览器会顺手把整页也缩放一遍。
+   * - 卷面在 `<iframe>` 里，指针落到纸面上时 wheel 事件进的是 **iframe 自己的文档**，
+   *   挂在父文档舞台上的监听器收不到（用户实测「有时候放大的是浏览页面」）。
+   *   所以父文档与 iframe 文档都要挂。
+   * - 方向按浏览器惯例：滚轮向上（`deltaY < 0`）= 放大。
+   *
+   * 指针在预览区外时只吞掉默认行为、不缩放（用户要求「其他地方禁用缩放」）。
    */
   useEffect(() => {
     const stage = stageRef.current;
-    if (!stage) return undefined;
-    const onWheel = (event: WheelEvent) => {
-      if (!(event.ctrlKey || event.altKey)) return;
-      event.preventDefault();
-      if (!event.deltaY) return;
-      onZoomStepRef.current?.(event.deltaY < 0 ? -1 : 1);
+    const frame = innerRef.current;
+    if (!stage || !frame) return undefined;
+
+    const isInsideStage = (clientX: number, clientY: number): boolean => {
+      const rect = stage.getBoundingClientRect();
+      return (
+        clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+      );
     };
-    stage.addEventListener('wheel', onWheel, { passive: false });
-    return () => stage.removeEventListener('wheel', onWheel);
+
+    const onWheel = (event: WheelEvent, inside: boolean) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      if (!inside || !event.deltaY) return;
+      const now = performance.now();
+      if (now - lastWheelZoomRef.current < 90) return;
+      lastWheelZoomRef.current = now;
+      onZoomStepRef.current?.(event.deltaY < 0 ? 1 : -1);
+    };
+
+    // 父文档：用指针坐标判断是否落在预览区内。
+    const onWindowWheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      onWheel(event, isInsideStage(event.clientX, event.clientY));
+    };
+
+    // iframe 文档：事件必然发生在预览区内；iframe 每次重载都会换一个 window，需要重挂。
+    let frameWindow: Window | null = null;
+    const onFrameWheel = (event: WheelEvent) => onWheel(event, true);
+    const bindFrame = () => {
+      const next = innerRef.current?.contentWindow ?? null;
+      if (next === frameWindow) return;
+      frameWindow?.removeEventListener('wheel', onFrameWheel);
+      frameWindow = next;
+      frameWindow?.addEventListener('wheel', onFrameWheel, { passive: false });
+    };
+    bindFrame();
+    frame.addEventListener('load', bindFrame);
+    window.addEventListener('wheel', onWindowWheel, { passive: false, capture: true });
+
+    return () => {
+      window.removeEventListener('wheel', onWindowWheel, { capture: true });
+      frame.removeEventListener('load', bindFrame);
+      frameWindow?.removeEventListener('wheel', onFrameWheel);
+    };
   }, []);
 
   // 命令式入口：点页码跳页

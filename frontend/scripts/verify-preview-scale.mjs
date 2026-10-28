@@ -186,6 +186,51 @@ def measure(page):
         };
     }""")
 
+def zoom_label(page):
+    return page.locator(".zoom-value").inner_text().strip()
+
+
+def measure_wheel(page):
+    """Ctrl+滚轮：方向、iframe 内也生效、预览区外禁用（用户 2026-10-28 实测报告的三条）。
+
+    必须真的发 wheel 事件 —— 只读代码证明不了「指针落在纸面上时事件进的是 iframe 文档」。
+    """
+    out = {}
+    stage = page.locator(".mg-paper-stage")
+    box = stage.bounding_box()
+    frame = page.frame_locator("iframe")
+    page.evaluate(
+        "() => { window.__wheelSeen = [];"
+        " window.addEventListener('wheel', (e) =>"
+        "   window.__wheelSeen.push({ctrl: e.ctrlKey, prevented: e.defaultPrevented})); }")
+    frame.locator("body").evaluate(
+        "() => { window.__wheelInFrame = [];"
+        " window.addEventListener('wheel', (e) =>"
+        "   window.__wheelInFrame.push({ctrl: e.ctrlKey, dy: e.deltaY})); }")
+
+    def wheel_at(x, y, dy):
+        page.mouse.move(x, y)
+        page.keyboard.down("Control")
+        page.mouse.wheel(0, dy)
+        page.wait_for_timeout(280)
+        page.keyboard.up("Control")
+        page.wait_for_timeout(240)
+
+    out["labelStart"] = zoom_label(page)
+    cx = box["x"] + box["width"] / 2
+    cy = box["y"] + box["height"] / 2
+    wheel_at(cx, cy, -120)  # 浏览器惯例：滚轮向上 = 放大
+    out["labelAfterUpOnPaper"] = zoom_label(page)
+    wheel_at(cx, cy, 120)
+    out["labelAfterDownOnPaper"] = zoom_label(page)
+    out["frameWheel"] = frame.locator("body").evaluate("() => window.__wheelInFrame || []")
+    out["labelBeforeOutside"] = zoom_label(page)
+    wheel_at(200, 500, -120)  # 改题列表：预览区外
+    out["labelAfterOutside"] = zoom_label(page)
+    out["windowWheel"] = page.evaluate("() => window.__wheelSeen || []")
+    return out
+
+
 result = {"viewports": {}, "console_errors": []}
 exe = find_chromium()
 result["chromium"] = exe
@@ -204,6 +249,7 @@ with sync_playwright() as p:
         page.wait_for_timeout(600)
         result["viewports"][label] = measure(page)
         if label == "1440x900":
+            result["wheel"] = measure_wheel(page)
             page.screenshot(path=os.path.join(r"@@FRONTEND_DIR@@".lstrip("/"), "verify-a9-after-1440x900.png"))
         else:
             page.screenshot(path=os.path.join(r"@@FRONTEND_DIR@@".lstrip("/"), "verify-a9-after-1280x900.png"))
@@ -332,6 +378,41 @@ async function main() {
       `不同高度集合=${JSON.stringify(v.uniqueItemHeights)}`,
     );
   }
+
+  console.log('\n—— A9-8 Ctrl+滚轮：方向、iframe 内也生效、预览区外禁用 ——');
+  const wheel = result.wheel ?? {};
+  const pct = (value) => {
+    const n = parseFloat(String(value ?? '').replace('%', ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  const startPct = pct(wheel.labelStart);
+  const upPct = pct(wheel.labelAfterUpOnPaper);
+  const downPct = pct(wheel.labelAfterDownOnPaper);
+  check(
+    'A9-8 滚轮向上 = 放大（浏览器惯例，方向不能反）',
+    startPct !== null && upPct !== null && upPct > startPct,
+    `${wheel.labelStart} → ${wheel.labelAfterUpOnPaper}`,
+  );
+  check(
+    'A9-8 滚轮向下 = 缩小',
+    upPct !== null && downPct !== null && downPct < upPct,
+    `${wheel.labelAfterUpOnPaper} → ${wheel.labelAfterDownOnPaper}`,
+  );
+  check(
+    'A9-8 指针落在纸面上时 wheel 事件确实进的是 iframe 文档（父文档监听收不到，这正是旧实现漏掉的那条）',
+    (wheel.frameWheel ?? []).some((event) => event.ctrl === true),
+    `iframe 内收到 ${JSON.stringify(wheel.frameWheel ?? [])}`,
+  );
+  check(
+    'A9-8 预览区外 Ctrl+滚轮不缩放预览',
+    wheel.labelBeforeOutside !== undefined && wheel.labelAfterOutside === wheel.labelBeforeOutside,
+    `${wheel.labelBeforeOutside} → ${wheel.labelAfterOutside}`,
+  );
+  check(
+    'A9-8 预览区外 Ctrl+滚轮被 preventDefault（浏览器整页缩放被禁用）',
+    (wheel.windowWheel ?? []).some((event) => event.ctrl === true && event.prevented === true),
+    `父文档收到 ${JSON.stringify(wheel.windowWheel ?? [])}`,
+  );
 
   check('无 pageerror', (result.console_errors ?? []).length === 0, (result.console_errors ?? []).join(' ; ').slice(0, 200));
 
