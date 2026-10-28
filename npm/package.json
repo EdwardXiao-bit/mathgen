@@ -1,6 +1,6 @@
 {
   "name": "mathgen-cli",
-  "version": "1.0.0-rc1",
+  "version": "1.0.0-rc2",
   "description": "小学四则运算练习题生成与批改系统 —— 一条命令在本机拉起老师端与学生端",
   "bin": {
     "mathgen": "cli.js"

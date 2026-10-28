@@ -12,4 +12,4 @@ M1 阶段只有两个纯逻辑子包：
 """
 
 #: 与 `backend/pyproject.toml` 的 `[project] version` 必须一致（发行时由 tag 校验）。
-__version__ = "1.0.0rc1"
+__version__ = "1.0.0rc2"

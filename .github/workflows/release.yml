@@ -83,6 +83,12 @@ jobs:
           assert any(n.endswith("index.html") for n in static), "static 里没有 index.html"
           PY
 
+      - name: 生成校验和（下载的人可以自己核）
+        run: |
+          cd dist
+          sha256sum *.whl > SHA256SUMS
+          cat SHA256SUMS
+
       - name: 生成 release 说明（取 CHANGELOG 里对应版本那一节）
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -126,7 +132,9 @@ jobs:
         with:
           name: mathgen ${{ github.ref_name }}
           body_path: RELEASE_NOTES.md
-          files: dist/*.whl
+          files: |
+            dist/*.whl
+            dist/SHA256SUMS
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
 

@@ -1,6 +1,6 @@
 [project]
 name = "mathgen-backend"
-version = "1.0.0rc1"
+version = "1.0.0rc2"
 description = "mathgen —— 小学四则运算练习题生成与批改系统的后端：出题引擎、判分、A4 排版、PDF/Word 导出与 REST API"
 readme = "README.md"
 requires-python = ">=3.12"

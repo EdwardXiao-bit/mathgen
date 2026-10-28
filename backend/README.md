@@ -6,7 +6,7 @@ PDF / Word 导出、REST API 与静态页托管。
 这个包同时是一个可运行的命令行程序：
 
 ```bash
-pip install mathgen_backend-1.0.0rc1-py3-none-any.whl
+pip install mathgen_backend-1.0.0rc2-py3-none-any.whl
 python -m playwright install chromium   # 只在需要 PDF 导出时
 mathgen                                  # 或 python -m app
 ```

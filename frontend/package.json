@@ -1,7 +1,7 @@
 {
   "name": "mathgen-frontend",
   "private": true,
-  "version": "1.0.0-rc1",
+  "version": "1.0.0-rc2",
   "type": "module",
   "description": "mathgen 老师端界面：出题配置 / 预览改题 / 排版面板 / 打印",
   "scripts": {
