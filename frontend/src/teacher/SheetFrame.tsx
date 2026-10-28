@@ -45,7 +45,7 @@ export const A4_HEIGHT_PX = (297 / 25.4) * 96;
 export const SEAM_GAP_PX = 18;
 
 /** 预览舞台的内边距（`.mg-paper-stage` 的 padding），算可用宽度时要减掉。 */
-export const STAGE_PAD_PX = 12;
+export const STAGE_PAD_PX = 24;
 
 /** 缩放档位：用户确认的七档（百分比 = 数值 × 100）。 */
 export const ZOOM_TIERS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2] as const;

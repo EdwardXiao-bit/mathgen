@@ -15,7 +15,9 @@
  * 唯一的例外是给 iframe **容器本身**设尺寸（那是外壳的一部分）。
  *
  * 骨架取 C1「工作台」（D62）：顶栏 44px + 三栏（侧栏 `--mg-side-w` / 画布 / 面板）+ 状态条 34px；
- * 画布上纸面按 A4 真实比例 210/297 居中；1280 宽下侧栏收窄到 `--mg-side-w-narrow`。
+ * 画布是灰底（带网格），**预览区就是这块灰底本身**：纸页直接铺在它上面、按 A4 等比缩放、
+ * 滚动条落在灰区右缘（用户 2026-10-28 明确要求，替代原来的「白纸小窗口」）；
+ * 1280 宽下侧栏收窄到 `--mg-side-w-narrow`。
  * ========================================================================== */
 
 /* ---------------------------------------------------------------------------
@@ -230,34 +232,39 @@ code {
   z-index: var(--mg-z-canvas);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--mg-sp-5);
+  align-items: stretch;
+  gap: 0;
   min-width: 0;
   min-height: 0;
-  padding: var(--mg-sp-6) var(--mg-sp-8) var(--mg-sp-8);
+  /* 画布列自己**不留内边距**：预览的滚动条要贴在灰区右缘（用户 2026-10-28 明确要求）。
+     工具栏的内边距改由它自己的外边距给（下一条规则）。 */
+  padding: 0;
 }
 
-/* A4 纸面容器：真实比例 210/297，按剩余高度缩放。
-   样张初版是固定宽 560px、无高度 → 渲染成 1.68 横版「扁块漂在灰底上」（D62）。
+.mg-canvas-column > .mg-toolbar {
+  align-self: center;
+  margin: var(--mg-sp-6) auto var(--mg-sp-4);
+  max-width: calc(100% - var(--mg-sp-8) * 2);
+}
 
-   A9（D68）之后它的角色变了：只负责**给出可用区**并在视觉上「就是那张纸」；
-   真正的等比缩放由里面的 `.mg-paper-stage` + iframe 内联 transform 完成（见 SheetFrame.tsx）。
-   `aspect-ratio` 保留：容器本身是 A4 比例，缩放后的纸正好贴合，不会留出空边。 */
+/* 预览的画布列：**灰底画布本身就是预览区**（用户 2026-10-28 明确要求）。
+   以前这里是「A4 比例的白纸小窗口」，纸在窗口里滚动、滚动条长在窗口上，
+   读起来像嵌了一个 PDF 阅读器；现在去掉白盒与比例约束，纸直接铺在灰底上，
+   滚动区就是整块灰区，滚动条落在灰区右缘。
+   这一层只负责两件事：给 `data-css-vars` 一个挂载点、保留 `print-area` 语义。
+   A4 的比例判据不再看它（纸在 iframe 里，几何由 A9-1/A9-3 直接量 iframe）。 */
 .mg-paper-frame {
   position: relative;
-  aspect-ratio: 210 / 297;
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
-  max-width: 100%;
-  background: var(--mg-paper);
-  border-radius: var(--mg-radius-float);
-  box-shadow: var(--mg-shadow-paper);
-  overflow: hidden;
+  background: transparent;
 }
 
-/* 测量层 + 滚动视口：占满纸面容器的可用区；缩放后的纸面在它里面。
-   为什么不直接量 `.mg-paper-frame`：它带 `aspect-ratio`，量它会把「比例」与「可用高」
-   耦合在一起；这一层是纯弹性盒子，量到的就是真·可用空间，且**不随缩放变化**（不会形成反馈循环）。
+/* 测量层 + 滚动视口：占满整个画布列；缩放后的纸面在它里面。
+   为什么不直接量 `.mg-paper-frame`：它只是**透明**的弹性区域（不再有白底/比例），
+   量的对象应该是「真正能滚、真正装纸」的这一层；它是纯弹性盒子，量到的就是真·可用空间，
+   且**不随缩放变化**（不会形成反馈循环）。
 
    多页之后它还兼一个职责：**滚动视口**（D84）。一屏放不下整份卷子时在这里滚，
    页码栏点击后也是滚这一层。padding 与 `SheetFrame.tsx` 的 `STAGE_PAD_PX` 必须同值。 */
@@ -266,9 +273,43 @@ code {
   inset: 0;
   display: block;
   overflow: auto;
-  padding: 12px;
+  /* 与 `SheetFrame.tsx` 的 STAGE_PAD_PX 必须同值（算「适合宽度」时要减掉） */
+  padding: 24px;
   background: transparent;
   overscroll-behavior: contain;
+  /* 滚动条是浏览器表面，也属于被设计的东西（craft floor）：细、走令牌、不抢纸面。
+     它是**灰区的**滚动条，位置在画布右缘 —— 不再出现在白纸盒上。 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--mg-ink-faint) transparent;
+  scroll-behavior: auto;
+}
+
+/* Chromium 的滚动条（`scrollbar-*` 标准属性在它这里只做到「细 + 着色」）；
+   显式画一遍是为了让它在灰底上**真的看得见**：10px 槽 + 圆角拇指 + hover 加深。
+   光标位置的滚动条属于浏览器自有表面，按 craft floor 一并设计，不走浏览器默认。 */
+.mg-paper-stage::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.mg-paper-stage::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mg-paper-stage::-webkit-scrollbar-thumb {
+  background: var(--mg-line-strong);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.mg-paper-stage::-webkit-scrollbar-thumb:hover {
+  background: var(--mg-ink-faint);
+  background-clip: padding-box;
+}
+
+.mg-paper-stage::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* 缩放后的占位盒：尺寸由 JS 按同一个 k 算出（= A4 × k），让「居中」按视觉尺寸算

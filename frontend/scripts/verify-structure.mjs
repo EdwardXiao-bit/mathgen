@@ -136,6 +136,11 @@ with sync_playwright() as p:
                 if (!e) return null; const r = e.getBoundingClientRect();
                 return {l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height}; };
             const paper = rect('.mg-paper-frame');
+            // 预览区：灰底画布就是滚动区（用户 2026-10-28 明确要求「不要白纸小窗口」）。
+            const previewStage = rect('.mg-paper-stage');
+            const canvasCol = rect('.mg-canvas-column');
+            const bgOf = (sel) => { const e = document.querySelector(sel);
+                return e ? getComputedStyle(e).backgroundColor : null; };
             const layers = {};
             for (const el of document.querySelectorAll('[data-layer]')) {
                 const r = el.getBoundingClientRect();
@@ -157,7 +162,10 @@ with sync_playwright() as p:
                 innerW: window.innerWidth,
                 innerH: window.innerHeight,
                 paper,
-                paperRatio: paper ? +(paper.w / paper.h).toFixed(4) : null,
+                previewStage,
+                canvasCol,
+                stageBg: bgOf('.mg-paper-stage'),
+                frameBg: bgOf('.mg-paper-frame'),
                 layers,
                 overflowing: over.slice(0, 6),
                 topbarH: topbar ? Math.round(topbar.h) : null,
@@ -701,9 +709,9 @@ async function main() {
     }
     check(`A7 ${label}：浮动层之间不互相压住`, collided.length === 0, collided.join(', ') || '(无交集)');
     check(
-      `A7 ${label}：工具栏不压住纸面`,
-      !overlaps(toolbar, paper),
-      `toolbar.b=${toolbar ? Math.round(toolbar.b) : null} paper.t=${paper ? Math.round(paper.t) : null}`,
+      `A7 ${label}：工具栏不压住预览区`,
+      !overlaps(toolbar, m.previewStage),
+      `toolbar.b=${toolbar ? Math.round(toolbar.b) : null} stage.t=${m.previewStage ? Math.round(m.previewStage.t) : null}`,
     );
   }
 
@@ -714,10 +722,17 @@ async function main() {
       m.scrollW === m.innerW,
       `scrollW=${m.scrollW} innerW=${m.innerW} 越界元素=${JSON.stringify(m.overflowing ?? [])}`,
     );
+    // A4 比例不能再量 `.mg-paper-frame`：它现在是**灰底画布的弹性区域**，不再是白纸盒。
+    // 「纸是 A4」的判据改由「纸内几何」承担（`.sheet` 宽 793.7、题块单行，见门禁 ⑧ A9-1/A9-3）；
+    // 这里改为守住用户要的那条**结构**：预览区就是灰底画布本身，滚动条在灰区右缘。
     check(
-      `A4 ${label}：纸面是 A4 真实比例 210/297（≈0.7071）`,
-      m.paperRatio !== null && Math.abs(m.paperRatio - 210 / 297) < 0.02,
-      `实测 ${m.paperRatio}（尺寸 ${m.paper ? `${Math.round(m.paper.w)}×${Math.round(m.paper.h)}` : 'n/a'}）`,
+      `A8 ${label}：预览区就是灰底画布（滚动区右缘 == 画布列右缘 ±2，背景透明）`,
+      m.previewStage !== null && m.canvasCol !== null
+        && Math.abs(m.previewStage.r - m.canvasCol.r) <= 2
+        && m.stageBg === 'rgba(0, 0, 0, 0)'
+        && m.frameBg === 'rgba(0, 0, 0, 0)',
+      `stage.r=${m.previewStage ? Math.round(m.previewStage.r) : 'n/a'} col.r=${m.canvasCol ? Math.round(m.canvasCol.r) : 'n/a'} `
+        + `stageBg=${m.stageBg} frameBg=${m.frameBg}`,
     );
     check(`骨架 ${label}：顶栏 44px`, m.topbarH === 44, `实测 ${m.topbarH}`);
     check(`骨架 ${label}：状态条 34px`, m.statusbarH === 34, `实测 ${m.statusbarH}`);

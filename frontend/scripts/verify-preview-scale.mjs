@@ -17,7 +17,7 @@
  *   A9-2  `padding-left / .sheet 宽度` ≈ 0.0952（±0.002）—— 错误态是 0.165
  *   A9-3  `scaleX == scaleY`（等比，不是压扁）
  *   A9-4  题面不再异常换行（给可判定证据：题块高度 = 单行高度，且列宽 ≥ 内容所需）
- *   A9-7  1440×900 与 1280×900 下不横向溢出、纸面容器仍是 A4 比例
+ *   A9-7  1440×900 与 1280×900 下不横向溢出、预览区就是灰底画布
  *
  * 用法：node scripts/verify-preview-scale.mjs
  */
@@ -159,11 +159,23 @@ def measure(page):
             // 「一行的题块高度」= 出现次数最多的那个高度（出现 >1 行时会出现更大的值）
             singleLineHeight: uniqueHeights.length ? Math.min(...uniqueHeights) : null,
             allItemsSingleLine: heights.length > 0 && uniqueHeights.length === 1,
-            paperFrameRatio: (() => {
-                const pf = document.querySelector('.mg-paper-frame');
-                if (!pf) return null;
-                const r = pf.getBoundingClientRect();
-                return r.height ? +(r.width / r.height).toFixed(4) : null;
+            // 预览区结构（用户 2026-10-28：灰底画布本身就是预览区，不要「白纸小窗口」）。
+            // 不再量 .mg-paper-frame 的 A4 比例 —— 它现在只是透明的弹性区域。
+            preview: (() => {
+                const stage = document.querySelector('.mg-paper-stage');
+                const col = document.querySelector('.mg-canvas-column');
+                const frame = document.querySelector('.mg-paper-frame');
+                if (!stage || !col) return null;
+                const s = stage.getBoundingClientRect();
+                const c = col.getBoundingClientRect();
+                return {
+                    stageRight: +s.right.toFixed(1),
+                    colRight: +c.right.toFixed(1),
+                    stageW: Math.round(s.width),
+                    stageH: Math.round(s.height),
+                    stageBg: getComputedStyle(stage).backgroundColor,
+                    frameBg: frame ? getComputedStyle(frame).backgroundColor : null,
+                };
             })(),
             scrollW: document.documentElement.scrollWidth,
             innerW: window.innerWidth,
@@ -290,7 +302,7 @@ async function main() {
     `padding-left=${v1440.sheetPaddingLeft}（2cm @96dpi ≈ 75.59px）；字号=${v1440.sheetFontSize}`,
   );
 
-  console.log('\n—— A9-7 两种视口：不溢出 + 纸面容器仍是 A4 比例 ——');
+  console.log('\n—— A9-7 两种视口：不溢出 + 预览区就是灰底画布 ——');
   for (const [label, v] of Object.entries(result.viewports ?? {})) {
     check(
       `${label}：scrollWidth == innerWidth（不横向溢出）`,
@@ -298,9 +310,16 @@ async function main() {
       `scrollW=${v.scrollW} innerW=${v.innerW} 越界=${JSON.stringify(v.overflowing ?? [])}`,
     );
     check(
-      `${label}：纸面容器比例 ≈ 0.7071（A4）`,
-      v.paperFrameRatio !== null && Math.abs(v.paperFrameRatio - 210 / 297) < 0.02,
-      `实测 ${v.paperFrameRatio}`,
+      `${label}：滚动条长在灰区右缘（滚动区右缘 == 画布列右缘 ±2）`,
+      v.preview !== null && Math.abs(v.preview.stageRight - v.preview.colRight) <= 2,
+      `stage.r=${v.preview?.stageRight} col.r=${v.preview?.colRight}（滚动区 ${v.preview?.stageW}×${v.preview?.stageH}）`,
+    );
+    check(
+      `${label}：预览区是灰底画布本身（滚动区与纸面容器背景都透明，没有白纸盒）`,
+      v.preview !== null
+        && v.preview.stageBg === 'rgba(0, 0, 0, 0)'
+        && v.preview.frameBg === 'rgba(0, 0, 0, 0)',
+      `stageBg=${v.preview?.stageBg} frameBg=${v.preview?.frameBg}`,
     );
     check(
       `${label}：.sheet 宽度仍是 793.7 ± 2（换视口不改变纸内几何）`,

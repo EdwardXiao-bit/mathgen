@@ -699,10 +699,11 @@ export function PaperPage() {
             </div>
           ) : null}
 
-          {/* 纸面：A4 真实比例 210/297（判据在门禁 ⑥ 里量比例）。
+          {/* 预览区：**灰底画布本身就是预览区**（用户 2026-10-28 明确要求）。
+              这一层是透明的弹性区域，只给 `data-css-vars` 与 `data-testid="print-area"` 挂个语义；
+              纸页由 `SheetFrame` 直接铺在灰底上，按 A4 等比缩放、多页竖向排列、滚动区就是整块灰区。
               iframe 里的卷面 HTML 来自后端 `/sheet`，前端不自己画（D56 / I6）。
-              `data-css-vars` 挂在纸面容器上，`data-testid="print-area"` 保留原语义。
-              多页时 `SheetFrame` 按后端给的分页几何切页，纸面高度随内容长。 */}
+              「纸是 A4」由 iframe 内的几何保证（门禁 ⑧ A9-1/A9-3 量 `.sheet` 宽与单行题面）。 */}
           <div className="mg-paper-frame" data-testid="print-area" data-css-vars={previewVars}>
             <SheetFrame
               src={sheetSrc}
