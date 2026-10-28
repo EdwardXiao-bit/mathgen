@@ -100,6 +100,14 @@ export function applyLayoutToDocument(doc: Document, layout: LayoutIn): void {
   for (const name of Object.values(CSS_VAR_NAMES)) {
     root.style.setProperty(name, vars[name]);
   }
+
+  // 卷面文档自己绝不滚动：滚动一律交给外层舞台。
+  // 否则一旦「iframe 元素高度」与「文档高度」差上一两个像素（取整、换行、字体加载先后），
+  // 浏览器就会在纸面右缘画一根原生滚动条 —— 它不属于任何设计，还会吃掉 10-17px 纸宽。
+  for (const element of [root, doc.body]) {
+    if (!element) continue;
+    element.style.overflow = 'hidden';
+  }
 }
 
 /** 一次分页计算的结果（坐标都是**未缩放**的 iframe 内部像素）。 */
@@ -467,6 +475,8 @@ export function SheetFrame({
           title="卷面预览（后端渲染）"
           src={src}
           tabIndex={-1}
+          // 第一帧还没注入上方样式时也先别让浏览器画滚动条
+          scrolling="no"
           style={{
             width: `${A4_WIDTH_PX}px`,
             height: `${Math.max(docHeight, A4_HEIGHT_PX)}px`,

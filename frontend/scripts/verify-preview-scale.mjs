@@ -177,6 +177,21 @@ def measure(page):
                     frameBg: frame ? getComputedStyle(frame).backgroundColor : null,
                 };
             })(),
+            // 卷面文档自己绝不能滚动：里面的原生滚动条会贴在纸面右缘，吃掉 10-17px 纸宽，
+            // 而且它长得完全不像设计的一部分（用户 2026-10-28 报过一张截图）。
+            iframeScroll: (() => {
+                const frame = document.querySelector('#sheet-frame');
+                const doc = frame && frame.contentDocument;
+                if (!frame || !doc || !doc.body) return null;
+                const view = doc.defaultView;
+                const overflow = (el) => (el ? view.getComputedStyle(el).overflowY + '/' + view.getComputedStyle(el).overflowX : null);
+                return {
+                    scrollbarH: frame.offsetHeight - frame.clientHeight,
+                    scrollbarW: frame.offsetWidth - frame.clientWidth,
+                    html: overflow(doc.documentElement),
+                    body: overflow(doc.body),
+                };
+            })(),
             scrollbar: (() => {
                 const stage = document.querySelector('.mg-paper-stage');
                 if (!stage) return null;
@@ -463,6 +478,20 @@ async function main() {
     'A9-9 滚动条是「细」的（不抢纸面）',
     scrollbar.width === 'thin',
     `scrollbar-width=${scrollbar.width}`,
+  );
+
+  console.log('');
+  console.log('—— A9-10 卷面文档自己不滚动（纸面右缘不该长出原生滚动条）——');
+  const iframeScroll = v1440.iframeScroll ?? {};
+  check(
+    'A9-10 卷面 iframe 没有内部滚动条',
+    iframeScroll.scrollbarW === 0 && iframeScroll.scrollbarH === 0,
+    `iframe 滚动条占位 横 ${iframeScroll.scrollbarW}px / 纵 ${iframeScroll.scrollbarH}px`,
+  );
+  check(
+    'A9-10 卷面文档的 html 与 body 都是 overflow:hidden',
+    iframeScroll.html === 'hidden/hidden' && iframeScroll.body === 'hidden/hidden',
+    `html ${iframeScroll.html}；body ${iframeScroll.body}`,
   );
 
   check('无 pageerror', (result.console_errors ?? []).length === 0, (result.console_errors ?? []).join(' ; ').slice(0, 200));
