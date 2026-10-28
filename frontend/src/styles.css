@@ -337,6 +337,13 @@ code {
   left: 0;
   border: 0;
   background: var(--mg-paper);
+  /*
+   * 卷面是只读的，不需要接任何鼠标交互；但**滚轮事件一旦进到 iframe 文档里**，
+   * 浏览器对 Ctrl+滚轮的整页缩放就拦不住了（父文档的 preventDefault 管不到子文档的默认动作）。
+   * 让 iframe 不参与命中测试，滚轮就落到外层预览区，由那边的非 passive 监听器接管
+   * —— 指针悬在纸面上时 Ctrl+滚轮缩放的也是这张纸，而不是整个浏览器。
+   */
+  pointer-events: none;
   /* width / height / transform / transform-origin 由组件按可用区算完写内联样式 */
 }
 

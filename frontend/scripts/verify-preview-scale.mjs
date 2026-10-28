@@ -204,6 +204,10 @@ def measure(page):
                     desk2: root.getPropertyValue('--mg-desk-2').trim(),
                 };
             })(),
+            framePointerEvents: (() => {
+                const frame = document.querySelector('#sheet-frame');
+                return frame ? getComputedStyle(frame).pointerEvents : null;
+            })(),
             scrollW: document.documentElement.scrollWidth,
             innerW: window.innerWidth,
             overflowing: Array.from(document.querySelectorAll('*'))
@@ -426,9 +430,19 @@ async function main() {
     `${wheel.labelAfterUpOnPaper} → ${wheel.labelAfterDownOnPaper}`,
   );
   check(
-    'A9-8 指针落在纸面上时 wheel 事件确实进的是 iframe 文档（父文档监听收不到，这正是旧实现漏掉的那条）',
-    (wheel.frameWheel ?? []).some((event) => event.ctrl === true),
+    'A9-8 指针落在纸面上时 wheel 事件不再进入卷面文档（进了就拦不住浏览器整页缩放）',
+    (wheel.frameWheel ?? []).length === 0,
     `iframe 内收到 ${JSON.stringify(wheel.frameWheel ?? [])}`,
+  );
+  check(
+    'A9-8 指针落在纸面上时，父文档收到这次 Ctrl+滚轮并 preventDefault',
+    (wheel.windowWheel ?? []).some((event) => event.ctrl === true && event.prevented === true),
+    `父文档收到 ${JSON.stringify((wheel.windowWheel ?? []).filter((e) => e.ctrl))}`,
+  );
+  check(
+    'A9-8 卷面 iframe 不接鼠标（pointer-events: none），滚轮才会落到预览区',
+    v1440.framePointerEvents === 'none',
+    `#sheet-frame pointer-events=${v1440.framePointerEvents}`,
   );
   check(
     'A9-8 预览区外 Ctrl+滚轮不缩放预览',
