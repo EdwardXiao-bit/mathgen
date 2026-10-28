@@ -67,6 +67,7 @@
 | 文件 | 谁可以改 |
 | --- | --- |
 | `AGENTS.md`、`docs/PROJECT.md`、`docs/00`、`docs/03`、`docs/04`、`docs/05`、`docs/07`、`README.md`、`CHANGELOG.md`、`LICENSE`、`Dockerfile`、`docker-compose.yml`、`.dockerignore`、`scripts/**`、`npm/**`、`.github/**` | **仅 Lead** |
+| `frontend/public/welcome.html`、`welcome.css`、`welcome.js`、`assets/welcome/**` | **仅 Lead**（入口页；`/` 由后端 `services/static_site.py` 直接返回，不经过 React 路由） |
 | `frontend/src/design/tokens.css` | **仅 Lead**（设计令牌冻结契约，D67；实现方只读） |
 | `docs/01-需求分析.md`、`docs/02-技术设计.md` | 只读；修改需申请并同步重新生成 Word |
 | `docs/06-测试方案.md` | verify |
@@ -169,10 +170,8 @@ $env:TEMP = "$REPO\.tmp-pw"; $env:TMP = "$REPO\.tmp-pw"
 
 ## 本项目的规矩
 
-- **文件才是记忆**：谈定的事立刻落盘，不要只留在对话里。
 - **先登记再动手**：任务必须在 `docs/05-任务板.md` 中存在，含写域 / 依赖 / 验收标准。
 - **待决问题集中管理**：登记在 `00-决策记录.md`，解决后原地标记结论与日期；**不确定就登记，不要自己拍板**。
-- **大范围阅读交给子代理**，只带回结论；能查的别贴，用 `grep` / `glob` / `read` 定位。
 - **文档与代码注释用中文**，代码标识符用英文（`03-协作规范.md` §10）。
 - **判据必须能红**（`03-协作规范.md` V9）：新增断言要附**留在仓库里**的负对照，并验证负对照真的制造了失败条件。
 
