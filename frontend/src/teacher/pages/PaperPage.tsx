@@ -462,8 +462,8 @@ export function PaperPage() {
 
       {!editable ? (
         <div className="notice notice-info" data-testid="paper-readonly">
-          已发布的卷是只读快照（契约 §6 冻结）：不能删题 / 换题，避免学生的卷子和老师手上的不一致。
-          需要改动请点右上「另存为可编辑副本」——它会复制一份新的 draft（新 id、无卷号）。
+          已发布的卷是一份快照，题目不能再改，这样学生手上的卷子和你这边始终对得上。
+          要改动请点右上「另存为可编辑副本」：它会复制出一份新的草稿（有自己的编号，还没分配卷号），改好再发。
         </div>
       ) : null}
 
@@ -652,7 +652,7 @@ export function PaperPage() {
               <p className="form-error" role="alert" data-testid="answer-layout-error">
                 {answerLayoutMutation.error instanceof ApiError &&
                 answerLayoutMutation.error.code === 'PAPER_NOT_EDITABLE'
-                  ? '这套卷已经发布，答案版形式不能再改（后端返回 PAPER_NOT_EDITABLE）。请先「另存为可编辑副本」再调整。'
+                  ? '这套卷已经发布，答案版形式不能再改。请先点右上「另存为可编辑副本」，在副本上调整。'
                   : `答案版形式保存失败：${answerLayoutError}`}
               </p>
             ) : null}

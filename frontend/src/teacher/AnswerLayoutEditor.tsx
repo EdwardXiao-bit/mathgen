@@ -66,7 +66,7 @@ export function AnswerLayoutEditor({
       {readOnly ? (
         <p className="dim-hint" data-testid="answer-layout-readonly-reason">
           {readOnlyReason ??
-            '已发布的卷是只读快照：答案版形式不能再改（后端会拒绝 PAPER_NOT_EDITABLE）。需要调整请先「另存为可编辑副本」。'}
+            '这套卷已经发布，答案版形式不能再改。要调整请先「另存为可编辑副本」，在副本上改。'}
         </p>
       ) : null}
     </div>

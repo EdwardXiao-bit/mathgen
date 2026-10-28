@@ -253,7 +253,7 @@ export function ConfigForm({
         </div>
         {showHints ? (
           <p className="dim-hint">
-            取值范围 {CONFIG_BOUNDS.count[0]}..{CONFIG_BOUNDS.count[1]}（契约 PaperConfigIn.count）。
+            可以出 {CONFIG_BOUNDS.count[0]} 到 {CONFIG_BOUNDS.count[1]} 道题。
           </p>
         ) : null}
       </section>

@@ -1,6 +1,6 @@
 /** 老师端路由表 —— 与 `docs/04-接口契约.md` §7 的前端路由表一一对应。 */
 
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes } from 'react-router-dom';
 
 import { TeacherShell } from './teacher/TeacherShell';
 import { ConfigPage } from './teacher/pages/ConfigPage';
@@ -32,9 +32,11 @@ export function App() {
         element={
           <div className="fatal-error">
             <h1>没有这个页面</h1>
+            <p>地址可能打错了，也可能这一页只在某个流程中间出现。</p>
             <p>
-              老师端目前只有：/teacher、/teacher/paper/:id、/teacher/paper/:id/publish、
-              /teacher/library、/teacher/attempts。
+              <Link className="btn" to="/teacher">
+                回到出题配置
+              </Link>
             </p>
           </div>
         }

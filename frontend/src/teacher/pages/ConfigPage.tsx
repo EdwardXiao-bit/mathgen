@@ -32,7 +32,7 @@ export function ConfigPage() {
       if (answerLayoutMode === 'follow-up-patch') {
         window.sessionStorage.setItem(
           `mathgen.answerLayoutNotice.${paper.id}`,
-          '答案版形式已在创建后单独保存（后端创建接口暂不接受 answer_layout）。',
+          '答卷版式已保存。',
         );
       }
       navigate(`/teacher/paper/${paper.id}`);

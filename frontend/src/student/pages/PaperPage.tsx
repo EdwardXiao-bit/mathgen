@@ -74,7 +74,7 @@ export function PaperPage() {
       <Screen>
         <TopBar title="做卷子" />
         <div className="st-body">
-          <p className="st-lead">老师发卷给你了。先填姓名和学号，再开始答题。</p>
+          <p className="st-lead">老师把卷子发给你了。</p>
           <IdentityForm
             title="填一下姓名和学号"
             hint="填错也不要紧，退出重进可以重新填。"
