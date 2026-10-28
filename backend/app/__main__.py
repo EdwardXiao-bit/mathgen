@@ -24,10 +24,12 @@ import os
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
-__all__ = ["main", "resolve_data_dir", "resolve_static_dir", "lan_ip"]
+__all__ = ["main", "resolve_data_dir", "resolve_static_dir", "lan_ip",
+           "wait_until_ready", "announce_ready"]
 
 #: 打包安装（非源码 checkout）时的默认数据目录：`~/.mathgen`
 USER_DATA_DIR = Path.home() / ".mathgen"
@@ -111,7 +113,7 @@ def _version() -> str:
 def _banner(urls: dict[str, str], data_file: Path, host: str, mounted: bool) -> str:
     lines = [
         "",
-        "  mathgen v" + _version() + " 已启动",
+        "  mathgen v" + _version() + " 正在启动",
         "",
         f"  入口页    {urls['home']}",
         f"  老师端    {urls['teacher']}",
@@ -133,6 +135,67 @@ def _banner(urls: dict[str, str], data_file: Path, host: str, mounted: bool) -> 
         ]
     lines += ["", "  按 Ctrl+C 停止", ""]
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- 启动就绪
+#
+# 为什么需要这一段：uvicorn 的 `run()` 会先打日志再真正 bind + listen，冷启动
+# （导入 FastAPI / SQLAlchemy、建库、加载前端产物）在本机实测能到十几秒。
+# 早先的做法是「打印横幅 → 等 1.5 秒 → 打开浏览器」，慢一点的机器上浏览器
+# 抢在监听之前发请求，看到的是「无法访问此网站」。改成「等端口真的能连上再开」。
+
+#: 最多等多久（秒）。冷启动最慢的一次实测约 15 秒，留足余量。
+DEFAULT_STARTUP_TIMEOUT = 60.0
+
+#: 探测间隔（秒）。
+READINESS_PROBE_INTERVAL = 0.1
+
+
+def _readiness_host(host: str) -> str:
+    """探测时连哪个地址：监听在 `0.0.0.0` / `::` 时本机走回环地址。"""
+    return "127.0.0.1" if host in {"0.0.0.0", "::", ""} else host
+
+
+def wait_until_ready(host: str, port: int, *,
+                     timeout: float = DEFAULT_STARTUP_TIMEOUT,
+                     interval: float = READINESS_PROBE_INTERVAL) -> bool:
+    """等端口真的能建连，最多 `timeout` 秒；连上了返回 True。
+
+    只看 TCP 握手：uvicorn 先 bind + listen 再跑 lifespan startup，所以
+    连得上就说明浏览器此刻发请求会被正常排队处理，而不是「连接被拒绝」。
+    """
+    target = _readiness_host(host)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            with socket.create_connection((target, port), timeout=1.0):
+                return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(interval)
+
+
+def _say(message: str) -> None:
+    """打印并立刻刷新：被重定向到文件时（`nohup`、脚本里重定向）才不会丢。"""
+    print(message, flush=True)
+
+
+def announce_ready(urls: dict[str, str], host: str, port: int, open_browser: bool, *,
+                   timeout: float = DEFAULT_STARTUP_TIMEOUT,
+                   out=_say) -> bool:
+    """服务起来之后再报信、再开浏览器；没起来就不开（免得看到连接错误）。
+
+    返回是否就绪，方便单独测。`out` 可替换，测试里用来收集输出。
+    """
+    if not wait_until_ready(host, port, timeout=timeout):
+        out(f"\n  等了 {int(timeout)} 秒还没起来，先不打开浏览器。"
+            f"请确认端口 {port} 没有被别的程序占着。\n")
+        return False
+    out(f"\n  启动完成  {urls['home']}\n")
+    if open_browser:
+        webbrowser.open(urls["home"])
+    return True
 
 
 # --------------------------------------------------------------------------- 主流程
@@ -195,8 +258,15 @@ def main(argv: list[str] | None = None) -> int:
 
     # 打开入口页而不是老师端：入口页上有「进入使用」与「我是学生」两个门
     # （`app/services/static_site.py` 的 `WELCOME_ENTRY`；没有公告页时它回落 index.html）。
-    if not args.no_browser and args.host in {"127.0.0.1", "localhost"}:
-        threading.Timer(1.5, lambda: webbrowser.open(urls["home"])).start()
+    # 顺序很关键：uvicorn 还没监听就开浏览器，慢机器上会看到「无法访问此网站」，
+    # 所以放到后台线程里先等端口就绪（见 `announce_ready`）。
+    auto_open = not args.no_browser and args.host in {"127.0.0.1", "localhost"}
+    threading.Thread(
+        target=announce_ready,
+        args=(urls, args.host, args.port, auto_open),
+        name="mathgen-startup",
+        daemon=True,
+    ).start()
 
     try:
         uvicorn.run(
