@@ -1822,11 +1822,17 @@ code {
   padding: 0;
 }
 
+/* 题目行：算式独占第一行（右侧栏只有 300px，一行里挤下「算式 + 答案 + 换一题 + 删除」
+ * 必然把算式截成「3309 +…」——用户实测反馈），答案与两个按钮放到第二行。 */
 .item-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto auto auto;
-  align-items: center;
-  gap: var(--mg-sp-3);
+  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-areas:
+    'seq expr'
+    '.   meta';
+  align-items: baseline;
+  column-gap: var(--mg-sp-3);
+  row-gap: 2px;
   padding: var(--mg-sp-2) var(--mg-sp-4);
   border-radius: var(--mg-radius);
   font-size: var(--mg-fs-12);
@@ -1841,6 +1847,7 @@ code {
 }
 
 .item-seq {
+  grid-area: seq;
   color: var(--mg-ink-faint);
   font-family: var(--mg-font-mono);
   font-size: var(--mg-fs-11);
@@ -1848,16 +1855,40 @@ code {
 }
 
 .item-expr {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  grid-area: expr;
+  /* 宁可换行也不要省略号：老师核对的就是算式本身 */
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-family: var(--mg-font-mono);
+  line-height: 1.35;
+}
+
+.item-meta {
+  grid-area: meta;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mg-sp-2);
+}
+
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-2);
+  flex: none;
+}
+
+/* 窄屏（侧栏 248px）下按钮不许被压成两行——「换一 / 题」比截断更难读 */
+.item-actions .btn {
+  flex: none;
+  white-space: nowrap;
 }
 
 .item-answer {
   color: var(--mg-success);
   font-family: var(--mg-font-mono);
   font-size: var(--mg-fs-11);
+  white-space: nowrap;
 }
 
 .item-editor-empty {

@@ -189,6 +189,9 @@ export function PaperPage() {
       queryClient.setQueryData<PaperDetail>(queryKeys.paper(paperId as number), (previous) =>
         previous ? { ...previous, items } : previous,
       );
+      // 卷面是后端渲染的 HTML（D56），改了题必须让它重新拉一次；
+      // 否则老师删完一题，左边的列表变了、右边的纸面还是旧的那一张（用户实测反馈）。
+      setSheetReloadToken((token) => token + 1);
     },
     onError: (error) => setEditError(readError(error)),
   });
@@ -202,6 +205,8 @@ export function PaperPage() {
           ? { ...previous, items: previous.items.map((old) => (old.seq === item.seq ? item : old)) }
           : previous,
       );
+      // 同理：换了一题，纸面要立刻换成新的那道，不用老师手动点刷新。
+      setSheetReloadToken((token) => token + 1);
     },
     onError: (error) => setEditError(readError(error)),
   });
@@ -508,25 +513,32 @@ export function PaperPage() {
                   <span className="item-expr" title={item.expr}>
                     {item.display || item.expr}
                   </span>
-                  <span className="item-answer">= {item.answer}</span>
-                  <button
-                    type="button"
-                    className="btn btn-mini"
-                    data-testid={`regenerate-${item.seq}`}
-                    disabled={!editable || busy}
-                    onClick={() => regenerateMutation.mutate(item.seq)}
-                  >
-                    换一题
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-mini btn-danger"
-                    data-testid={`delete-${item.seq}`}
-                    disabled={!editable || busy}
-                    onClick={() => deleteMutation.mutate(item.seq)}
-                  >
-                    删除
-                  </button>
+                  {/* 答案与两个按钮放在第二行：右侧栏只有 300px，
+                      一行里挤下「算式 + 答案 + 换一题 + 删除」必然把算式截断
+                      （四位数的题就被截成「3309 +…」，用户实测反馈）。 */}
+                  <span className="item-meta">
+                    <span className="item-answer">= {item.answer}</span>
+                    <span className="item-actions">
+                      <button
+                        type="button"
+                        className="btn btn-mini"
+                        data-testid={`regenerate-${item.seq}`}
+                        disabled={!editable || busy}
+                        onClick={() => regenerateMutation.mutate(item.seq)}
+                      >
+                        换一题
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-mini btn-danger"
+                        data-testid={`delete-${item.seq}`}
+                        disabled={!editable || busy}
+                        onClick={() => deleteMutation.mutate(item.seq)}
+                      >
+                        删除
+                      </button>
+                    </span>
+                  </span>
                 </li>
               ))}
             </List>

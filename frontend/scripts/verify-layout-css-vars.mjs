@@ -318,10 +318,31 @@ with sync_playwright() as p:
         page.click('[data-testid="regenerate-1"]')
         page.wait_for_timeout(400)
         page.click('[data-testid="delete-1"]')
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(600)
         result["mutation_requests"] = [
             m + " " + u.split("127.0.0.1:@@STATIC_PORT@@")[-1] for m, u in requests if "/api/" in u
         ]
+        # 改题后预览要自己重载（用户实测反馈：不点刷新，纸面还是旧的）
+        result["post_edit_sheet_reads"] = len(
+            [1 for m, u in requests if m == "GET" and "/api/papers/1/sheet" in u]
+        )
+        # 题目列表不许把算式截断（右侧栏 300px，四位数乘两位数会被挤没）
+        result["item_rows"] = page.evaluate(
+            """() => {
+                const style = (el) => (el ? getComputedStyle(el) : null);
+                return Array.from(document.querySelectorAll('.item-row')).map((row) => {
+                  const expr = row.querySelector('.item-expr');
+                  const cs = style(expr);
+                  return {
+                    text: expr ? expr.textContent.trim() : '',
+                    clientWidth: expr ? Math.round(expr.clientWidth) : 0,
+                    scrollWidth: expr ? Math.round(expr.scrollWidth) : 0,
+                    whiteSpace: cs ? cs.whiteSpace : 'missing',
+                    textOverflow: cs ? cs.textOverflow : 'missing',
+                  };
+                });
+            }"""
+        )
 
         # 打印：D56 之后打印的是**隐藏 iframe 里的后端卷面**（.print-frame），
         # 不是 window.print() 打主文档。所以要在打印 iframe 的 window 上装桩。
@@ -623,6 +644,23 @@ async function main() {
   const muts = result.mutation_requests ?? [];
   check('换一题打到 POST /api/papers/1/items/1/regenerate', muts.some((p) => p.startsWith('POST /api/papers/1/items/1/regenerate')), muts.join(' | ') || '(无)');
   check('删题打到 DELETE /api/papers/1/items/1', muts.some((p) => p.startsWith('DELETE /api/papers/1/items/1')), muts.join(' | ') || '(无)');
+
+  // 用户实测反馈的两条（2026-10-28）：改完题要手动刷新才同步 / 算式被截断。
+  check(
+    '改题后预览自己重载，不用老师手动刷新（换一题 + 删题之后各重新取一次卷面）',
+    (result.post_edit_sheet_reads ?? 0) >= 2,
+    `改题后 GET /sheet 次数=${result.post_edit_sheet_reads ?? 0}`,
+  );
+
+  const rows = result.item_rows ?? [];
+  const truncated = rows.filter((r) => r.scrollWidth > r.clientWidth + 1);
+  const nowrap = rows.filter((r) => r.whiteSpace === 'nowrap');
+  const ellipsis = rows.filter((r) => r.textOverflow === 'ellipsis');
+  check(
+    '题目列表完整显示算式（不被省略号截断、不允许 nowrap 单行硬挤）',
+    rows.length > 0 && truncated.length === 0 && nowrap.length === 0 && ellipsis.length === 0,
+    `行数=${rows.length} 超出宽=${truncated.length} nowrap=${nowrap.length} ellipsis=${ellipsis.length}`,
+  );
 
   const prints = result.prints ?? [];
   check('打印题目版：调用了打印 iframe 的 print（不是打主文档）', prints.length >= 1, `打印调用=${prints.length}`);
