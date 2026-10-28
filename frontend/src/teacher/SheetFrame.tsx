@@ -131,8 +131,11 @@ export function paginateDocument(doc: Document): PageGeometry | null {
   const view = doc.defaultView;
   if (!sheet || !view) return null;
 
-  // 上一次的灰缝先拆掉，否则会把自己的高度算进下一轮分页
-  for (const seam of Array.from(sheet.querySelectorAll(':scope > .page-seam'))) seam.remove();
+  // 上一次的灰缝先拆掉，否则会把自己的高度算进下一轮分页。
+  // 注意不能只删 `.sheet` 的直接子元素：灰缝是插在换页那一行**前面**的，
+  // 答案版里那一行在 `.answer-section` 里面，于是灰缝成了嵌套元素 ——
+  // 只删直接子元素会让它每轮叠一层，页间空白越叠越长（就是这个 bug 的来源）。
+  for (const seam of Array.from(sheet.querySelectorAll('.page-seam'))) seam.remove();
 
   const sheetRect = sheet.getBoundingClientRect();
   const usableFirst = Number(sheet.dataset.usableFirstPx ?? '');
@@ -185,7 +188,8 @@ export function paginateDocument(doc: Document): PageGeometry | null {
   }
 
   const tops: number[] = [0];
-  for (const seam of Array.from(sheet.querySelectorAll(':scope > .page-seam'))) {
+  // 同样按「所有灰缝」量页顶：灰缝可能嵌在答案区里，只看直接子元素会把页数数少。
+  for (const seam of Array.from(sheet.querySelectorAll('.page-seam'))) {
     const rect = seam.getBoundingClientRect();
     // 下一页「白纸」的顶：灰缝顶 + 上一页下边距 + 灰缝
     tops.push(rect.top - contentTop + marginPx + SEAM_GAP_PX);
