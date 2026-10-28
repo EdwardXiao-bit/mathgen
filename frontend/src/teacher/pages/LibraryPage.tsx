@@ -300,7 +300,7 @@ export function LibraryPage() {
         {/* M6：从卷库这一侧再说一遍同一件事（出题页也写了）。
             真实用户是走完出题流程后不知道东西存到哪了，两个入口都要能自答。 */}
         <p>
-          出题页点「生成」的时候，卷子就已经存到这里了，没有单独的保存步骤；之后改题、调排版也是立刻生效。
+          出题页点「生成」就存进来了，没有单独的保存步骤；之后改题、调版也是立刻生效。
         </p>
       </header>
 
@@ -489,7 +489,7 @@ export function LibraryPage() {
         }
       />
 
-      {!query.isLoading && !query.isError ? (
+      {!query.isLoading && !query.isError && total > PAGE_SIZE ? (
         <div className="library-pager">
           <Button
             data-testid="library-prev"

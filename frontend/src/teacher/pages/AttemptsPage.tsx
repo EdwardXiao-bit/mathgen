@@ -459,7 +459,7 @@ export function AttemptsPage() {
         }
       />
 
-      {!query.isLoading && !query.isError ? (
+      {!query.isLoading && !query.isError && total > PAGE_SIZE ? (
         <div className="attempts-pager">
           <Button
             data-testid="attempts-prev"

@@ -668,15 +668,19 @@ code {
   font-size: var(--mg-fs-10);
 }
 
+/* 分段控件：按内容取宽，**不要**让它参与 flex 收缩。
+   卷库工具栏是 flex 行，控件曾经被挤到 ~30px，每个字各占一行（「在 / 用」）。
+   分段控件的宽度应当由选项文字决定，不是由父容器剩余空间决定。 */
 .mg-segmented {
   display: flex;
+  flex: none;
   gap: var(--mg-sp-3);
 }
 
 .mg-segment {
-  flex: 1 1 0;
-  text-align: center;
-  padding: var(--mg-sp-2) 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: var(--mg-sp-2) var(--mg-sp-4);
   border: 1px solid var(--mg-line);
   border-radius: var(--mg-radius);
   background: var(--mg-surface);
@@ -781,7 +785,12 @@ code {
   font-weight: var(--mg-fw-medium);
 }
 
-.mg-cell-numeric {
+/* 数字列右对齐 + 等宽数字。
+   特异性必须写成 `.mg-table td.mg-cell-numeric`（0,2,1）：只写 `.mg-cell-numeric`
+   会被上面的 `.mg-table td { text-align: left }`（0,1,1）压掉——实际效果就是
+   表里所有分数 / 题量 / 用时都不声不响地左对齐了。 */
+.mg-table th.mg-cell-numeric,
+.mg-table td.mg-cell-numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -1088,7 +1097,8 @@ code {
    被撑满/改宽度后会脱层压到表格上（实测踩过）。 */
 .config-page,
 .library-page,
-.publish-page {
+.publish-page,
+.attempts-page {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -1105,8 +1115,9 @@ code {
   max-width: 880px;
 }
 
-/* 卷库：表格较宽，给它更宽的居中列。 */
-.library-page > * {
+/* 卷库与成绩：表格较宽，给它更宽的居中列。 */
+.library-page > *,
+.attempts-page > * {
   max-width: 1180px;
 }
 
@@ -1116,6 +1127,9 @@ code {
 .library-toolbar,
 .library-summary,
 .library-pager,
+.attempts-toolbar,
+.attempts-summary,
+.attempts-pager,
 .publish-body {
   width: 100%;
 }
@@ -1377,6 +1391,17 @@ code {
   display: flex;
   flex-direction: column;
   gap: var(--mg-sp-2);
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+/* 「查看 / 在用 / 已归档」这一组不是 <label>，但版式要和旁边两个下拉一致：
+   上面一行小字标签，下面一行控件。 */
+.library-archive-filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+  flex: none;
   color: var(--mg-ink-soft);
   font-size: var(--mg-fs-11);
 }
@@ -1854,25 +1879,80 @@ code {
 
 /* ---------------------------------------------------------------------------
  * 页面：发卷
+ *
+ * 左栏是「这套卷现在是什么状态、下一步能做什么」，右栏是给老师投屏的东西
+ * （卷号 + 二维码）。二维码固定 200px：投影到教室大屏时够大，也不算占地方。
  * ------------------------------------------------------------------------- */
 
 .publish-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 260px;
   gap: var(--mg-sp-8);
   align-items: start;
 }
 
-.publish-result {
+.publish-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--mg-sp-5);
+  min-width: 0;
+}
+
+.publish-meta {
+  margin: 0;
+  font-size: var(--mg-fs-13);
+  color: var(--mg-ink-soft);
+}
+
+.publish-meta strong {
+  color: var(--mg-ink);
+  font-weight: var(--mg-fw-medium);
+}
+
+.publish-note,
+.publish-entry-hint {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12);
+  line-height: var(--mg-lh);
+}
+
+.publish-entry {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-4);
+}
+
+.publish-url {
+  margin: 0;
+  font-size: var(--mg-fs-12);
+  color: var(--mg-ink-soft);
+}
+
+.publish-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--mg-sp-4);
+  padding: var(--mg-sp-7);
   background: var(--mg-surface);
   border: 1px solid var(--mg-line);
   border-radius: var(--mg-radius-float);
-  padding: var(--mg-sp-7);
 }
 
-.publish-code {
-  margin: 0 0 var(--mg-sp-5);
-  font-size: var(--mg-fs-12);
+.publish-card-title {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.publish-card .publish-code {
+  margin: 0;
+  font-size: var(--mg-fs-11);
+  color: var(--mg-ink-soft);
 }
 
 .publish-code strong {
@@ -1882,8 +1962,28 @@ code {
 }
 
 .publish-qr {
-  margin: var(--mg-sp-5) 0 0;
-  text-align: center;
+  display: block;
+  width: 200px;
+  height: 200px;
+}
+
+/* 草稿态的占位：保持和二维码一样大，发布瞬间版式不跳。 */
+.publish-qr-pending {
+  width: 200px;
+  height: 200px;
+  border: 1px dashed var(--mg-line-strong);
+  border-radius: var(--mg-radius);
+}
+
+@media (max-width: 900px) {
+  .publish-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 手机上二维码先出现：老师的动作就是把它举给学生看。 */
+  .publish-card {
+    order: -1;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1952,4 +2052,97 @@ code {
 .notice-error {
   border-color: var(--mg-danger);
   color: var(--mg-danger);
+}
+
+/* ---------------------------------------------------------------------------
+ * 收口：跨页面的三类一致性
+ *
+ * 1. **正文里的链接**。此前全站没有 `a` 规则，表格里的卷名、页脚的「回到…」
+ *    都落到浏览器默认的蓝紫色下划线——在一屏灰阶界面里像是另一个产品的元素。
+ *    正文链接跟正文同色，靠下划线颜色区分，hover 时下划线加深。
+ *    （顶栏导航、按钮是各自的 class，特异性更高，不受影响。）
+ * 2. **成绩页的翻页条**。`.attempts-pager` 之前没有任何样式，两个按钮紧贴文字。
+ * 3. **窄屏**。表格比视口宽时允许横向滚动，而不是把每个字挤成竖排；
+ *    顶栏导航在窄屏换行，而不是把「出题配置」拆成两行。
+ * ------------------------------------------------------------------------- */
+
+a {
+  color: inherit;
+  text-decoration-color: var(--mg-line-strong);
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  text-decoration-color: var(--mg-ink);
+}
+
+.app-nav {
+  flex-wrap: wrap;
+}
+
+.app-header {
+  gap: var(--mg-sp-5);
+}
+
+.mg-table-wrap {
+  overflow-x: auto;
+}
+
+.attempts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--mg-sp-5);
+}
+
+.attempts-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--mg-sp-6);
+  margin-top: var(--mg-sp-6);
+}
+
+.attempts-pager-info {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12);
+}
+
+/* 单元格里的第二个事实（学号 / 卷号）要和主文本分开，否则「张三 1」
+   读起来像名字的一部分。用弱一档的墨色 + 等宽数字，不加分隔符也能分层。 */
+.attempts-student-no,
+.attempts-paper-code {
+  margin-left: var(--mg-sp-4);
+  color: var(--mg-ink-soft);
+  font-family: var(--mg-font-mono);
+  font-size: var(--mg-fs-11);
+}
+
+.attempts-summary {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12);
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    height: auto;
+    min-height: var(--mg-topbar-h);
+    flex-wrap: wrap;
+    padding: var(--mg-sp-3) var(--mg-sp-5);
+  }
+
+  .app-nav {
+    margin-left: 0;
+  }
+
+  .config-page,
+  .library-page,
+  .publish-page,
+  .attempts-page {
+    padding: var(--mg-sp-5) var(--mg-sp-5) var(--mg-sp-10);
+  }
+
+  /* 窄屏下表格横向滚动，列不再被压成一字一行。 */
+  .mg-table {
+    min-width: 640px;
+  }
 }
