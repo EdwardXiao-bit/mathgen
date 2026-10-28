@@ -532,6 +532,75 @@ code {
   gap: clamp(36px, 5vw, 56px);
 }
 
+/* ---------------------------------------------------------------- 学生那边 */
+
+.student { padding-block: var(--section) 0; }
+
+.student-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: var(--gap);
+  align-items: start;
+}
+
+.student-copy { grid-column: 1 / span 5; }
+
+.student-lead {
+  margin: var(--gap) 0 0;
+  max-width: 34ch;
+  color: var(--ink-body);
+}
+
+.student-points {
+  margin: clamp(20px, 3vw, 32px) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  max-width: 34ch;
+  font-size: var(--t1);
+  color: var(--ink-soft);
+}
+
+.student-points li {
+  display: grid;
+  grid-template-columns: 5.5em minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: baseline;
+}
+
+.student-points b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.student-phones {
+  grid-column: 7 / span 6;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--gap);
+  align-items: start;
+}
+
+.phone {
+  margin: 0;
+  padding: 8px;
+  background: var(--paper);
+  border-radius: 18px;
+}
+
+.phone img {
+  width: 100%;
+  border-radius: 12px;
+}
+
+.phone figcaption {
+  margin-top: 12px;
+  font-size: var(--t1);
+  line-height: 1.55;
+  color: var(--ink-faint);
+}
+
 /* ---------------------------------------------------------------- 安装 */
 
 .install {
@@ -803,6 +872,11 @@ code {
   .step:nth-child(3) { margin-left: 12vw; }
   .step:nth-child(4) { margin-left: 18vw; }
 
+  .student-grid { display: block; }
+  .student-copy { margin-bottom: clamp(28px, 6vw, 40px); }
+  .student-lead, .student-points { max-width: none; }
+  .student-phones { margin-bottom: 0; }
+
   .install-row { grid-template-columns: 1fr; row-gap: 10px; }
   .install-row dt, .install-row dd { grid-column: 1; }
 
@@ -817,6 +891,16 @@ code {
   .close-media { grid-column: 1 / span 7; margin-top: 24px; }
 
   .foot-line { margin-top: 80px; }
+}
+
+/* 窄屏：两张手机截图竖排，各自看得清 */
+@media (max-width: 560px) {
+  .student-phones {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: clamp(24px, 6vw, 32px);
+  }
+
+  .phone { max-width: 260px; }
 }
 
 /* 正文行宽（45–75 字） */
