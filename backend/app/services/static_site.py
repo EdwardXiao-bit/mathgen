@@ -6,7 +6,8 @@
 | --- | --- |
 | `/api/*` | **永不**交给静态托管。命中路由 → 正常响应；未命中 → 404 统一 JSON |
 | `/docs`、`/redoc`、`/openapi.json` | FastAPI 内建文档（注册在静态兜底之前，天然优先） |
-| `/teacher`、`/teacher/paper/1`、`/` | SPA 深链接 → `index.html`（前端是客户端路由） |
+| `/teacher`、`/teacher/paper/1` | SPA 深链接 → `index.html`（前端是客户端路由） |
+| `/` | 入口页：`welcome.html` 存在就给它（欢迎页，学生与老师都从这里进），否则回落 `index.html` |
 | `/assets/xxx.js` 等真实文件 | 直接给文件（含正确的 MIME） |
 | `/student/*` | `student.html` 若存在则给（M4 拆入口后自动生效），否则回落 `index.html` |
 | 路径穿越（`..`、绝对路径） | 404，绝不读出 dist 之外的文件 |
@@ -38,6 +39,7 @@ __all__ = [
     "STUDENT_ENTRY",
     "STUDENT_PREFIX",
     "TEACHER_PREFIX",
+    "WELCOME_ENTRY",
     "default_static_dir",
     "resolve_static_dir",
     "is_mounted",
@@ -46,6 +48,9 @@ __all__ = [
 
 #: 前端产物入口
 INDEX_FILE = "index.html"
+
+#: 欢迎页（M8 收尾：`/` 先给它，让装好之后有个入口；不存在则回落 `index.html`）
+WELCOME_ENTRY = "welcome.html"
 
 #: 学生端入口（M4 若拆出独立入口，本模块无需改动；不存在则回落 index.html）
 STUDENT_ENTRY = "student.html"
@@ -149,12 +154,16 @@ def mount_spa(application: FastAPI, directory: Path | str | None) -> bool:
         return False
 
     index = resolved / INDEX_FILE
+    welcome_entry = resolved / WELCOME_ENTRY
     student_entry = resolved / STUDENT_ENTRY
 
     def index_response() -> FileResponse:
         if not index.is_file():
             raise HTTPException(status_code=404)
         return _file_response(index)
+
+    def welcome_response() -> FileResponse:
+        return _file_response(welcome_entry) if welcome_entry.is_file() else index_response()
 
     def student_response() -> FileResponse:
         return _file_response(student_entry) if student_entry.is_file() else index_response()
@@ -166,7 +175,7 @@ def mount_spa(application: FastAPI, directory: Path | str | None) -> bool:
     # ---- 前端路由前缀（客户端路由，深链接一律回落入口页） ----
     @application.get("/", include_in_schema=False, response_class=FileResponse)
     def spa_root() -> FileResponse:  # pragma: no cover - 行为由测试覆盖
-        return index_response()
+        return welcome_response()
 
     @application.get(f"/{TEACHER_PREFIX}", include_in_schema=False, response_class=FileResponse)
     @application.get(

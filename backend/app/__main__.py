@@ -113,6 +113,7 @@ def _banner(urls: dict[str, str], data_file: Path, host: str, mounted: bool) -> 
         "",
         "  mathgen v" + _version() + " 已启动",
         "",
+        f"  入口页    {urls['home']}",
         f"  老师端    {urls['teacher']}",
         f"  学生端    {urls['student']}",
         f"  接口文档  {urls['docs']}",
@@ -185,14 +186,17 @@ def main(argv: list[str] | None = None) -> int:
 
     base = f"http://{'127.0.0.1' if args.host in {'0.0.0.0', '::'} else args.host}:{args.port}"
     urls = {
+        "home": f"{base}/",
         "teacher": f"{base}/teacher",
         "student": f"{base}/student",
         "docs": f"{base}/docs",
     }
     print(_banner(urls, data_file, args.host, static_dir is not None), flush=True)
 
+    # 打开入口页而不是老师端：入口页上有「进入使用」与「我是学生」两个门
+    # （`app/services/static_site.py` 的 `WELCOME_ENTRY`；没有公告页时它回落 index.html）。
     if not args.no_browser and args.host in {"127.0.0.1", "localhost"}:
-        threading.Timer(1.5, lambda: webbrowser.open(urls["teacher"])).start()
+        threading.Timer(1.5, lambda: webbrowser.open(urls["home"])).start()
 
     try:
         uvicorn.run(

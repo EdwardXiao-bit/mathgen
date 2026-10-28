@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mathgen 老师端</title>
+<meta name="description" content="mathgen 老师端的欢迎页：装好之后从这里进入出题、排版、发卷、改卷。选六个维度出题，卷面按 A4 排好，打印发下去，学生扫码答题，交卷立刻出分。数据都在自己这台电脑上，不用账号，也不用联网。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%231f2227'/%3E%3Cg stroke='%23fff' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M8 11h16M8 16h7M18 16h6M8 21h16'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="welcome.css">
+</head>
+<body>
+
+<!-- ============================== 首屏 ============================== -->
+<header class="hero" id="top">
+  <div class="shell hero-top">
+    <p class="wordmark">mathgen<span class="wordmark-sub">老师端</span></p>
+    <nav class="hero-nav" aria-label="页面目录">
+      <a href="#make">出题</a>
+      <a href="#look">排版</a>
+      <a href="#hand-out">发卷</a>
+      <a href="#mark">批改</a>
+    </nav>
+  </div>
+
+  <div class="shell hero-grid">
+    <div class="hero-left">
+      <h1 class="hero-title"><span class="hero-line"><span>二十道题</span></span><span class="hero-line"><span>一张纸</span></span></h1>
+      <p class="hero-say">装好了。接下来是出题、排版、发卷、改卷。卷面、卷号、成绩都在你自己那台电脑上，不用注册，也不用联网。</p>
+      <div class="hero-act">
+        <a class="action" href="/teacher">进入使用</a>
+        <a class="hero-act-alt" href="/student">我是学生</a>
+      </div>
+      <p class="hero-act-note">学生也可以直接扫卷子上的二维码进来。</p>
+    </div>
+
+    <figure class="hero-media">
+      <img src="assets/welcome/sheet.png" width="794" height="739" alt="mathgen 生成的一张 A4 卷面：标题、卷号、班级姓名学号得分的填写行，二十道算式分四栏排开">
+      <figcaption><span class="figure-num">20</span><span class="figure-text">道题，四栏，一张 A4。默认设置不改，也能直接印。</span></figcaption>
+    </figure>
+  </div>
+</header>
+
+<main>
+
+<!-- ============================== 说清楚是什么 ============================== -->
+<section class="intro" id="make">
+  <div class="shell intro-grid">
+    <div class="intro-copy">
+      <h2 class="serif-title">它不抽题，<br>它排版。</h2>
+      <p class="intro-lead">出题只是第一半。另一半是让这张纸印出来就能用：四栏、行距、字号、页边距，都在屏幕上先排好。</p>
+    </div>
+    <figure class="intro-media">
+      <img src="assets/welcome/workbench.png" width="1440" height="1008" alt="老师端卷页：左边是二十道题的改题列表，中间是 A4 卷面预览，右边是排版面板">
+    </figure>
+  </div>
+</section>
+
+<!-- ============================== 实时卷面 ============================== -->
+<section class="make" id="look">
+  <div class="shell">
+    <h2 class="make-title">六个维度，一个实时卷面</h2>
+  </div>
+  <div class="shell make-grid">
+    <div class="make-stage">
+      <div class="live-sheet" data-ui="live-sheet" aria-hidden="true">
+        <p class="live-title">20 以内加减法 · 课堂小测</p>
+        <p class="live-code">卷号 2610-0001</p>
+        <p class="live-head">班级：________　姓名：________　学号：________　得分：________</p>
+        <ol class="live-items"></ol>
+      </div>
+    </div>
+
+    <div class="make-blocks">
+      <div class="make-block">
+        <h3>题量</h3>
+        <p>八到一百道都行。卷面按每行几道重新分栏，页数自己会算，不用手挪。</p>
+        <div class="segmented" role="group" aria-label="题量">
+          <button type="button" data-count="8">8 道</button>
+          <button type="button" data-count="12">12 道</button>
+          <button type="button" data-count="16">16 道</button>
+          <button type="button" data-count="20" aria-pressed="true">20 道</button>
+        </div>
+      </div>
+
+      <div class="make-block">
+        <h3>每行几道</h3>
+        <p>两栏到六栏。低年级留宽一点，写竖式也不挤。</p>
+        <div class="segmented" role="group" aria-label="每行题数">
+          <button type="button" data-cols="2">2 栏</button>
+          <button type="button" data-cols="4" aria-pressed="true">4 栏</button>
+          <button type="button" data-cols="6">6 栏</button>
+        </div>
+      </div>
+
+      <div class="make-block">
+        <h3>字号</h3>
+        <p>十号到二十号。字号越大，一张纸能放的题越少，卷面会自己提示。</p>
+        <label class="slider-label" for="font-range">字号 <output id="font-out">14 pt</output></label>
+        <input id="font-range" class="slider" type="range" min="10" max="20" step="2" value="14">
+      </div>
+
+      <div class="make-block">
+        <h3>页边距</h3>
+        <p>一到三厘米。装订边留够，打印店的机器才不会吃掉第一列。</p>
+        <label class="slider-label" for="margin-range">页边距 <output id="margin-out">2.0 cm</output></label>
+        <input id="margin-range" class="slider" type="range" min="10" max="30" step="5" value="20">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 三个样子 ============================== -->
+<section class="showcase" id="hand-out">
+  <div class="shell showcase-grid">
+    <div class="showcase-list">
+      <h2 class="serif-title">同一份卷子，<br>四个样子。</h2>
+      <div class="showcase-names" role="tablist" aria-label="卷子的四种形态">
+        <button type="button" role="tab" data-view="paper" aria-selected="true">卷面</button>
+        <button type="button" role="tab" data-view="code" aria-selected="false">卷号与二维码</button>
+        <button type="button" role="tab" data-view="student" aria-selected="false">学生答题</button>
+        <button type="button" role="tab" data-view="score" aria-selected="false">成绩</button>
+      </div>
+      <p class="showcase-note" data-note="paper">打印出来发给学生的那张纸。答案和卷面一起生成，页尾另附答案页。</p>
+      <p class="showcase-note" data-note="code" hidden>发卷时分配卷号。二维码用的是老师电脑在局域网里的地址，投屏让学生扫。</p>
+      <p class="showcase-note" data-note="student" hidden>学生在手机上看到的样子：一道题一屏，填完点下一题，交卷就有分。</p>
+      <p class="showcase-note" data-note="score" hidden>谁交了什么，按人和按卷都能查；逐题对错、用时、得分，可以导出成表格。</p>
+    </div>
+
+    <div class="showcase-stage">
+      <img class="showcase-img" data-view="paper" src="assets/welcome/sheet.png" width="794" height="739" alt="已经排好的 A4 卷面，二十道两位数以内的加减法">
+      <img class="showcase-img" data-view="code" src="assets/welcome/qr-card.png" width="260" height="288" alt="发卷页上的卷号 2610-0001 与二维码卡片" hidden>
+      <img class="showcase-img" data-view="student" src="assets/welcome/student-answer.png" width="390" height="844" alt="学生手机上的答题页：一道 45 + 3 = ___，下面是输入框，底部是上一题与下一题" hidden>
+      <img class="showcase-img" data-view="score" src="assets/welcome/attempts.png" width="1440" height="1156" alt="成绩页：学生的姓名学号、卷子、得分、答对题数、用时和提交时间" hidden>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 四步 ============================== -->
+<section class="steps" id="mark">
+  <div class="shell">
+    <ol class="steps-list">
+      <li class="step">
+        <p class="step-line">出题。</p>
+        <p class="step-say">运算、范围、进位退位、题型、题量，勾完点生成。</p>
+      </li>
+      <li class="step">
+        <p class="step-line">改题。</p>
+        <p class="step-say">哪道不合适就单独换掉或删掉，卷面当场重排。</p>
+      </li>
+      <li class="step">
+        <p class="step-line">打印发卷。</p>
+        <p class="step-say">直接打印，或者导出 PDF 和 Word 交给打印店。</p>
+      </li>
+      <li class="step">
+        <p class="step-line step-last">交卷出分。</p>
+        <p class="step-say">学生扫码答题，交卷那一秒分数就在成绩页上了。</p>
+      </li>
+        </ol>
+  </div>
+</section>
+
+<!-- ============================== 安装 ============================== -->
+<section class="install" id="install">
+  <div class="shell">
+    <h2 class="install-title">想装到另一台电脑上</h2>
+    <p class="install-say">这台机器已经装好了，直接点上面的「进入使用」就行。换电脑、或者帮同事装，四条路任选一条，跑起来的是同一个服务，装完浏览器打开 <code>127.0.0.1:8000</code> 就是这一页。</p>
+
+    <dl class="install-list">
+      <div class="install-row">
+        <dt>一键脚本</dt>
+        <dd>
+          <p>Windows 上在 PowerShell 里跑一遍，脚本自己建环境、装依赖、下 Chromium。</p>
+          <pre><code>git clone https://github.com/EdwardXiao-bit/mathgen.git
+cd mathgen
+powershell -ExecutionPolicy Bypass -File scripts\start.ps1 -Lan</code></pre>
+        </dd>
+      </div>
+      <div class="install-row">
+        <dt>Docker</dt>
+        <dd>
+          <p>镜像里已经带了 Chromium，一条命令起来。</p>
+          <pre><code>docker run --rm -p 8000:8000 -v mathgen-data:/data \
+  ghcr.io/edwardxiao-bit/mathgen:1.0.0-rc1</code></pre>
+        </dd>
+      </div>
+      <div class="install-row">
+        <dt>npm 启动器</dt>
+        <dd>
+          <p>有 Node 和 Python 就能用；第一次会装到 <code>~/.mathgen</code>，之后是一秒启动。</p>
+          <pre><code>npx mathgen-cli@rc</code></pre>
+        </dd>
+      </div>
+      <div class="install-row">
+        <dt>pip</dt>
+        <dd>
+          <p>从 Release 下 wheel 装上，多一个 <code>mathgen</code> 命令。</p>
+          <pre><code>pip install mathgen_backend-1.0.0rc1-py3-none-any.whl
+mathgen --host 0.0.0.0</code></pre>
+        </dd>
+      </div>
+    </dl>
+
+    <p class="install-foot">教室场景加 <code>-Lan</code>（或把地址设成局域网）：服务会打印本机地址，学生用手机连那个地址，或者扫卷面上的二维码。</p>
+  </div>
+</section>
+
+<!-- ============================== 常见问题 ============================== -->
+<section class="faq">
+  <div class="faq-head">
+    <div class="shell">
+      <h2 class="faq-title">老师最常问的</h2>
+    </div>
+  </div>
+
+  <div class="faq-band">
+    <div class="shell faq-grid">
+      <h3>要联网吗？</h3>
+      <p>不用。系统跑在老师自己的电脑上，题目、成绩、学生姓名都在本机的一个数据库文件里；教室里靠局域网连，不用买服务器，也不用注册账号。</p>
+    </div>
+  </div>
+  <div class="faq-band faq-band-alt">
+    <div class="shell faq-grid">
+      <h3>学生的手机要装东西吗？</h3>
+      <p>不用装。扫码或者打开卷面地址，填一次姓名和学号，就可以逐题作答；下一次同一台设备不用再填。</p>
+    </div>
+  </div>
+  <div class="faq-band">
+    <div class="shell faq-grid">
+      <h3>数据存在哪？</h3>
+      <p>老师电脑上的一个文件，换电脑时拷过去就行。没有云端同步，也就没有谁家的服务器能看见班里学生的名字。</p>
+    </div>
+  </div>
+  <div class="faq-band faq-band-alt">
+    <div class="shell faq-grid">
+      <h3>打印和导出差多少？</h3>
+      <p>预览、浏览器打印、导出 PDF 用的是同一份页面，不会出现预览好好的、印出来错位。导出前会先算容量，放不下会直接告诉你把字号调小到多少。</p>
+    </div>
+  </div>
+  <div class="faq-band">
+    <div class="shell faq-grid">
+      <h3>出好的卷子还能改吗？</h3>
+      <p>能。单题可以换掉或删掉，版式随时调；已经发出去的卷是一份快照，想改就另存一份草稿再发，学生手里的卷号就不会变。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== 收尾 ============================== -->
+<section class="close">
+  <div class="close-band">
+    <div class="shell close-grid">
+      <p class="close-say">下节课就想用的话，先花三分钟装上：<a class="close-link" href="#install">按上面的命令跑一遍</a>，卷子就在你自己的电脑里。</p>
+      <figure class="close-media">
+        <img src="assets/welcome/attempts.png" width="1440" height="1156" alt="成绩页的表格：九次作答的得分与用时">
+      </figure>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============================== 页脚 ============================== -->
+<footer class="foot">
+  <div class="shell">
+    <div class="foot-top">
+      <p class="foot-note">mathgen v1.0.0-rc1 · MIT · 数据留在本机</p>
+      <p class="foot-note"><a href="#top">回到顶部</a></p>
+    </div>
+    <p class="foot-line"><code>npx mathgen-cli@rc</code></p>
+    <div class="foot-bottom">
+      <p>源码、文档与安装包在 GitHub 上的 <code>EdwardXiao-bit/mathgen</code>（Release 里有 wheel 与镜像说明）</p>
+      <p>截图来自本机运行的 v1.0.0-rc1</p>
+      <p>2026 · 肖铭皓、胡宇书</p>
+    </div>
+  </div>
+</footer>
+
+<script src="welcome.js"></script>
+</body>
+</html>

@@ -221,6 +221,45 @@ class TestStudentEntryPreference(StaticCase):
             self.assertIn(STUDENT_MARK, self.client.get("/student").text)
 
 
+class TestWelcomeEntry(StaticCase):
+    """`/` 先给欢迎页（M8 收尾）：装好之后打开就是这一页，它自己再把人送进老师端/学生端。
+
+    判据问的是「`/` 到底给哪一页」，所以正反两边都钉：
+    - 有 `welcome.html` → `/` 是欢迎页，且**不再是** index.html；
+    - 没有 `welcome.html`（老产物、CI 的临时 dist）→ `/` 回落 index.html，行为与 M3 一致；
+    - 老师端深链接不受影响（欢迎页只占 `/` 这一个位置）。
+    """
+
+    WELCOME_MARK = "MATHGEN_WELCOME_MARK"
+
+    def test_root_serves_welcome_page(self):
+        with temp_dist(extra_files={"welcome.html": f"<html>{self.WELCOME_MARK}</html>"}) as dist:
+            self.build(dist)
+            response = self.client.get("/")
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertIn(self.WELCOME_MARK, response.text)
+            self.assertNotIn(INDEX_MARK, response.text)
+
+    def test_welcome_page_is_reachable_by_name(self):
+        with temp_dist(extra_files={"welcome.html": f"<html>{self.WELCOME_MARK}</html>"}) as dist:
+            self.build(dist)
+            response = self.client.get("/welcome.html")
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertIn(self.WELCOME_MARK, response.text)
+
+    def test_welcome_page_does_not_steal_teacher_or_student(self):
+        with temp_dist(
+            student=True, extra_files={"welcome.html": f"<html>{self.WELCOME_MARK}</html>"}
+        ) as dist:
+            self.build(dist)
+            teacher = self.client.get("/teacher/paper/1")
+            student = self.client.get("/student/practice")
+            self.assertIn(INDEX_MARK, teacher.text)
+            self.assertNotIn(self.WELCOME_MARK, teacher.text)
+            self.assertIn(STUDENT_MARK, student.text)
+            self.assertNotIn(self.WELCOME_MARK, student.text)
+
+
 class TestMissingDist(StaticCase):
     def test_missing_dist_still_starts_and_serves_api(self):
         """dist 不存在 → 服务照常启动（CI / 纯 API 场景），不能启动失败。"""
