@@ -192,6 +192,26 @@ def measure(page):
                     body: overflow(doc.body),
                 };
             })(),
+            // 每一页都必须正好是一张 A4（用户 2026-10-28：「最后不满也应该显示到页末」）。
+            // 页高靠给灰缝/尾块补白实现，所以这里量的是**最终几何**而不是代码意图。
+            pages: (() => {
+                const sheetEl = d && d.querySelector('.sheet');
+                if (!sheetEl) return null;
+                const rect = sheetEl.getBoundingClientRect();
+                const seams = Array.from(sheetEl.querySelectorAll('.page-seam'));
+                const a4 = (297 / 25.4) * 96;
+                const gap = 18;
+                return {
+                    count: seams.length + 1,
+                    sheetH: +rect.height.toFixed(2),
+                    a4: +a4.toFixed(2),
+                    gap,
+                    expectedH: +((seams.length + 1) * a4 + seams.length * gap).toFixed(2),
+                    seamHeights: seams.map((s) => +s.getBoundingClientRect().height.toFixed(2)),
+                    tailCount: sheetEl.querySelectorAll('.page-tail').length,
+                    pagerButtons: document.querySelectorAll('.pager-page').length,
+                };
+            })(),
             scrollbar: (() => {
                 const stage = document.querySelector('.mg-paper-stage');
                 if (!stage) return null;
@@ -506,6 +526,27 @@ async function main() {
     'A9-10 卷面文档的 html 与 body 都是 overflow:hidden',
     iframeScroll.html === 'hidden/hidden' && iframeScroll.body === 'hidden/hidden',
     `html ${iframeScroll.html}；body ${iframeScroll.body}`,
+  );
+
+  console.log('');
+  console.log('—— A9-11 每一页正好一张 A4，最后一页也画到页底（用户 2026-10-28）——');
+  const pages = v1440.pages ?? {};
+  check(
+    'A9-11 卷面总高 == 页数 × A4 + 页间灰缝（±2px）',
+    typeof pages.sheetH === 'number' && typeof pages.expectedH === 'number'
+      && Math.abs(pages.sheetH - pages.expectedH) <= 2,
+    `实测 ${pages.sheetH} / 期望 ${pages.expectedH}（${pages.count} 页，A4=${pages.a4}，灰缝 ${pages.gap}）`,
+  );
+  check(
+    'A9-11 页数 == 页码栏按钮数（页数不许算错）',
+    typeof pages.count === 'number' && pages.count === pages.pagerButtons,
+    `页数 ${pages.count} / 页码按钮 ${pages.pagerButtons}`,
+  );
+  check(
+    'A9-11 每条灰缝高度 == 2 × 页边距 + 灰缝（≥1 页时）',
+    Array.isArray(pages.seamHeights)
+      && (pages.count === 1 || pages.seamHeights.length === pages.count - 1),
+    `灰缝高 ${JSON.stringify(pages.seamHeights)}`,
   );
 
   check('无 pageerror', (result.console_errors ?? []).length === 0, (result.console_errors ?? []).join(' ; ').slice(0, 200));

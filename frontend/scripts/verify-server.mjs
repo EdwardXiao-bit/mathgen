@@ -970,6 +970,12 @@ function sheetHtml(paper, mode) {
     `--answer-line-display: ${layout.answer_line ? 'block' : 'none'}`,
     `--header-bar-display: ${layout.header_bar ? 'grid' : 'none'}`,
   ].join('; ');
+  // 分页几何由后端在 `.sheet` 上以 data-* 下发（见 backend/app/render/sheet.py 的 _pagination_attrs）。
+  // mock 必须复刻它，否则「每一页正好一张 A4」那条判据在 mock 里根本不会被跑到。
+  const marginPx = +(((layout.page_margin * 10) / 25.4) * 96).toFixed(2);
+  const a4Px = (297 / 25.4) * 96;
+  const usableFirst = +(a4Px - marginPx * 2).toFixed(2);
+  const usableLater = +(usableFirst - 60).toFixed(2);
   const items = paper.items
     .map(
       (item) =>
@@ -1014,10 +1020,17 @@ function sheetHtml(paper, mode) {
        让「页边距」这一项在预览里也看得见 */
     '@media screen { .sheet { width: 210mm; max-width: 100%; margin: 0 auto;',
     '  padding: var(--page-margin); background: #fff; box-shadow: 0 0 4px rgba(0,0,0,.25); } }',
+    /* 页间灰缝与页尾补白：真实渲染由 styles.py 提供，这里只复刻「它占多少高度」 */
+    '.page-seam, .page-tail { margin-left: calc(-1 * var(--page-margin));',
+    '  margin-right: calc(-1 * var(--page-margin)); }',
+    '.page-seam { background: linear-gradient(#eceef1, #f6f7f8 50%, #eceef1); }',
     '</style>',
     '</head>',
     `<body class="mode-${mode}">`,
-    `<main class="sheet" data-mode="${mode}">`,
+    '<main class="sheet" data-mode="' + mode + '"' +
+    ' data-usable-first-px="' + usableFirst + '"' +
+    ' data-usable-later-px="' + usableLater + '"' +
+    ' data-page-margin-px="' + marginPx + '">',
     '<div class="header-bar"><span>班级：</span><span>姓名：</span><span>得分：</span></div>',
     `<h1 class="sheet-title">${paper.title}</h1>`,
     `<div class="q-row">${items}</div>`,

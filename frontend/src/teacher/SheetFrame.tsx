@@ -135,7 +135,7 @@ export function paginateDocument(doc: Document): PageGeometry | null {
   // 注意不能只删 `.sheet` 的直接子元素：灰缝是插在换页那一行**前面**的，
   // 答案版里那一行在 `.answer-section` 里面，于是灰缝成了嵌套元素 ——
   // 只删直接子元素会让它每轮叠一层，页间空白越叠越长（就是这个 bug 的来源）。
-  for (const seam of Array.from(sheet.querySelectorAll('.page-seam'))) seam.remove();
+  for (const seam of Array.from(sheet.querySelectorAll('.page-seam, .page-tail'))) seam.remove();
 
   const sheetRect = sheet.getBoundingClientRect();
   const usableFirst = Number(sheet.dataset.usableFirstPx ?? '');
@@ -179,20 +179,59 @@ export function paginateDocument(doc: Document): PageGeometry | null {
   }
 
   const seamHeight = marginPx * 2 + SEAM_GAP_PX;
+  const seams: HTMLElement[] = [];
   for (const block of breakBefore) {
     const seam = doc.createElement('div');
     seam.className = 'page-seam';
     seam.setAttribute('aria-hidden', 'true');
     seam.style.height = `${seamHeight.toFixed(2)}px`;
     block.parentNode?.insertBefore(seam, block);
+    seams.push(seam);
   }
 
+  /**
+   * 每一页都正好占满一张 A4（用户 2026-10-28 二次明确：「最后不满也应该显示到页末」）。
+   *
+   * 分页点只保证「这一行放不下下一页了」，把它之前的剩余空间留成空白就行——
+   * 但剩余空间不补的话，纸边会停在内容结束处，一页比一页短，最后一页像个半截纸条。
+   * 补法是给灰缝加 `margin-top`：灰缝自己就是「上一页下边距 + 灰缝 + 下一页上边距」，
+   * 把它推到底，纸边自然落在 A4 页高上；不用插占位元素，也就不会破坏 `.q-grid` 的栅格。
+   */
   const tops: number[] = [0];
-  // 同样按「所有灰缝」量页顶：灰缝可能嵌在答案区里，只看直接子元素会把页数数少。
-  for (const seam of Array.from(sheet.querySelectorAll('.page-seam'))) {
-    const rect = seam.getBoundingClientRect();
-    // 下一页「白纸」的顶：灰缝顶 + 上一页下边距 + 灰缝
-    tops.push(rect.top - contentTop + marginPx + SEAM_GAP_PX);
+  let paperTop = 0; // 相对 `.sheet` 顶边（未缩放的 iframe 内部像素）
+  // 走两遍：第一遍把差额补上，第二遍修掉「补白本身又引起位移」的残差
+  // （答案区里灰缝是栅格项，间距/外边距会吃掉几像素，一遍量不准）。
+  for (let pass = 0; pass < 2; pass += 1) {
+    paperTop = 0;
+    for (const seam of seams) {
+      const seamTop = seam.getBoundingClientRect().top - sheetRect.top;
+      const pageBottom = paperTop + A4_HEIGHT_PX;
+      const seamShouldStart = pageBottom - marginPx;
+      const shortfall = seamShouldStart - seamTop;
+      if (shortfall > 0.5) {
+        const applied = parseFloat(seam.style.marginTop || '0') || 0;
+        seam.style.marginTop = `${(applied + shortfall).toFixed(2)}px`;
+      }
+      paperTop = pageBottom + SEAM_GAP_PX;
+      if (pass === 1) tops.push(paperTop);
+    }
+  }
+
+  // 最后一页同样补到页底：`.sheet` 的 padding-bottom 已经占掉一个下边距，补剩下的差额。
+  const lastBlock = blocks[blocks.length - 1];
+  const contentBottom = lastBlock.getBoundingClientRect().bottom - sheetRect.top;
+  const tailHeight = paperTop + A4_HEIGHT_PX - marginPx - contentBottom;
+  if (tailHeight > 1) {
+    const tail = doc.createElement('div');
+    tail.className = 'page-tail';
+    tail.setAttribute('aria-hidden', 'true');
+    tail.style.height = `${tailHeight.toFixed(2)}px`;
+    sheet.appendChild(tail);
+    // 尾块的估算只算到「最后一块题」，而卷面在它之后还可能有栅格间距、答案区外框等零碎，
+    // 量一次真实高度再把差额补掉——纸边必须正好落在 A4 页底，差几个像素都会露出一截灰。
+    const wanted = paperTop + A4_HEIGHT_PX;
+    const delta = wanted - sheet.getBoundingClientRect().height;
+    if (Math.abs(delta) > 0.5) tail.style.height = `${(tailHeight + delta).toFixed(2)}px`;
   }
 
   const docHeight = Math.ceil(doc.documentElement.scrollHeight);
