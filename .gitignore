@@ -66,6 +66,9 @@ Desktop.ini
 tmp-*
 
 # 说明：docs/word/ 下的 docx / pdf / figures 是课程交付物与配图源文件，必须入库，故不忽略。
+# 例外：中期报告是课程内部材料（含组员学号），作者明确要求**不要上传 GitHub**，故整目录忽略。
+# 与 project 文档流水线（tools/build_docs.py 只写 01/02/08）无冲突：这个目录不由脚本生成。
+docs/word/midterm-report/
 
 # Playwright 浏览器与临时目录（M2 起，工作区内安装，避免 LocalAppData / 系统 TEMP 的权限问题）
 .playwright/
