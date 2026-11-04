@@ -20,8 +20,11 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
+import re
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -29,7 +32,7 @@ import webbrowser
 from pathlib import Path
 
 __all__ = ["main", "resolve_data_dir", "resolve_static_dir", "lan_ip",
-           "wait_until_ready", "announce_ready"]
+           "lan_ips", "wait_until_ready", "announce_ready"]
 
 #: 打包安装（非源码 checkout）时的默认数据目录：`~/.mathgen`
 USER_DATA_DIR = Path.home() / ".mathgen"
@@ -86,14 +89,123 @@ def resolve_static_dir(explicit: str | None) -> Path | None:
     return packaged if packaged.is_dir() else None
 
 
-def lan_ip() -> str | None:
-    """本机在局域网里的地址（不发包，只让内核选一块网卡）。失败返回 None。"""
+#: Windows 移动热点（ICS）在 AP 侧的固定网段：手机连热点后，**只有这个地址是可达的**。
+#: 它排在候选列表最前面，理由见 `lan_ips()`；这条知识来自 M4 的手机实测
+#: （`backend/tests/e2e_m4/REPORT-task-30.md`：热点下唯一能通的是 `192.168.137.1`）。
+ICS_AP_NETWORK = ipaddress.ip_network("192.168.137.0/24")
+
+
+def _default_route_ip() -> str | None:
+    """默认路由出口网卡的地址（UDP connect 不发包，只让内核选路）。失败返回 None。"""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.connect(("10.255.255.255", 1))
             return sock.getsockname()[0]
     except OSError:
         return None
+
+
+#: `ipconfig` 里 IPv4 那一行（中英文系统都能命中：`IPv4 地址` / `IPv4 Address`）。
+_IPV4_LINE = re.compile(r"IPv4[^:：]*[:：]\s*([0-9]{1,3}(?:\.[0-9]{1,3}){3})")
+
+
+def _system_ipv4_addresses() -> list[str]:
+    """从系统命令里捞 IPv4，作为主机名解析的补充。
+
+    为什么要多这一路：Windows 的 `gethostbyname_ex(主机名)` **不一定**把每块网卡都列出来
+    （尤其是热点那块由 ICS 临时创建的适配器）。手机连热点时唯一可达的就是它，漏了就白报地址。
+    `ipconfig` 的输出块里每个适配器都有一行 IPv4，按行抓即可；POSIX 用 `ip -4 -o addr`。
+    任何异常都吞掉——这只是「多给一条线索」，不能让它挡住启动。
+    """
+    commands = [["ipconfig"]] if sys.platform == "win32" else [["ip", "-4", "-o", "addr"]]
+    for command in commands:
+        try:
+            done = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        output = done.stdout or ""
+        found = _IPV4_LINE.findall(output)
+        if not found and sys.platform != "win32":
+            found = re.findall(r"inet\s+([0-9]{1,3}(?:\.[0-9]{1,3}){3})", output)
+        if found:
+            return found
+    return []
+
+
+def _ipv4_addresses() -> list[str]:
+    """本机的 IPv4 候选：默认路由出口 + 主机名解析 + 系统命令（去重、保序）。
+
+    为什么不止一块网卡：老师的笔记本常见「连着校园网 + 开着热点」——默认路由走校园网，
+    而手机只连得上热点那块网卡（`192.168.137.1`）。只报默认路由那一块，学生就永远连不上。
+    这也是用户 2026-11-04 报「笔记本连校园网、手机连热点，扫码打不开」的根因。
+    """
+    ordered: list[str] = []
+    primary = _default_route_ip()
+    if primary:
+        ordered.append(primary)
+    try:
+        ordered.extend(socket.gethostbyname_ex(socket.gethostname())[2])
+    except OSError:
+        pass
+    ordered.extend(_system_ipv4_addresses())
+    return ordered
+
+
+def _rank_ip(ip: str, primary: str | None) -> tuple[int, str]:
+    """给候选地址排个序，并给出一句人话理由（排序 = 手机越可能连上越靠前）。
+
+    顺序：热点 AP（0）> 默认路由出口（1）> 192.168 / 172.16 / 10 网段（2-4）> 其他（5）。
+    回环与链路本地排在最后（7/8），调用方据此剔除 —— 它们可能恰好就是默认路由
+    （例如没联网时 `10.255.255.255` 的探测会落回 127.0.0.1），所以必须**先**判掉。
+    """
+    try:
+        parsed = ipaddress.ip_address(ip)
+    except ValueError:
+        return 9, ""
+    if parsed.is_loopback:
+        return 7, "回环地址"
+    if parsed.is_link_local:
+        return 8, "169.254 链路本地"
+    if parsed in ICS_AP_NETWORK:
+        return 0, "手机连这台电脑的热点，用这条"
+    if ip == primary:
+        return 1, "默认路由出口（电脑自己上网用的那块网卡）"
+    if parsed in ipaddress.ip_network("192.168.0.0/16"):
+        return 2, "常见家用/局域网网段"
+    if parsed in ipaddress.ip_network("172.16.0.0/12"):
+        return 3, "常见家用/局域网网段"
+    if parsed in ipaddress.ip_network("10.0.0.0/8"):
+        return 4, "常见校园网/公司网段"
+    return 5, ""
+
+
+def lan_ips() -> list[dict[str, object]]:
+    """本机可作局域网地址的 IPv4，已被筛过并排好序。
+
+    返回 `[{"ip": "192.168.137.1", "reason": "手机连这台电脑的热点，用这条"}, ...]`：
+    - 回环与 169.254 链路本地**直接剔除**（列出来只会让老师挑错地址）；
+    - Windows 热点的 AP 地址排最前，其次是默认路由出口，然后才是其他网卡；
+    - `reason` 是给老师看的一句话，用来在横幅里说清「哪条给手机用」。
+    """
+    primary = _default_route_ip()
+    scored: list[tuple[int, int, dict[str, object]]] = []
+    seen: set[str] = set()
+    for index, ip in enumerate(_ipv4_addresses()):
+        if not ip or ip in seen:
+            continue
+        seen.add(ip)
+        rank, reason = _rank_ip(ip, primary)
+        if rank >= 7:  # 回环 / 链路本地：列出来也没用
+            continue
+        scored.append((rank, index, {"ip": ip, "reason": reason}))
+    scored.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in scored]
+
+
+def lan_ip() -> str | None:
+    """本机最可能被学生连上的那个局域网地址；一个都没有时返回 None。"""
+    candidates = lan_ips()
+    return str(candidates[0]["ip"]) if candidates else None
 
 
 # --------------------------------------------------------------------------- 版本与横幅
@@ -110,7 +222,8 @@ def _version() -> str:
         return __version__
 
 
-def _banner(urls: dict[str, str], data_file: Path, host: str, mounted: bool) -> str:
+def _banner(urls: dict[str, str], data_file: Path, host: str, mounted: bool,
+            port: int = DEFAULT_PORT) -> str:
     lines = [
         "",
         "  mathgen v" + _version() + " 正在启动",
@@ -123,9 +236,13 @@ def _banner(urls: dict[str, str], data_file: Path, host: str, mounted: bool) -> 
         f"  数据文件  {data_file}",
     ]
     if host not in {"127.0.0.1", "localhost"}:
-        ip = lan_ip()
-        if ip:
-            lines += ["", f"  同一局域网的学生可以扫码或访问  http://{ip}:{DEFAULT_PORT}/student"]
+        candidates = lan_ips()
+        if candidates:
+            lines += ["", "  学生在别的设备上答题（同一局域网；手机连这台电脑的热点就用第一条）："]
+            for item in candidates:
+                url = f"http://{item['ip']}:{port}/student"
+                reason = item["reason"]
+                lines.append(f"    {url:<34} {reason}" if reason else f"    {url}")
     if not mounted:
         lines += [
             "",
@@ -254,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         "student": f"{base}/student",
         "docs": f"{base}/docs",
     }
-    print(_banner(urls, data_file, args.host, static_dir is not None), flush=True)
+    print(_banner(urls, data_file, args.host, static_dir is not None, args.port), flush=True)
 
     # 打开入口页而不是老师端：入口页上有「进入使用」与「我是学生」两个门
     # （`app/services/static_site.py` 的 `WELCOME_ENTRY`；没有公告页时它回落 index.html）。
