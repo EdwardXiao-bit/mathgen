@@ -239,6 +239,15 @@ def _banner(urls: dict[str, str], data_file: Path, host: str, mounted: bool,
         "",
         f"  数据文件  {data_file}",
     ]
+    if host in {"127.0.0.1", "localhost"}:
+        # 一键脚本默认就是局域网模式；直连 CLI 的人若用默认值，这里要说清楚为什么手机连不上。
+        lines += [
+            "",
+            "  现在只有这台电脑能打开。要让学生用手机连，用局域网模式启动：",
+            "    Windows:       powershell -ExecutionPolicy Bypass -File scripts\\start.ps1",
+            "    macOS / Linux: ./scripts/start.sh",
+            "  启动窗口里会列出手机能连的那几条地址。",
+        ]
     if host not in {"127.0.0.1", "localhost"}:
         candidates = lan_ips()
         if candidates:

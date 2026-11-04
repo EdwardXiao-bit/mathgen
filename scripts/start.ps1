@@ -6,8 +6,8 @@
 # lives in scripts/start.py instead -- Python reads UTF-8 source reliably.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File scripts\start.ps1
-#   powershell -ExecutionPolicy Bypass -File scripts\start.ps1 -Lan          # let students on the LAN connect
+#   powershell -ExecutionPolicy Bypass -File scripts\start.ps1                # LAN mode (default)
+#   powershell -ExecutionPolicy Bypass -File scripts\start.ps1 -Local         # this machine only
 #   powershell -ExecutionPolicy Bypass -File scripts\start.ps1 -Port 9000
 #   powershell -ExecutionPolicy Bypass -File scripts\start.ps1 -NoMirror     # install from pypi.org
 #   powershell -ExecutionPolicy Bypass -File scripts\start.ps1 -Mirror https://your.mirror/simple
@@ -15,6 +15,7 @@
 [CmdletBinding()]
 param(
     [int]$Port = 0,
+    [switch]$Local,
     [switch]$Lan,
     [switch]$NoBrowser,
     [switch]$Reinstall,
@@ -76,7 +77,10 @@ if ($python.Count -gt 1) { $prefix = $python[1..($python.Count - 1)] }
 
 $forward = @($startScript)
 if ($Port -gt 0) { $forward += @("--port", "$Port") }
-if ($Lan) { $forward += @("--host", "0.0.0.0") }
+# LAN mode is the default: the whole point of this tool is that students join from their
+# phones, and a localhost-only server cannot be joined at all. `-Local` opts out, and the
+# old `-Lan` switch is kept as a no-op so existing shortcuts keep working.
+if (-not $Local) { $env:MATHGEN_HOST = "0.0.0.0" }
 if ($NoBrowser) { $forward += @("--no-browser") }
 if ($Reinstall) { $forward += @("--reinstall") }
 if ($Mirror -ne "") { $forward += @("--mirror", "$Mirror") }

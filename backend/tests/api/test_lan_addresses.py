@@ -98,6 +98,26 @@ class TestLanAddresses(unittest.TestCase):
             text = _banner("127.0.0.1")
         self.assertNotIn("192.168.137.1", text)
 
+    def test_local_mode_tells_you_how_to_let_phones_in(self):
+        """本机模式下横幅要说清「谁能打开」以及怎么切到局域网模式。
+
+        一键脚本默认已经是局域网模式了，但直接跑 CLI / pip 装的人会落在默认值上；
+        只说「127.0.0.1」会让人以为产品不支持手机答题。
+        """
+        with mock.patch.object(cli, "_default_route_ip", return_value="10.98.246.81"), \
+             mock.patch.object(cli, "_ipv4_addresses", return_value=[]):
+            text = _banner("127.0.0.1")
+        self.assertIn("只有这台电脑能打开", text)
+        self.assertIn("scripts", text)
+        self.assertIn("start.sh", text)
+
+    def test_lan_mode_does_not_print_the_local_only_hint(self):
+        """局域网模式下不该再教人切模式。"""
+        with mock.patch.object(cli, "_default_route_ip", return_value="192.168.137.1"), \
+             mock.patch.object(cli, "_ipv4_addresses", return_value=["192.168.137.1"]):
+            text = _banner("0.0.0.0")
+        self.assertNotIn("只有这台电脑能打开", text)
+
 
 if __name__ == "__main__":
     unittest.main()

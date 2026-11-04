@@ -3,7 +3,8 @@
 #
 # All user-facing text lives in scripts/start.py so there is exactly one place to edit.
 # Arguments are passed straight through, e.g.:
-#   ./scripts/start.sh --host 0.0.0.0      # let students on the LAN connect
+#   ./scripts/start.sh                     # LAN mode (default): students can join from phones
+#   MATHGEN_HOST=127.0.0.1 ./scripts/start.sh   # this machine only
 #   ./scripts/start.sh --no-mirror         # install deps from pypi.org
 set -e
 
@@ -11,6 +12,11 @@ here=$(cd "$(dirname "$0")" && pwd)
 
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
+
+# LAN mode is the default: the whole point of this tool is that students join from their
+# phones, and a localhost-only server cannot be joined at all. Override with MATHGEN_HOST.
+: "${MATHGEN_HOST:=0.0.0.0}"
+export MATHGEN_HOST
 
 PY=""
 for candidate in python3.12 python3 python; do
