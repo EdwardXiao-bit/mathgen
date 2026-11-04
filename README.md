@@ -237,6 +237,17 @@ pip install mathgen_backend-1.0.0rc3-py3-none-any.whl
 
 ## 技术栈
 
+![层·后端](https://img.shields.io/badge/后端-FastAPI%20%2B%20Uvicorn%20%2B%20Pydantic-009688?logo=fastapi&logoColor=white)
+![层·数据](https://img.shields.io/badge/数据-SQLite%20%2B%20SQLAlchemy-d71f00)
+![层·卷面](https://img.shields.io/badge/卷面-Jinja2%20%2B%20A4%20@page-4a4f57)
+![层·导出](https://img.shields.io/badge/导出-Chromium%20打印%20%2B%20python--docx-2b2f36)
+![层·前端](https://img.shields.io/badge/前端-React%2018%20%2B%20TypeScript%205.6-61dafb?logo=react&logoColor=white)
+![层·构建](https://img.shields.io/badge/构建-Vite%205%20%2B%20pnpm-646cff?logo=vite&logoColor=white)
+![层·质量](https://img.shields.io/badge/质量-1200%2B%20用例%20%2B%2012%20步门禁-1d6b46)
+
+下面这张表把每一层**为什么这么选**写清楚——技术栈不是为了显得现代，是为了让「打印出来正好是一张 A4」
+这件事在每个环节都成立。
+
 一句话：**Python 出一份 HTML，浏览器印它、导出它、预览它**——预览、打印、PDF、Word 都来自同一份页面，
 所以「预览什么样、印出来就什么样」不是靠两套代码对齐，而是本来就只有一套。
 
@@ -254,6 +265,9 @@ pip install mathgen_backend-1.0.0rc3-py3-none-any.whl
 
 **打印相关的取舍**：纸面尺寸、页边距、每行题数、行距、字号都写进 CSS 变量，卷面 HTML 与预览共用；
 容量守卫（放不下就拒绝并给建议）是第二层，第一层是 `break-inside: avoid` 让题不成两半。
+
+> 徽标由 [shields.io](https://shields.io/) 现取现画：版本号、CI 状态、npm 版本都是按当前仓库状态
+> 渲染的，发新版本时不必手改徽标。
 
 ---
 
