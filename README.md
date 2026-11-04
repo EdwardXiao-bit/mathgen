@@ -3,8 +3,21 @@
 给小学数学老师用的**四则运算出题 / 打印 / 批改**工具。系统运行在本地，老师出卷打印、学生扫码答题，交卷即出分——**无需注册，装好后无需联网，也不需要服务器**。
 
 [![release](https://img.shields.io/github/v/release/EdwardXiao-bit/mathgen?include_prereleases&label=release)](https://github.com/EdwardXiao-bit/mathgen/releases)
+[![CI](https://github.com/EdwardXiao-bit/mathgen/actions/workflows/release.yml/badge.svg)](https://github.com/EdwardXiao-bit/mathgen/actions/workflows/release.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/mathgen-cli?label=npm)](https://www.npmjs.com/package/mathgen-cli)
+[![docker](https://img.shields.io/badge/ghcr.io-mathgen-2496ed?logo=docker&logoColor=white)](https://github.com/EdwardXiao-bit/mathgen/pkgs/container/mathgen)
+
+[![python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![fastapi](https://img.shields.io/badge/FastAPI-0.143+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![sqlalchemy](https://img.shields.io/badge/SQLAlchemy-2.1+-d71f00)](https://www.sqlalchemy.org/)
+[![react](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=white)](https://react.dev/)
+[![typescript](https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![vite](https://img.shields.io/badge/Vite-5.4-646cff?logo=vite&logoColor=white)](https://vite.dev/)
+
+![offline](https://img.shields.io/badge/装好后-无需联网-1d6b46)
+![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-5c626a)
+![no-cdn](https://img.shields.io/badge/前端-零外部资源-b4622a)
 
 > **当前版本 `v1.0.0-rc3`（预发布）**：功能已全部做完并逐项验收，四种安装方式都已上线、逐条实测过。
 > 这一版相对 rc1：新增**入口页**（打开就是「进入使用 / 我是学生」两个门＋四步图解）、发卷页对已发布的卷
@@ -17,6 +30,7 @@
 [四种运行方式](#四种运行方式) ·
 [用起来是什么样](#用起来是什么样) ·
 [功能清单](#功能清单) ·
+[技术栈](#技术栈) ·
 [常见问题](#常见问题) ·
 [从源码开发](#从源码开发) ·
 [项目文档](#项目文档)
@@ -203,6 +217,28 @@ pip install mathgen_backend-1.0.0rc3-py3-none-any.whl
 - 后端 1275 个用例、前端 12 步门禁，全部通过
 - 接口契约冻结在 `docs/04`，有「文档 ↔ 实现」的机器对账判据
 - 单一服务托管前后端，一个进程一个端口，没有额外组件
+
+---
+
+## 技术栈
+
+一句话：**Python 出一份 HTML，浏览器印它、导出它、预览它**——预览、打印、PDF、Word 都来自同一份页面，
+所以「预览什么样、印出来就什么样」不是靠两套代码对齐，而是本来就只有一套。
+
+| 层 | 选型 | 为什么是它 |
+| --- | --- | --- |
+| 后端 | Python 3.12 · FastAPI 0.143 · Uvicorn · Pydantic 2.14 | 一个进程一个端口托管前后端；接口契约自动出 OpenAPI 文档，契约测试直接对它做对账 |
+| 数据 | SQLAlchemy 2.1 · SQLite 单文件 | 没有数据库服务要装要启；「备份」就是拷一个文件，换电脑也一样 |
+| 卷面渲染 | Jinja2 服务端渲染 HTML + A4 `@page` 打印 CSS | 卷面是**印刷品**，排版交给 CSS 引擎而不是前端框架；老师看到的预览是同一个页面的 iframe |
+| 导出 | Chromium 无头打印（PDF）· python-docx（Word） | 和浏览器打印走同一条通道，避免「预览好好的、印出来错位」 |
+| 二维码 | `qrcode[pil]` | 纯 Python 生成 PNG，不依赖任何在线服务 |
+| 前端 | React 18 · TypeScript 5.6 · Vite 5.4 · TanStack Query 5 · React Router 6 | 两个入口（老师端 / 学生端）分别打包，学生端只带答题需要的那一小份 |
+| 离线 | **不用任何 CDN、不外链字体与图标** | 断网可用是硬要求：字体用系统字、图标是内联 SVG/CSS，构建产物全打进 wheel |
+| 打包发布 | PEP 621 wheel（内含前端产物）· Docker 镜像 · npm 启动器 | 三种装法共用同一份后端与同一套启动器（`python -m app`） |
+| 质量门禁 | 后端 1200+ 用例 · 契约域对账用例 · 前端 12 步 UI 门禁（真实 Chromium） | 判据是代码的一部分：改坏了会红，改判据本身也要带负对照 |
+
+**打印相关的取舍**：纸面尺寸、页边距、每行题数、行距、字号都写进 CSS 变量，卷面 HTML 与预览共用；
+容量守卫（放不下就拒绝并给建议）是第二层，第一层是 `break-inside: avoid` 让题不成两半。
 
 ---
 
