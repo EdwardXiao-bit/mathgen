@@ -2,9 +2,9 @@
 
 给小学数学老师用的**四则运算出题 / 打印 / 批改**工具。系统运行在本地，老师出卷打印、学生扫码答题，交卷即出分——**无需注册，装好后无需联网，也不需要服务器**。
 
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![release](https://img.shields.io/github/v/release/EdwardXiao-bit/mathgen?include_prereleases&label=release)](https://github.com/EdwardXiao-bit/mathgen/releases)
 [![CI](https://github.com/EdwardXiao-bit/mathgen/actions/workflows/release.yml/badge.svg)](https://github.com/EdwardXiao-bit/mathgen/actions/workflows/release.yml)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/mathgen-cli?label=npm)](https://www.npmjs.com/package/mathgen-cli)
 [![docker](https://img.shields.io/badge/ghcr.io-mathgen-2496ed?logo=docker&logoColor=white)](https://github.com/EdwardXiao-bit/mathgen/pkgs/container/mathgen)
 
