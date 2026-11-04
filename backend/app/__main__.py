@@ -212,14 +212,18 @@ def lan_ip() -> str | None:
 
 
 def _version() -> str:
-    try:
-        from importlib.metadata import version
+    """当前版本号。
 
-        return version("mathgen-backend")
-    except Exception:  # pragma: no cover - 源码直接跑时没有发行版元数据
-        from app import __version__
+    以 ``app.__version__`` 为准：它是对外版本号的单点定义（D82），发布流水线会校验它
+    与 ``pyproject.toml``、``frontend/package.json``、``npm/package.json`` 一致。
 
-        return __version__
+    以前这里优先读安装元数据，于是在「源码目录 + 早先 ``pip install -e`` 过」的机器上，
+    横幅会显示上一次装包时的版本（比如已经发到 rc3 了还写 rc1），和入口页上标出来的
+    版本对不上。
+    """
+    from app import __version__
+
+    return __version__
 
 
 def _banner(urls: dict[str, str], data_file: Path, host: str, mounted: bool,

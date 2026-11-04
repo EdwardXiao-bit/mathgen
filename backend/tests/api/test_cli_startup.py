@@ -122,3 +122,17 @@ class TestAnnounceReady(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class TheVersionOnTheBanner(unittest.TestCase):
+    """横幅上的版本号（D82：``app.__version__`` 是单点定义）。
+
+    判据只问一件事：源码目录里跑出来的版本号，必须等于 ``app.__version__``。
+    以前这里读安装元数据，于是 ``pip install -e`` 过一次之后就永远停在那个版本上，
+    横幅写着 rc1、入口页写着 rc3。
+    """
+
+    def test_version_comes_from_the_package_not_from_stale_metadata(self) -> None:
+        import app
+
+        self.assertEqual(cli._version(), app.__version__)
