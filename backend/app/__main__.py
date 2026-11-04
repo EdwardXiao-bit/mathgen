@@ -302,6 +302,20 @@ def _say(message: str) -> None:
     print(message, flush=True)
 
 
+def browser_target(urls: dict[str, str], host: str, port: int) -> str:
+    """该给浏览器、该让老师复制的那条地址。
+
+    绑在 ``0.0.0.0`` 上时不能给 ``127.0.0.1``：二维码是按请求的 Host 现编的，老师若用
+    本机地址打开老师端，发卷页的二维码里也会是本机地址，学生手机扫了连不上。所以局域网
+    模式下优先用「手机最可能连的那条」——``lan_ips()`` 的第一条（热点地址排在前面）。
+    """
+    if host in {"0.0.0.0", "::", ""}:
+        candidates = lan_ips()
+        if candidates:
+            return f"http://{candidates[0]['ip']}:{port}/"
+    return urls["home"]
+
+
 def announce_ready(urls: dict[str, str], host: str, port: int, open_browser: bool, *,
                    timeout: float = DEFAULT_STARTUP_TIMEOUT,
                    out=_say) -> bool:
@@ -313,9 +327,10 @@ def announce_ready(urls: dict[str, str], host: str, port: int, open_browser: boo
         out(f"\n  等了 {int(timeout)} 秒还没起来，先不打开浏览器。"
             f"请确认端口 {port} 没有被别的程序占着。\n")
         return False
-    out(f"\n  启动完成  {urls['home']}\n")
+    target = browser_target(urls, host, port)
+    out(f"\n  启动完成  {target}\n")
     if open_browser:
-        webbrowser.open(urls["home"])
+        webbrowser.open(target)
     return True
 
 
@@ -381,7 +396,10 @@ def main(argv: list[str] | None = None) -> int:
     # （`app/services/static_site.py` 的 `WELCOME_ENTRY`；没有公告页时它回落 index.html）。
     # 顺序很关键：uvicorn 还没监听就开浏览器，慢机器上会看到「无法访问此网站」，
     # 所以放到后台线程里先等端口就绪（见 `announce_ready`）。
-    auto_open = not args.no_browser and args.host in {"127.0.0.1", "localhost"}
+    lan_mode = args.host in {"0.0.0.0", "::"}
+    auto_open = not args.no_browser and (
+        args.host in {"127.0.0.1", "localhost"} or (lan_mode and bool(lan_ips()))
+    )
     threading.Thread(
         target=announce_ready,
         args=(urls, args.host, args.port, auto_open),

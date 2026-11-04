@@ -136,3 +136,26 @@ class TheVersionOnTheBanner(unittest.TestCase):
         import app
 
         self.assertEqual(cli._version(), app.__version__)
+
+
+class WhichAddressTheBrowserOpens(unittest.TestCase):
+    """横幅给老师看、浏览器打开的是哪条地址。
+
+    绑 ``0.0.0.0`` 时给 ``127.0.0.1`` 会坑人：二维码按请求 Host 现编，老师用本机地址
+    打开老师端，学生手机扫到的就是本机地址。所以局域网模式下给 `lan_ips()` 第一条。
+    """
+
+    URLS = {"home": "http://127.0.0.1:8000/", "teacher": "http://127.0.0.1:8000/teacher"}
+
+    def test_lan_mode_opens_the_address_a_phone_can_reach(self) -> None:
+        with mock.patch.object(cli, "lan_ips", return_value=[{"ip": "192.168.137.1", "reason": "热点"}]):
+            self.assertEqual(cli.browser_target(self.URLS, "0.0.0.0", 8000),
+                             "http://192.168.137.1:8000/")
+
+    def test_lan_mode_without_candidates_falls_back_to_local(self) -> None:
+        with mock.patch.object(cli, "lan_ips", return_value=[]):
+            self.assertEqual(cli.browser_target(self.URLS, "0.0.0.0", 8000),
+                             self.URLS["home"])
+
+    def test_local_mode_keeps_the_local_address(self) -> None:
+        self.assertEqual(cli.browser_target(self.URLS, "127.0.0.1", 8000), self.URLS["home"])
