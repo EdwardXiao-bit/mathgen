@@ -42,6 +42,15 @@ WORKDIR /app
 
 # 后端的依赖与包本体。`app.export.browser` 会去 PLAYWRIGHT_BROWSERS_PATH 找 Chromium。
 COPY backend/ /app/backend/
+
+# Playwright 的驱动是一个自带的 node，node 需要 libatomic1；python:3.12-slim 里没有这个库，
+# 而 `playwright install --with-deps` 要等 node 能启动之后才去装系统依赖 —— 顺序上是死循环，
+# 所以必须先把这一个包装上（Playwright 1.65 + Debian trixie slim 实测复现：
+# `/usr/local/lib/python3.12/site-packages/playwright/driver/node: error while loading shared libraries: libatomic.so.1`）。
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libatomic1 \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN pip install /app/backend \
  && playwright install --with-deps chromium \
  && rm -rf /var/lib/apt/lists/*
