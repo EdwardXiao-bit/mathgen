@@ -239,9 +239,11 @@ class TestA9PreviewGeometry(A9Case):
 
     def test_before_value_from_my_pre_fix_measurement(self):
         """修前对照值来自**我在修前那个提交上量的**产物（同一条测量路径）。"""
-        path = os.path.join(ARTIFACTS, "a7-geometry.json")
+        # 历史产物单独一份：a7-geometry.json 是 test_ui_structure 每次运行都会重写的「当前几何」，
+        # 拿它当修前对照会让第一次跑完就把历史值覆盖掉（第二天重跑必红）。这里读的是冻结的那一份。
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "a9-before-geometry.json")
         if not os.path.exists(path):                       # 首次运行时缺历史产物
-            self.skipTest("缺少修前产物 a7-geometry.json（task-16 在 0a7ae8e 上生成）")
+            self.skipTest("缺少修前产物 a9-before-geometry.json（task-16 在 0a7ae8e 上生成）")
         with open(path, encoding="utf-8") as fh:
             before = json.load(fh)
         before_width = before["paper"]["w"]

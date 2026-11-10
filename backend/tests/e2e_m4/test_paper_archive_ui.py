@@ -71,7 +71,9 @@ class _PageCase(unittest.TestCase):
             "?.dataset.state ?? '') === value", arg=value)
 
     def _page_info(self, page) -> str:
-        return page.inner_text('[data-testid="library-page-info"]').strip()
+        # 单页（total <= PAGE_SIZE）时按设计不渲染翻页条，这里如实记成「无翻页条」而不是超时。
+        node = page.query_selector('[data-testid="library-page-info"]')
+        return node.inner_text().strip() if node else "(单页无翻页条)"
 
     def _wait_page(self, page, number: int):
         """等分页摘要说出第 N 页 —— 取空值要安全：重渲染瞬间元素会短暂不存在。"""
@@ -233,7 +235,8 @@ class TestLibraryPagingResetsOnTabSwitch(_PageCase):
                              f"翻页请求没带 offset=20：{on_page_two[-1]}")
 
             self._switch_archive_tab(page, "only")
-            self._wait_page(page, 1)
+            # 「已归档」档只有 3 套、不到一页，按设计不渲染翻页条（total <= PAGE_SIZE 时隐藏），
+            # 所以这里不能等 page-info —— 等归档卷那一行出现，并用桩收到的请求参数当证据。
             page.wait_for_selector('[data-paper-id="400"]', timeout=20000)
             after_switch = self.stub.papers_requests_summary()
             _record("paging", on_page_two=on_page_two, after_switch=after_switch,

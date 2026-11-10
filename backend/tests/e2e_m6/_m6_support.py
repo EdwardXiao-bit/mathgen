@@ -286,12 +286,18 @@ def socket_probe_problems(probe: dict | None, *, label: str, hooked: bool) -> li
                 )
     else:
         https = observations.get("external_https") or {}
-        if https.get("outcome") != "ok":
+        outcome = https.get("outcome")
+        message = str(https.get("message") or "")
+        # 对照组要证明的是「不装守卫时外网可达」。本机所处的网络会用中间人代理重签 HTTPS 证书
+        # （校园网/公司网关常见），TLS 握手能到对端、只是本地缺 CA —— 这本身就是「可达」的证据，
+        # 不该把对照组判死；真正该红的仍然红：DNS 失败、连接被拒、超时都还是「不通」。
+        tls_mitm = outcome == "error" and "CERTIFICATE_VERIFY_FAILED" in message
+        if outcome != "ok" and not tls_mitm:
             problems.append(
-                f"{label}：对照态里外网竟然不通（{https.get('outcome')} / "
-                f"{https.get('type')}: {https.get('message')}）—— 对照组无效，本次离线验证作废"
+                f"{label}：对照态里外网竟然不通（{outcome} / "
+                f"{https.get('type')}: {message}）—— 对照组无效，本次离线验证作废"
             )
-        elif int((https.get("value") or {}).get("status") or 0) != 200:
+        elif outcome == "ok" and int((https.get("value") or {}).get("status") or 0) != 200:
             problems.append(f"{label}：对照态外网状态码不是 200（{https.get('value')}）")
     return problems
 
