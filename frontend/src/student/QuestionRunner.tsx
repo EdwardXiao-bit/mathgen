@@ -145,8 +145,14 @@ export function QuestionRunner({ title, questions, onExit, submit, onFinish }: R
 
         {confirming ? (
           <Card>
-            <p className="st-confirm-title">还有 {unanswered} 题没有作答</p>
-            <p className="st-confirm-hint">这些题会按答错算分。确定现在交卷吗？</p>
+            <p className="st-confirm-title">
+              {unanswered === total ? '整份卷子还没作答' : `还有 ${unanswered} 题没有作答`}
+            </p>
+            <p className="st-confirm-hint">
+              {unanswered === total
+                ? '现在交卷会得 0 分。确定要交白卷吗？'
+                : '没作答的题不得分。确定现在交卷吗？'}
+            </p>
             <div className="st-row">
               <Button variant="ghost" onClick={() => setConfirming(false)}>
                 回去补一补

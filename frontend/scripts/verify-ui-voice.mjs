@@ -421,6 +421,52 @@ def _drive_student_paper(page):
         out["error"] = str(exc)
     return out
 
+def _probe_unanswered(page):
+    """结果页必须把「没作答」与「答错」分开（T-M8-02）。
+
+    怎么造数据：结果页的数据来自 sessionStorage 的 mathgen.student.lastResult 键
+    （见 src/student/resultStore.ts）。所以这里先打开结果页拿到同源上下文，再写入
+    一份「1 对 / 1 错 / 2 空」的夹具并重载——验的是**真实渲染路径**，不是替身。
+    """
+    out = {"sub": None, "badges": [], "error": None}
+    import json
+    fixture = {
+        "title": "未作答判据夹具",
+        "source": "paper",
+        "paperCode": "2610-0001",
+        "result": {
+            "score": 25,
+            "total": 4,
+            "correct": 1,
+            "items": [
+                {"seq": 1, "display": "1 + 1", "question_type": "oral", "answer": "2",
+                 "student_answer": "2", "is_correct": True},
+                {"seq": 2, "display": "2 + 2", "question_type": "oral", "answer": "4",
+                 "student_answer": "5", "is_correct": False},
+                {"seq": 3, "display": "3 + 3", "question_type": "oral", "answer": "6",
+                 "student_answer": None, "is_correct": False},
+                {"seq": 4, "display": "4 + 4", "question_type": "oral", "answer": "8",
+                 "student_answer": "", "is_correct": False},
+            ],
+        },
+        "questions": [],
+        "answers": [],
+    }
+    try:
+        page.goto(BASE + "/student/result", wait_until="domcontentloaded")
+        page.evaluate(
+            "(data) => window.sessionStorage.setItem('mathgen.student.lastResult', data)",
+            json.dumps(fixture, ensure_ascii=False))
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_timeout(400)
+        sub = page.query_selector(".st-score-sub")
+        out["sub"] = (sub.inner_text() or "").strip() if sub else None
+        out["badges"] = [(el.inner_text() or "").strip() for el in page.query_selector_all(".st-badge")]
+    except Exception as exc:
+        out["error"] = str(exc)
+    return out
+
+
 result = {"pages": {}, "console_errors": []}
 exe = find_chromium()
 result["chromium"] = exe
@@ -518,6 +564,8 @@ with sync_playwright() as p:
         if name == "student-paper-flow":
             result["pages"][name] = {"devHits": page.evaluate(DEV_SCAN), "bg": page.evaluate(BG_SCAN)}
             result["student_flow"] = _drive_student_paper(page)
+            # T-M8-02：同一条 case 顺手验「没作答 vs 答错」的措辞（换掉会话里的结果再重载）。
+            result["student_unanswered"] = _probe_unanswered(page)
             result["pages"]["student-result-after-submit"] = {
                 "devHits": page.evaluate(DEV_SCAN),
                 "bg": page.evaluate(BG_SCAN),
@@ -1080,6 +1128,26 @@ async function main() {
       JSON.stringify(noteMissing),
     );
   }
+
+  // ---- T-M8-02：结果页要把「没作答」与「答错」分开说法 --------------------
+  //
+  // 来源：卷 1618 那条「0 分 / 0 对 20 / 6 秒」的成绩。成因不是数据坏了，而是
+  // 学生一题没写就交了卷，而界面把「没作答」也标成「答错」——老师看不出区别。
+  // 判据只用契约已有的 `student_answer`（null / ''），不新增字段。
+  const un = result.student_unanswered ?? {};
+  console.log(
+    `  T-M8-02 未作答措辞：汇总=«${un.sub ?? ''}» 徽标=${JSON.stringify(un.badges ?? [])}${un.error ? ` 错误=${un.error}` : ''}`,
+  );
+  check(
+    'T-M8-02 汇总行点明未作答题数（1 对 / 1 错 / 2 空 → 未作答 2 题）',
+    typeof un.sub === 'string' && un.sub.includes('未作答 2 题'),
+    un.sub ?? '(没有读到 .st-score-sub)',
+  );
+  check(
+    'T-M8-02 三态徽标各就各位（答对 / 答错 / 未作答 / 未作答）',
+    JSON.stringify(un.badges ?? []) === JSON.stringify(['答对', '答错', '未作答', '未作答']),
+    JSON.stringify(un.badges ?? []),
+  );
 
   const failed = checks.filter((c) => !c.ok);
   console.log(`\n结果：${checks.length - failed.length}/${checks.length} 通过`);

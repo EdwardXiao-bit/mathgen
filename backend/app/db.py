@@ -23,12 +23,26 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.models import Base
 
 __all__ = [
-    "DB_PATH", "default_engine", "enable_sqlite_foreign_keys",
+    "DB_PATH", "db_path", "default_engine", "enable_sqlite_foreign_keys",
     "session_factory", "init_db", "get_db",
 ]
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = Path(os.environ.get("MATHGEN_DB", BACKEND_DIR / "data" / "mathgen.db"))
+
+
+def db_path() -> Path:
+    """当前生效的库文件路径。
+
+    每次调用都重新读 `MATHGEN_DB`，**不在导入时冻结**：测试套件里
+    `os.environ.setdefault("MATHGEN_DB", …)` 往往晚于本模块的导入
+    （`tests/api/_support.py` 在模块导入阶段就 import 了 `app.db`），
+    导入即冻结会让 e2e 用例把数据写进产品库（T-M8-01）。
+    """
+    return Path(os.environ.get("MATHGEN_DB", str(BACKEND_DIR / "data" / "mathgen.db")))
+
+
+#: 导入那一刻的默认路径快照，仅为兼容保留。**取引擎一律走 `db_path()`**。
+DB_PATH = db_path()
 
 _ENGINE: Engine | None = None
 _FACTORY: sessionmaker[Session] | None = None
@@ -51,13 +65,18 @@ def enable_sqlite_foreign_keys(engine: Engine) -> Engine:
 
 
 def default_engine() -> Engine:
-    """生产引擎（单例）：文件型 SQLite，零外部依赖。"""
+    """生产引擎（单例）：文件型 SQLite，零外部依赖。
+
+    路径在**第一次取引擎时**才解析（`db_path()`），这样「先 import、后设
+    `MATHGEN_DB`」也能生效（T-M8-01）。
+    """
     global _ENGINE
     if _ENGINE is None:
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        target = db_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
         _ENGINE = enable_sqlite_foreign_keys(
             create_engine(
-                f"sqlite+pysqlite:///{DB_PATH.as_posix()}",
+                f"sqlite+pysqlite:///{target.as_posix()}",
                 connect_args={"check_same_thread": False},
                 future=True,
             )

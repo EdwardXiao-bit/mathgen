@@ -530,6 +530,11 @@ body {
   border-left-color: var(--mg-danger);
 }
 
+/* 「没作答」既不是对也不是错：用中性色，避免把「空着」误读成「答错了」（T-M8-02）。 */
+.st-result-row--muted {
+  border-left-color: var(--mg-line-strong);
+}
+
 .st-result-head {
   display: flex;
   align-items: flex-start;
@@ -559,6 +564,11 @@ body {
 .st-badge--bad {
   background: var(--mg-surface-chip);
   color: var(--mg-danger);
+}
+
+.st-badge--muted {
+  background: var(--mg-surface-chip);
+  color: var(--mg-ink-soft);
 }
 
 .st-result-answers {

@@ -57,6 +57,16 @@ export function ResultPage() {
   // 而分叉不会自己报错 —— 只会让老师那边和这边显示同一个成绩两个分数。
   const score = result.score;
 
+  // 「没作答」与「答错」是两回事：0 分里既可能是全错，也可能是一题没写就交了卷
+  // （T-M8-02 那条 0 分卷就是后者）。判据只依赖契约已有的 `student_answer`
+  // （`null` 或空串即没作答），不新增字段、不动冻结的 DTO。
+  const mineOf = (item: (typeof result.items)[number]): string | null =>
+    item.student_answer ?? myAnswer.get(item.seq) ?? null;
+  const unanswered = result.items.filter((item) => {
+    const mine = mineOf(item);
+    return mine === null || mine === '';
+  }).length;
+
   return (
     <Screen>
       <TopBar title="练习结果" />
@@ -69,22 +79,22 @@ export function ResultPage() {
           </p>
           <p className="st-score-sub">
             答对 {correct} 题，共 {total} 题
+            {unanswered > 0 ? `，未作答 ${unanswered} 题` : ''}
           </p>
         </Card>
 
         <ul className="st-result-list">
           {result.items.map((item) => {
-            const mine = item.student_answer ?? myAnswer.get(item.seq) ?? null;
+            const mine = mineOf(item);
             const text = item.display ?? questionText.get(item.seq) ?? '这道题';
+            const blank = mine === null || mine === '';
+            const tone = blank ? 'muted' : item.is_correct ? 'ok' : 'bad';
             return (
-              <li
-                key={item.seq}
-                className={`st-result-row${item.is_correct ? ' st-result-row--ok' : ' st-result-row--bad'}`}
-              >
+              <li key={item.seq} className={`st-result-row st-result-row--${tone}`}>
                 <div className="st-result-head">
                   <span className="st-result-question">{text}</span>
-                  <span className={`st-badge${item.is_correct ? ' st-badge--ok' : ' st-badge--bad'}`}>
-                    {item.is_correct ? '答对' : '答错'}
+                  <span className={`st-badge st-badge--${tone}`}>
+                    {blank ? '未作答' : item.is_correct ? '答对' : '答错'}
                   </span>
                 </div>
                 <div className="st-result-answers">
