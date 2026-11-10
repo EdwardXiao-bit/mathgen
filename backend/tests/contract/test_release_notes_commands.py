@@ -44,8 +44,8 @@ WORKFLOW = os.path.join(REPO, ".github", "workflows", "release.yml")
 CHANGELOG = os.path.join(REPO, "CHANGELOG.md")
 NPM_MANIFEST = os.path.join(REPO, "npm", "package.json")
 
-REF = "v1.0.0-rc3"
-VERSION = "1.0.0-rc3"
+REF = "v1.0.0"
+VERSION = "1.0.0"
 IMAGE = "ghcr.io/edwardxiao-bit/mathgen"
 
 #: 发行说明里那一节在 CHANGELOG 里的标题（用来确认正文不是兜底文案）。
