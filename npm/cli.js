@@ -54,11 +54,27 @@ function run(cmd, args, opts = {}) {
 
 // ------------------------------------------------------------------ 1. Python
 
+// mathgen 只在 3.12 / 3.13 上做过完整验收（见 docs/05 的 M16）。更高的版本只要 pip 装得上也能跑，
+// 但不该优先选它 —— 实测一台机器上 `python` 是 3.12（Anaconda）、`python3` 却是 3.14（Store 版），
+// 按「先命中先用」的顺序会挑到从没测过的 3.14。
+const TESTED_MAX_MINOR = 13
+
 function findPython() {
-  const candidates = [['py', ['-3.12']], ['python3.12', []], ['python3', []], ['python', []]]
+  // 顺序只影响同版本时的偏好：显式版本号 > 通用名；Windows 上 `python` 比 `python3` 更像是用户
+  // 自己装的那个（`python3` 常是 Store 别名）。
+  const candidates = [
+    ['py', ['-3.13']],
+    ['python3.13', []],
+    ['py', ['-3.12']],
+    ['python3.12', []],
+    ['python', []],
+    ['python3', []],
+    ['py', ['-3']],
+  ]
+  const found = []
   for (const [exe, prefix] of candidates) {
     // 这里必须 shell:false。Windows 上走 shell 会把 args 只做字符串拼接（Node 自己为此发 DEP0190
-    // 警告），`-c` 里的引号与分号会被 cmd.exe 吃掉 —— 实测 shell:true 时四个候选全部 status=1、
+    // 警告），`-c` 里的引号与分号会被 cmd.exe 吃掉 —— 实测 shell:true 时候选全部 status=1、
     // 一个都探不到；shell:false 时 `python` 正常返回 "3.12"。参数按数组传给 CreateProcess，
     // 不经过任何 shell，才不会被引号、分号或路径里的空格影响。
     const probe = spawnSync(exe, [...prefix, '-c', 'import sys; print("%d.%d" % sys.version_info[:2])'], {
@@ -67,10 +83,15 @@ function findPython() {
     })
     if (probe.status === 0 && probe.stdout) {
       const [major, minor] = probe.stdout.trim().split('.').map(Number)
-      if (major > 3 || (major === 3 && minor >= 12)) return { exe, prefix }
+      if (major > 3 || (major === 3 && minor >= 12)) found.push({ exe, prefix, major, minor })
     }
   }
-  return null
+  if (!found.length) return null
+  const tested = found.filter((c) => c.major === 3 && c.minor <= TESTED_MAX_MINOR)
+  const pool = tested.length ? tested : found
+  // 都满足下限时取最高版本（3.13 优于 3.12；只在没得选时才落到 3.14+）。
+  pool.sort((a, b) => b.major - a.major || b.minor - a.minor)
+  return pool[0]
 }
 
 // ------------------------------------------------------------------ 2. 下载
@@ -118,7 +139,14 @@ async function ensureInstalled() {
         '  （macOS：brew install python@3.12   Debian/Ubuntu：sudo apt install python3.12 python3.12-venv）'
     )
   }
-  say(`  [1/4] Python：${python.exe} ${python.prefix.join(' ')}`.trimEnd())
+  const pythonLabel = `${python.exe} ${python.prefix.join(' ')}`.trimEnd()
+  say(`  [1/4] Python：${pythonLabel}（${python.major}.${python.minor}）`)
+  if (python.major === 3 && python.minor > TESTED_MAX_MINOR) {
+    say(`        注意：这台机器上只有 ${python.major}.${python.minor}；mathgen 在 3.12 / 3.13 上完整验收过，`)
+    say('        如果启动报错，装一个 3.12 再来（命令里加 MATHGEN_PRINT_PYTHON=1 可以先看它挑的是哪个）。')
+  }
+  // 排查「为什么挑了这个 Python」：只打印选择结果，不进入安装。
+  if (process.env.MATHGEN_PRINT_PYTHON) process.exit(0)
 
   fs.mkdirSync(HOME, { recursive: true })
   say(`  [2/4] 建虚拟环境 ${VENV}`)
