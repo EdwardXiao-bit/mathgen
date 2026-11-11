@@ -32,7 +32,7 @@ import webbrowser
 from pathlib import Path
 
 __all__ = ["main", "resolve_data_dir", "resolve_static_dir", "lan_ip",
-           "lan_ips", "wait_until_ready", "announce_ready"]
+           "lan_ips", "wait_until_ready", "announce_ready", "decode_console"]
 
 #: 打包安装（非源码 checkout）时的默认数据目录：`~/.mathgen`
 USER_DATA_DIR = Path.home() / ".mathgen"
@@ -109,6 +109,29 @@ def _default_route_ip() -> str | None:
 _IPV4_LINE = re.compile(r"IPv4[^:：]*[:：]\s*([0-9]{1,3}(?:\.[0-9]{1,3}){3})")
 
 
+#: 系统命令输出可能用的编码，按「先 UTF-8、再 ANSI、最后带替换字符」依次尝试。
+_CONSOLE_ENCODINGS = ("utf-8", "mbcs", "cp936", "gbk")
+
+
+def decode_console(raw: bytes) -> str:
+    """把系统命令的原始字节解成文本（不会抛异常）。
+
+    Windows 控制台程序（`ipconfig`、`where`、`chcp`……）按**控制台代码页**输出，
+    简中是 CP936，而 `python -X utf8` / `PYTHONUTF8=1` 会让 `subprocess` 的文本模式
+    改用 UTF-8 解码 —— 于是 `0xb1`（「±」/某个汉字的首字节）就成了非法起始字节，
+    reader 线程抛 `UnicodeDecodeError`，父进程拿到的 stdout 是空串。
+    这里按字节读回来自己解：先 UTF-8（大多数 POSIX 工具），再 ANSI（`mbcs`，Windows 用），
+    实在认不出就用 `errors="replace"` 兜底 —— 解析 IPv4 只需要 ASCII 与冒号，
+    替换字符不会把结果弄错，但少了这一路会整段丢弃。
+    """
+    for encoding in _CONSOLE_ENCODINGS:
+        try:
+            return raw.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
 def _system_ipv4_addresses() -> list[str]:
     """从系统命令里捞 IPv4，作为主机名解析的补充。
 
@@ -116,14 +139,20 @@ def _system_ipv4_addresses() -> list[str]:
     （尤其是热点那块由 ICS 临时创建的适配器）。手机连热点时唯一可达的就是它，漏了就白报地址。
     `ipconfig` 的输出块里每个适配器都有一行 IPv4，按行抓即可；POSIX 用 `ip -4 -o addr`。
     任何异常都吞掉——这只是「多给一条线索」，不能让它挡住启动。
+
+    注意：**不用** `text=True`，而是拿原始字节自己解码（见 `decode_console`）。
+    一键脚本为了控制台输出会把 `PYTHONUTF8=1` 传给子进程，文本模式就会用 UTF-8 去解
+    `ipconfig` 的 CP936 输出，在 reader 线程里抛 UnicodeDecodeError —— 表现是启动时打一段
+    traceback、而且地址列表变成空的（用户 2026-11-11 报的就是这个）。
     """
     commands = [["ipconfig"]] if sys.platform == "win32" else [["ip", "-4", "-o", "addr"]]
     for command in commands:
         try:
-            done = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            done = subprocess.run(command, capture_output=True, timeout=5)
         except (OSError, subprocess.SubprocessError):
             continue
-        output = done.stdout or ""
+        raw = done.stdout or b""
+        output = decode_console(raw) if isinstance(raw, bytes) else str(raw)
         found = _IPV4_LINE.findall(output)
         if not found and sys.platform != "win32":
             found = re.findall(r"inet\s+([0-9]{1,3}(?:\.[0-9]{1,3}){3})", output)

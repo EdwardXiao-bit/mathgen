@@ -5,15 +5,19 @@
 根本路由不到（用户 2026-11-04 报「扫码打不开」）。手机唯一可达的是 Windows 移动热点
 （ICS）AP 侧的 `192.168.137.1`（M4 的手机实测：`backend/tests/e2e_m4/REPORT-task-30.md`）。
 
-判据测五件事：
+判据测六件事：
 - 热点地址排第一，理由那句话要能让人看懂该用哪条；
 - 回环与 169.254 链路本地必须被丢掉（列出来只会让老师挑错）；
 - 去重、保序，`lan_ip()` 取第一个，一个都没有时返回 None；
 - `ipconfig` 的中英文两种行都能解析（Windows 的主机名解析不保证列全每块网卡）；
+- Windows 的 `ipconfig` 输出是 CP936 字节，而一键脚本会把 `PYTHONUTF8=1` 传给子进程 ——
+  必须自己按字节解码，不能交给 `subprocess` 的文本模式（否则 reader 线程抛
+  UnicodeDecodeError，地址列表变空；用户 2026-11-11 报的启动 traceback 就是这个）；
 - 横幅在局域网模式下逐条列出候选、端口用真的那个；本机地址模式下不列（没意义）。
 """
 from __future__ import annotations
 
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -79,6 +83,50 @@ class TestLanAddresses(unittest.TestCase):
         )
         self.assertEqual(cli._IPV4_LINE.findall(chinese), ["192.168.137.1", "169.254.3.9"])
         self.assertEqual(cli._IPV4_LINE.findall(english), ["10.98.246.81"])
+
+    def test_gbk_ipconfig_output_is_decoded_not_crashed(self):
+        """简中 Windows 的 `ipconfig` 输出是 CP936 字节，必须自己解码。
+
+        用户 2026-11-11 用一键脚本启动时看到一段 `UnicodeDecodeError` traceback：
+        脚本给子进程设了 `PYTHONUTF8=1`，`subprocess` 的文本模式于是用 UTF-8 解
+        `ipconfig` 的 CP936 输出 —— reader 线程炸掉，`stdout` 变成空，地址列表也就空了
+        （热点那条又不报了）。所以这里同时钉两件事：字节喂进来要能解析出 IP；
+        并且**不允许**再把解码交给 `subprocess`（`text=` / `encoding=` / `errors=` 都不能传）。
+        """
+        gbk = (
+            "以太网适配器 本地连接* 2:\r\n"
+            "   IPv4 地址 . . . . . . . . . . . . : 192.168.137.1\r\n"
+        ).encode("gbk")
+        calls: list[dict[str, object]] = []
+
+        def fake_run(command, **kwargs):
+            calls.append(kwargs)
+            return types.SimpleNamespace(stdout=gbk, returncode=0)
+
+        with mock.patch.object(cli.subprocess, "run", side_effect=fake_run), \
+             mock.patch.object(cli.sys, "platform", "win32"):
+            found = cli._system_ipv4_addresses()
+
+        self.assertEqual(found, ["192.168.137.1"])
+        self.assertTrue(calls, "没有真的去调系统命令")
+        for kwargs in calls:
+            for forbidden in ("text", "encoding", "errors", "universal_newlines"):
+                self.assertNotIn(forbidden, kwargs)
+
+    def test_undecodable_output_is_swallowed(self):
+        """完全认不出的字节也不能抛异常（这条路径只是「多给一条线索」）。"""
+        with mock.patch.object(
+            cli.subprocess,
+            "run",
+            return_value=types.SimpleNamespace(stdout=b"\xff\xfe\xb1\x00", returncode=0),
+        ), mock.patch.object(cli.sys, "platform", "win32"):
+            self.assertEqual(cli._system_ipv4_addresses(), [])
+
+    def test_decode_console_prefers_utf8_then_ansi(self):
+        """UTF-8 的字节按 UTF-8 解；CP936 的字节按 ANSI 解；两者都不是也不抛。"""
+        self.assertEqual(cli.decode_console("IPv4 地址".encode("utf-8")), "IPv4 地址")
+        self.assertEqual(cli.decode_console("IPv4 地址".encode("gbk")), "IPv4 地址")
+        self.assertIsInstance(cli.decode_console(b"\xff\xfe\xb1"), str)
 
     def test_banner_lists_every_candidate_in_lan_mode(self):
         """局域网模式下逐条列出，并且用真实端口（不是写死的 8000）。"""
