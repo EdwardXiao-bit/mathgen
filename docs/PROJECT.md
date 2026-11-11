@@ -11,7 +11,7 @@
 | 成员 | 肖铭皓、胡宇书 |
 | 技术栈 | Python FastAPI + SQLite + React/Vite（D18） |
 | 远程仓库 | `https://github.com/EdwardXiao-bit/mathgen.git`（分支 `main`） |
-| 当前阶段 | 需求已冻结 → 技术设计 v0.4 → **M1–M16 全部完成** → **正式版 `v1.0.1` 已发布**（GitHub Release 含 wheel 与 `SHA256SUMS` + Docker 镜像（含 `latest`）+ npm 启动器 `mathgen-cli` 三条渠道均已上线并实测）；系统本体功能已完备 |
+| 当前阶段 | 需求已冻结 → 技术设计 v0.4 → **M1–M16 全部完成** → **正式版 `v1.0.2` 已发布**（GitHub Release 含 wheel 与 `SHA256SUMS` + Docker 镜像（含 `latest`）+ npm 启动器 `mathgen-cli` 三条渠道均已上线并实测）；系统本体功能已完备 |
 | 唯一事实来源 | [`00-决策记录.md`](00-决策记录.md) |
 
 ---
@@ -35,7 +35,7 @@
 | **课程提交** | 测试文档 Word | `docs/word/03-测试文档.docx`（源 `docs/08-测试文档.md`） | **已产出**（3 图 34 表，40 页；45 条用例 + 47 条缺陷） |
 | 代码 | 后端引擎与判分 | `backend/app/engine/`、`backend/app/grading/` | **M1 已完成**（240 用例） |
 | 代码 | 后端服务 / 渲染导出 / 前端双端 | `backend/app/`、`frontend/` | **M2–M6 已完成**（后端全量 **1275** 用例 OK、前端 12 步门禁全 PASS；M6 验收跑时为 1254，之后随导出目录与发行说明两处判据增至 1275） |
-| **发行版** | 正式版 `v1.0.1` | GitHub Release `v1.0.1`（`mathgen_backend-1.0.1-py3-none-any.whl` + `SHA256SUMS`）、`ghcr.io/edwardxiao-bit/mathgen:1.0.1`（同时推 `latest`）、npm `mathgen-cli@1.0.1`、`scripts/start.*` | 与 rc 系列同一套形态与验证方式（`docs/00` D82、D83、D85、D86）；本版更新内容见 `CHANGELOG.md` 与 `docs/05` T-M16-01 |
+| **发行版** | 正式版 `v1.0.2` | GitHub Release `v1.0.2`（`mathgen_backend-1.0.2-py3-none-any.whl` + `SHA256SUMS`）、`ghcr.io/edwardxiao-bit/mathgen:1.0.2`（同时推 `latest`）、npm `mathgen-cli@1.0.2`、`scripts/start.*` | 与 rc 系列同一套形态与验证方式（`docs/00` D82、D83、D85、D86）；本版更新内容见 `CHANGELOG.md` 与 `docs/05` T-M16-01 |
 
 ## 3. 范围
 
@@ -75,7 +75,7 @@
 | **M9** | 入口页：`/` 变成老师装好后的欢迎页 | 装好后打开就知道怎么开始 | **已完成**（2026-10-28；`frontend/public/welcome.html`；后端 `WELCOME_ENTRY` 优先返回、没有则回落 index；`TestWelcomeEntry` 3 条判据随 374 用例通过；页面 lint 0 FAIL / inspect 0 FAIL；任务卡 T-M9-01） |
 | **M10** | 第二版发布 `v1.0.0-rc2` | 用户看得见的修复发出去 | **已完成**（2026-10-28；版本号四处 + Release 增 `SHA256SUMS` + npm `rc`/`latest` 前移到 `1.0.0-rc2`；CI run 40644375612 两个 job 绿；三条渠道均从消费者侧实测通过；任务卡 T-M10-01） |
 | **M14** | 第三版发布 `v1.0.0-rc3` | 让用户拿到修好的一版并装上 | **已完成**（2026-10-28；版本号四处 + CHANGELOG 开 rc3 小节 + 入口页补全并标版本徽标 + 12 步门禁全 PASS；任务卡 T-M14-01） |
-| **M16** | 正式版发布 `v1.0.1` | 正式版不带已知课堂缺陷 | **已完成**（2026-11-10；五处版本号 + CHANGELOG 开 `1.0.1` 小节；T-M8-01 惰性 DB 路径、T-M8-02 三态成绩页、一键脚本默认教室模式；12 步门禁 + 后端全量 + 契约域 全 PASS；Release 非 prerelease、GHCR 推 `1.0.1` 与 `latest`） |
+| **M16** | 正式版发布 `v1.0.2` | 正式版不带已知课堂缺陷 | **已完成**（2026-11-10；五处版本号 + CHANGELOG 开 `1.0.2` 小节；T-M8-01 惰性 DB 路径、T-M8-02 三态成绩页、一键脚本默认教室模式；12 步门禁 + 后端全量 + 契约域 全 PASS；Release 非 prerelease、GHCR 推 `1.0.2` 与 `latest`） |
 
 > 任务级分解、依赖与写域见 [`05-任务板.md`](05-任务板.md)。
 
@@ -117,7 +117,7 @@
 | 判据与观测纪律 | D59、D68、D69、D71 | 契约变量必须真的被消费；A9 预览必须是打印的等比缩放；V9 新断言必须能失败；A10 不得出现内部编号族 |
 | 界面工作流 | D61–D63、D67、D70、D73 | 界面优化独立工作流；视觉方向 C；C1 工作台；设计规范冻结；视觉轮逐条裁决；M3.5 验收通过 |
 | 卷面预览的形态 | D84 | 多页切成真实分页、缩放七档、页码栏位置；预览页数必须等于导出 PDF 页数 |
-| 发布与发行形态 | D82、D83、D85、D86 | **正式版 `v1.0.1`**（D86：正式版 = rc3 + 一批课堂体验修复；npm `latest`=1.0.1 而 `rc` 留 1.0.0-rc3；Docker 同时推 `1.0.1` 与 `latest`；Release 非 prerelease）；第三版 `v1.0.0-rc3`（D85：入口页补全 + 门禁按性质判 `href`、判据改动自带自测负对照、版本号仍单点定义、页脚只署技术栈）； 第二版 `v1.0.0-rc2`（D83：继续预发布、`rc` 与 `latest` 随版本前移、Release 附 CI 生成的 `SHA256SUMS`、更新说明必须写清内容、旧 tag 不重切）；第一版 `v1.0.0-rc1`：版本号单点定义（`app.__version__`，CI 拦三处一致）、四条安装路径同一份后端、npm 是启动器且不发 PyPI、Docker 靠 CI 真冒烟、MIT 两份必须同步 |
+| 发布与发行形态 | D82、D83、D85、D86 | **正式版 `v1.0.2`**（D86：正式版 = rc3 + 一批课堂体验修复；npm `latest`=1.0.2 而 `rc` 留 1.0.0-rc3；Docker 同时推 `1.0.2` 与 `latest`；Release 非 prerelease）；第三版 `v1.0.0-rc3`（D85：入口页补全 + 门禁按性质判 `href`、判据改动自带自测负对照、版本号仍单点定义、页脚只署技术栈）； 第二版 `v1.0.0-rc2`（D83：继续预发布、`rc` 与 `latest` 随版本前移、Release 附 CI 生成的 `SHA256SUMS`、更新说明必须写清内容、旧 tag 不重切）；第一版 `v1.0.0-rc1`：版本号单点定义（`app.__version__`，CI 拦三处一致）、四条安装路径同一份后端、npm 是启动器且不发 PyPI、Docker 靠 CI 真冒烟、MIT 两份必须同步 |
 
 ## 8. 未决事项与风险
 

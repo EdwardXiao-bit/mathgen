@@ -44,8 +44,8 @@ WORKFLOW = os.path.join(REPO, ".github", "workflows", "release.yml")
 CHANGELOG = os.path.join(REPO, "CHANGELOG.md")
 NPM_MANIFEST = os.path.join(REPO, "npm", "package.json")
 
-REF = "v1.0.1"
-VERSION = "1.0.1"
+REF = "v1.0.2"
+VERSION = "1.0.2"
 IMAGE = "ghcr.io/edwardxiao-bit/mathgen"
 
 #: 发行说明里那一节在 CHANGELOG 里的标题（用来确认正文不是兜底文案）。
@@ -225,7 +225,7 @@ class TestTheCriterionIsGreenOnTheRealWorkflow(ReleaseNotesCase):
 
     def test_dist_tag_rules(self) -> None:
         self.assertEqual(dist_tag_for("1.0.0-rc1"), "rc")
-        self.assertEqual(dist_tag_for("1.0.1"), "latest")
+        self.assertEqual(dist_tag_for("1.0.2"), "latest")
 
 
 class TestTheVersionConstantsTrackTheNewestChangelogSection(ReleaseNotesCase):
