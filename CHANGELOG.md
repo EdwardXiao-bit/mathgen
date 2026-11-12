@@ -35,9 +35,17 @@
 
 ## [未发布]
 
+### 变更
+
+- **Docker 镜像改为多架构**：下一次发版起 GHCR 同时提供 `linux/amd64` 与 `linux/arm64`，
+  Apple Silicon 的 Docker Desktop 可以直接跑 arm64 镜像，不必再走模拟（Chromium 导 PDF 在模拟下明显变慢）。
+- **npm 启动器改为 CI 自动发布**：走 npm 的 trusted publishing（GitHub Actions 的 OIDC 凭据），
+  不再需要人工在本机执行 `npm publish`；发布作业结束后会回读 registry，确认目标版本真的上了架。
+  这是 npm 官方给 CI 的无人值守路径——长期 token 从 2025-12 起已全部吊销，granular token 的
+  「Bypass 2FA」则是一条可被偷的长期凭据。
+
 ### 计划
-- 补上「源 md 与派生 docx 之间没有新鲜度判据」的机器判据（T-M8-03）
-- 让测试套件不再往产品卷库里写卷（T-M8-01）
+- 下一次发版后核对：GHCR 的 manifest list 里两个平台都在；npm 包页出现 provenance 徽标。
 
 ## [1.0.0] - 2026-11-10
 

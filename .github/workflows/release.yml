@@ -1,17 +1,29 @@
 name: release
 
-# 打 tag（v1.0.0-rc1 这种）时自动做三件事：
+# 打 tag（v1.0.0-rc1 这种）时自动做四件事：
 #   1. 构建 wheel（**内含前端产物**，装上就有界面）
-#   2. 构建 Docker 镜像并**先在 runner 上冒烟跑通**（含真 PDF 导出），再推 GHCR
+#   2. 构建 Docker 镜像并**先在 runner 上冒烟跑通**（含真 PDF 导出），再推 GHCR 多架构镜像
 #   3. 用 CHANGELOG 里对应版本那一节创建 GitHub Release，并附上 wheel
+#   4. 把 npm 启动器 `mathgen-cli` 发到 registry（trusted publishing，不需要长期 token；
+#      见 npm 作业的注释与 docs/00 的 D87）
 #
 # 手动触发（workflow_dispatch）只构建与冒烟，不推 GHCR、不发 Release：
 # 镜像里有 Chromium，本机又没装 Docker，CI 是这个 Dockerfile 唯一的验证途径。
+# 手选两个平台（linux/amd64,linux/arm64）时会额外在 QEMU 里把 arm64 也构建一遍，
+# 用来验证 Dockerfile 在 arm64 上可构建（arm64 镜像不做运行时冒烟，见 D87）。
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "构建平台；选两个会额外验证 arm64 也能构建（不推镜像）"
+        type: choice
+        default: linux/amd64
+        options:
+          - linux/amd64
+          - linux/amd64,linux/arm64
 
 permissions:
   contents: write
@@ -112,7 +124,7 @@ jobs:
           | 方式 | 命令 | 需要什么 |
           | --- | --- | --- |
           | 源码一键脚本 | `scripts\\start.ps1`（Windows）/ `./scripts/start.sh`（macOS / Linux） | Python 3.12+ |
-          | Docker | `docker run --rm -p 8000:8000 -v mathgen-data:/data ghcr.io/edwardxiao-bit/mathgen:VER` | Docker（目前只有 `linux/amd64`） |
+          | Docker | `docker run --rm -p 8000:8000 -v mathgen-data:/data ghcr.io/edwardxiao-bit/mathgen:VER` | Docker（`linux/amd64` 与 `linux/arm64` 两个架构） |
           | npm 启动器 | `npx mathgen-cli@VER` | Node 18+ 与 Python 3.12+ |
           | pip | `pip install 下面这个 wheel`，然后 `mathgen` | Python 3.12+ |
 
@@ -138,14 +150,97 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
 
+  # ------------------------------------------------------------ npm 启动器
+  # 走 npm 的 **trusted publishing**（OIDC）：GitHub Actions 用 id-token 换一次性发布凭据，
+  # 仓库里**不存任何 npm token**。为什么不用 token（2026 年的 npm 现实）：
+  #   · 2025-11 起 npm 只支持 granular token，2025-12-09 起 classic token 全部吊销；
+  #   · granular token 想免 OTP 必须开「Bypass 2FA」，那是一条**长期有效、可被偷**的发布凭据，
+  #     社区事故里被偷的就是它；
+  #   · trusted publishing 是 npm 给 CI 的官方无人值守路径，还顺带产出 provenance（构建来源可验证）。
+  # 一次性前提（在 npmjs.com 网页上配，不进仓库；配完把仓库变量 NPM_TRUSTED_PUBLISHING 设为 true，
+  # 否则本作业被跳过——没配之前打 tag 也不会红）：
+  #   mathgen-cli → Settings → Trusted publishing → GitHub Actions
+  #   Organization/user = EdwardXiao-bit，Repository = mathgen，Workflow = release.yml
+  npm:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v') && vars.NPM_TRUSTED_PUBLISHING == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # trusted publishing 换凭据就靠它
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: 升级 npm（trusted publishing 需要 npm ≥ 11.5.1）
+        run: |
+          npm install -g npm@latest
+          npm --version
+
+      - name: 校验 npm/package.json 与 tag 一致
+        run: |
+          python3 - <<'PY'
+          import json, os, re, sys
+          tag = os.environ["GITHUB_REF_NAME"]
+          # tag 是 v1.0.0-rc3、npm/package.json 是 1.0.0-rc3（连字符形态）、pyproject 是 1.0.0rc3
+          # （PEP 440 形态）——统一去掉「连字符 + 预发布前缀」再比，别让形态差异误报版本不一致。
+          norm = lambda v: re.sub(r"-(?=(rc|a|b|post|dev)\d)", "", v)
+          want = norm(tag[1:])
+          raw = json.load(open("npm/package.json", encoding="utf-8"))["version"]
+          print(f"tag={tag} -> {want}   npm/package.json={raw} -> {norm(raw)}")
+          if norm(raw) != want:
+              sys.exit("版本号不一致：tag / npm/package.json")
+          PY
+
+      - name: 发布到 npm（trusted publishing，无长期 token）
+        working-directory: npm
+        run: |
+          set -euo pipefail
+          ver=$(node -p "require('./package.json').version")
+          # 预发布版本走 rc 标签，别把 1.0.0-rc3 顶成 latest（与现有 dist-tags 口径一致）
+          if [[ "$ver" == *-* ]]; then tag=rc; else tag=latest; fi
+          echo "publish mathgen-cli@$ver (dist-tag: $tag)"
+          # --provenance：附上可验证的构建来源（OIDC 签名），npm 包页能看到「由哪个仓库的哪个提交构建」
+          npm publish --access public --provenance --tag "$tag"
+
+      - name: 回读 registry 确认真的上架了
+        run: |
+          set -euo pipefail
+          ver=$(node -p "require('./npm/package.json').version")
+          # npm 的读取侧有 1–2 分钟异步延迟，刚 PUBLISH 完立刻 npm view 可能拿不到，轮询而不是直接断言
+          for i in $(seq 1 12); do
+            if npm view "mathgen-cli@$ver" version 2>/dev/null | grep -qx "$ver"; then
+              echo "registry 已返回 mathgen-cli@$ver"
+              npm view mathgen-cli dist-tags
+              exit 0
+            fi
+            echo "第 $i 次还没读到，等 10 秒"
+            sleep 10
+          done
+          echo "2 分钟内没在 registry 读到 $ver"
+          exit 1
+
   # ------------------------------------------------------------ Docker 镜像
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: 构建镜像
-        run: docker build -t mathgen:ci .
+      # 多架构：老师多是 Windows/Intel（linux/amd64），Apple Silicon 的 Docker Desktop
+      # 拉到的则是 linux/arm64。只用 amd64 镜像时 Apple Silicon 能跑但走模拟，导 PDF 明显变慢。
+      # QEMU 只为交叉构建 arm64 用；amd64 仍是原生构建、原生冒烟。
+      - name: 准备 QEMU（交叉构建 linux/arm64 用）
+        uses: docker/setup-qemu-action@v3
+
+      - name: 准备 buildx（多架构构建器）
+        uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像（linux/amd64，本地 load 供下面冒烟）
+        run: docker buildx build --platform linux/amd64 --load -t mathgen:ci .
 
       - name: 浏览器通道自检（导出 503 时就靠它定位）
         run: |
@@ -222,7 +317,14 @@ jobs:
           docker rm -f smoke
           trap - EXIT
 
-      - name: 推送到 GHCR
+      - name: 手动触发时额外验证 arm64 能构建（不推送、不落盘）
+        if: github.event_name == 'workflow_dispatch' && inputs.platforms == 'linux/amd64,linux/arm64'
+        run: |
+          # 本机没有 Docker，arm64 这条路只有 CI 能验。`type=cacheonly` 只要求两个平台都构建成功：
+          # 不推 GHCR、不导出镜像、也不假装跑过 arm64 冒烟（QEMU 里跑 Chromium 不可信，见 D87）。
+          docker buildx build --platform linux/amd64,linux/arm64 --output type=cacheonly .
+
+      - name: 推送多架构镜像到 GHCR
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
@@ -230,11 +332,16 @@ jobs:
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           image="ghcr.io/${owner}/mathgen"
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker tag mathgen:ci "${image}:${tag}"
-          docker push "${image}:${tag}"
+
+          # 一次 buildx 构建两个平台并直接推成 manifest list —— `docker pull` 会按宿主机架构
+          # 自动选 amd64 或 arm64。上面那次 amd64 构建负责「真的跑起来」，这次负责「两个架构都出」；
+          # 同一个 builder 的层缓存会复用 amd64 的成果，时间主要花在 QEMU 里的 arm64。
+          args=(--platform linux/amd64,linux/arm64 -t "${image}:${tag}" --push)
           # 预发布（rc / beta）不覆盖 latest，免得把 rc 当成稳定版发出去
           if [[ "$tag" != *-* ]]; then
-            docker tag mathgen:ci "${image}:latest"
-            docker push "${image}:latest"
+            args+=(-t "${image}:latest")
           fi
-          echo "已推送 ${image}:${tag}"
+          docker buildx build "${args[@]}" .
+          echo "已推送 ${image}:${tag}（linux/amd64 + linux/arm64）"
+          # 回读 manifest list：两个平台都在才算成功（只看 push 的退出码可能漏掉单架构 manifest）
+          docker buildx imagetools inspect "${image}:${tag}"

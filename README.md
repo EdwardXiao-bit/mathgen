@@ -130,7 +130,8 @@ docker compose up -d
 镜像**自带前端产物和 Chromium**，容器里不需要联网、不需要再装任何东西。
 代价是体积（1 GB 量级，主要是 Chromium 及其系统依赖）。数据都在 `/data` 卷里。
 
-> 目前只提供 `linux/amd64`。Apple Silicon 上用 Docker Desktop 的模拟运行即可。
+> 已发布的 `1.0.2` 镜像只有 `linux/amd64`；Apple Silicon 上用 Docker Desktop 的模拟运行即可。
+> 下一次发版起会同时提供 `linux/amd64` 与 `linux/arm64`（arm64 原生跑，不再模拟）。
 
 ### 3. npm 启动器
 
