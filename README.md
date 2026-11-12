@@ -377,3 +377,5 @@ scripts\start.ps1
 ## 许可
 
 [MIT](LICENSE) © 2026 肖铭皓、胡宇书
+
+[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
