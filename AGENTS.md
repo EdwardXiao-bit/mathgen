@@ -116,6 +116,7 @@ $VPY = 'C:\Users\Ed\dsh_workspace\mathgen\backend\.venv\Scripts\python.exe'
 & $PY tools\make_diagrams.py    # 13 张配图 -> docs/word/figures/
 & $PY tools\build_docs.py       # md -> docx（封面 / 目录 / 图表题注）-> docs/word/
                                 # 只重建一份：& $PY tools\build_docs.py 03
+& $PY tools\build_docs.py --check   # 只核对 md 与三份 docx 的 sha256 指纹（T-M8-03）
 ```
 
 > **端口约定（冻结）**：后端固定 `127.0.0.1:8000`；前端 Vite dev server `5173`，把 `/api` 代理到 `127.0.0.1:8000`。

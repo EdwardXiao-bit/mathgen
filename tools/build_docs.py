@@ -7,7 +7,10 @@
   - 表自动编号并加题注（题注取所属小节的标题），图同理由 ANCHORS 给定。
   - 宽表（fit_tables=True）按内容分配列宽并禁止行被分页切开；默认路径不启用，
     保证既有产物字节不变。
+  - 每份 docx 的 core properties 里记录源 md 的字节级 sha256；`--check` 模式
+    逐份比对（不重建），用于兜住「md 改了、docx 没重建」的静默漂移（T-M8-03）。
 """
+import hashlib
 import os
 import re
 import sys
@@ -24,6 +27,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS = os.path.join(ROOT, "docs")
 FIGS = os.path.join(DOCS, "word", "figures")
 OUTDIR = os.path.join(DOCS, "word")
+
+# ---------------------------------------------------------- 新鲜度标记（T-M8-03）
+# 构建时把源 md 的**字节级 sha256** 写进 docx 的 core properties（dc:description），
+# `--check` 模式据此判断「md 改了但 docx 没重建」（D37 只有规则、此前没有判据）。
+# 格式故意机器可读，解析见 SHA256_RE：`md-sha256=<64 位小写 hex> md=<源 md 文件名>`。
+# 记录的是**本次构建读取的那份 md 的字节**，所以重复构建幂等：内容只取决于 md 字节。
+SHA256_PREFIX = "md-sha256="
+SHA256_RE = re.compile(r"md-sha256=([0-9a-f]{64})\s+md=(\S+)")
 
 SONG = "宋体"
 HEI = "黑体"
@@ -47,6 +58,12 @@ DATES = {
 
 
 # ============================================================ markdown 解析
+def md_sha256(path):
+    """源 md 的**字节级** sha256：判据只认字节，不认 mtime / 换行风格 / 解码方式。"""
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 def split_row(line):
     r"""按 `|` 切一行表格；`\|` 是 markdown 的转义竖线，必须留在单元格里。
 
@@ -366,7 +383,9 @@ def fix_table(t, header, rows, min_cm=1.5):
 
 # ============================================================ 正文构建
 def build(md_name, out_name, doc_kind, anchors, date=None, fit_tables=False):
-    blocks = parse_md(os.path.join(DOCS, md_name))
+    md_path = os.path.join(DOCS, md_name)
+    md_sha = md_sha256(md_path)      # 先记下本次要读的源 md 字节指纹
+    blocks = parse_md(md_path)
     doc = Document()
     shape_styles(doc)
     page_setup(doc.sections[0])
@@ -489,9 +508,15 @@ def build(md_name, out_name, doc_kind, anchors, date=None, fit_tables=False):
     if missing:
         raise SystemExit(f"[{md_name}] 找不到图锚点，请检查 md 标题是否变更：{missing}")
 
+    # 新鲜度标记（T-M8-03）：写进 core properties 的 dc:description。值只由源 md
+    # 字节与文件名决定，重复构建得到的标记完全相同（幂等）；docx 是 zip，字节本身
+    # 仍会随打包时间戳变化，这是预期，判据只看这条标记。
+    doc.core_properties.comments = f"{SHA256_PREFIX}{md_sha} md={md_name}"
+
     out = os.path.join(OUTDIR, out_name)
     doc.save(out)
-    print(f"OK {out_name}  图 {fig_no} 张 / 表 {tbl_no} 个 / {len(blocks)} 个块")
+    print(f"OK {out_name}  图 {fig_no} 张 / 表 {tbl_no} 个 / {len(blocks)} 个块"
+          f"  md-sha256={md_sha[:8]}")
     return out
 
 
@@ -529,19 +554,72 @@ DOC_JOBS = [
 ]
 
 
+# ============================================================ 新鲜度检查（T-M8-03）
+def check_one(md_name, out_name):
+    """不重建，比对 docx 里记录的 md sha256 与源 md 当前 sha256。
+
+    返回 (status, detail)：status ∈ {"OK", "STALE", "MISSING"}，detail 只在非 OK 时
+    用于打印括号里的说明。判定口径与 build() 写入口径严格对称：**64 位 hex 必须
+    逐字相等**，记录里的 md 名也必须是这一份——两者任一不符都算 STALE。
+    """
+    md_path = os.path.join(DOCS, md_name)
+    out_path = os.path.join(OUTDIR, out_name)
+    if not os.path.isfile(md_path):
+        return "MISSING", f"md 源不存在：{md_name}"
+    md_sha = md_sha256(md_path)
+    if not os.path.isfile(out_path):
+        return "MISSING", f"docx 不存在：{out_name}"
+    try:
+        doc = Document(out_path)
+    except Exception:                # 坏 zip / 根本不是 docx：产物不可信，按过期处理
+        return "STALE", f"docx=unreadable md={md_sha[:8]}"
+    m = SHA256_RE.search(doc.core_properties.comments or "")
+    if not m:                        # 旧产物：没有指纹就无从证明新鲜，按过期处理
+        return "STALE", f"docx=none md={md_sha[:8]}"
+    docx_sha, docx_md = m.group(1), m.group(2)
+    if docx_sha != md_sha:
+        return "STALE", f"docx={docx_sha[:8]} md={md_sha[:8]}"
+    if docx_md != md_name:           # 指纹对得上但记录的是另一份 md：同样不可信
+        return "STALE", f"docx={docx_sha[:8]} md={md_sha[:8]}（记录 md={docx_md}）"
+    return "OK", ""
+
+
 def main(argv=None):
-    """不给参数＝构建全部（保持原行为）；给了选择器就只构建选中的，便于只重跑一份。"""
+    """不给参数＝构建全部（保持原行为）；给了选择器就只构建选中的，便于只重跑一份。
+
+    `--check` 不重建，逐份比对 docx 里记录的源 md sha256：全一致 exit 0，
+    任一 STALE / MISSING exit 1（`--check 01` 只检查 01，选择器语义与构建相同）。
+    """
     argv = list(sys.argv[1:] if argv is None else argv)
+    check = "--check" in argv
+    if check:
+        argv = [a for a in argv if a != "--check"]
     todo = DOC_JOBS
     if argv:
         keys = {a.strip().zfill(2) for a in argv}
         known = {j[0] for j in DOC_JOBS}
         unknown = sorted(k for k in keys if k not in known)
         if unknown:
-            print("用法：python tools/build_docs.py [01|02|03 ...]（不给参数＝构建全部）")
+            print("用法：python tools/build_docs.py [--check] [01|02|03 ...]"
+                  "（不给参数＝构建/检查全部）")
             print("未知选择器：" + ", ".join(unknown))
             raise SystemExit(2)
         todo = [j for j in DOC_JOBS if j[0] in keys]
+
+    if check:
+        bad = 0
+        for key, md_name, out_name, *_ in todo:
+            status, detail = check_one(md_name, out_name)
+            line = f"{key} {status}"
+            if detail:
+                line += f" ({detail})"
+            print(line)
+            if status != "OK":
+                bad += 1
+        if bad:
+            raise SystemExit(1)
+        return
+
     os.makedirs(OUTDIR, exist_ok=True)
     for _, md_name, out_name, doc_kind, anchors, fit in todo:
         build(md_name, out_name, doc_kind, anchors, fit_tables=fit)
