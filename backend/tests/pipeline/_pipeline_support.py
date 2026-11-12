@@ -286,6 +286,7 @@ def pipe_popen_sites(source: str, *, filename: str = "<source>") -> list:
 def write_evidence(name: str, payload: dict) -> str:
     os.makedirs(ARTIFACTS, exist_ok=True)
     path = os.path.join(ARTIFACTS, f"{name}.json")
-    with open(path, "w", encoding="utf-8") as handle:
+    # newline="\n"：Windows 下显式写 LF，避免 CRLF 造成无意义 diff（见 .gitattributes）。
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
     return path

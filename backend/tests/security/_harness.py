@@ -75,8 +75,11 @@ def dump_evidence(path: Path | None = None) -> Path:
             merged[entry["name"]] = entry
     for entry in EVIDENCE:
         merged[entry["name"]] = entry
+    # newline="\n"：Windows 下显式写 LF（Python 3.10+ 的 Path.write_text 支持）。
     target.write_text(
-        json.dumps(list(merged.values()), ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(list(merged.values()), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+        newline="\n",
     )
     return target
 

@@ -42,6 +42,29 @@ backend/tests/e2e_m2/artifacts/
 backend/tests/e2e_m3/artifacts/
 backend/tests/e2e_*/artifacts/
 
+# ---------- 后端测量证据 JSON（遗留 T-M8-09）----------
+# perf / pipeline / security 套件**每次运行都会重写**这些 JSON：内容里有本次运行的 pid、端口、
+# 耗时、随机行 id，每次都不一样。它们是测量产物而不是判据，入库只会「跑一次全量就脏 17 个文件」。
+# 按**文件/小族**精确忽略，不整目录一刀切 —— 同目录下的 .py 探针脚本是源码，继续入库；
+# 一次性探针跑出来的证据也继续入库，例如：
+#   perf:     task48-lock-probe*.json
+#   pipeline: task50-prefix-world-pipe.json、task50-fixed-world-boot.json、
+#             task50-stage-nodrain.json、task50-pipe-scan.json、task50-regression-summary.txt
+#   security: hash-T1.json、hash-T3.json、hash-current.json、evidence-schema-migration.json
+backend/tests/perf/artifacts/task48-api-vs-database.json
+backend/tests/perf/artifacts/task48-concurrent-batch.json
+backend/tests/perf/artifacts/task48-doctored-database.json
+backend/tests/perf/artifacts/task48-injected-write-lock.json
+backend/tests/perf/artifacts/task48-item-integrity.json
+backend/tests/perf/artifacts/task48-landed-rows.json
+backend/tests/perf/artifacts/task48-measurement-window*.json
+backend/tests/perf/artifacts/task48-replay-batch.json
+backend/tests/perf/artifacts/task48-serial-baseline.json
+backend/tests/perf/artifacts/task48-window-guard-negative-control.json
+backend/tests/pipeline/artifacts/task50-criterion-*.json
+backend/tests/pipeline/artifacts/task50-product-server-log.json
+backend/tests/security/artifacts/evidence-tests.json
+
 # 前端验收脚本的截图同理（可随时重跑生成）。
 # 规则按**目录**判定而不是按文件名前缀：frontend 根目录下的 png 一律是生成物。
 # （早先按 shot-* / verify-* 前缀写，fe-teacher 换个 vis-* 前缀就又漏进来了。）
