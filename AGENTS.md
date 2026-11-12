@@ -27,7 +27,7 @@
 | 协作体系 | **已建立**（`docs/03`–`07` + `PROJECT.md`） |
 | 课程提交 Word | **三份均已产出**：需求分析、技术设计、测试文档（M7，源 `docs/08-测试文档.md`） |
 | 配图 | **13 张 PNG**，见 `docs/word/figures/` |
-| 代码 | **M1–M6 全部已验收**（引擎 / 判分 / API / 卷面渲染导出 / 老师端 / 学生端 / 卷库 / 成绩 / 导出 / 单一服务托管），后端全量 **1317 用例**（2026-11-12 复跑 `Ran 1317 tests in 516.492s`：1316 通过，唯一红的是离线对照组的「未装守卫的浏览器能上外网」——本机 Chromium 走系统代理而该代理到 `example.com` 故障，见 `docs/05` §5.11；1.0.2 时为 1312、M6 验收时为 1254）、前端 **12 步门禁全 PASS** |
+| 代码 | **M1–M6 全部已验收**（引擎 / 判分 / API / 卷面渲染导出 / 老师端 / 学生端 / 卷库 / 成绩 / 导出 / 单一服务托管），后端全量 **1324 用例**（2026-11-12 复跑 `Ran 1324 tests in 519.751s / OK`，全绿；1.0.2 时为 1312、M6 验收时为 1254，M17 累计新增 12 条判据）、前端 **12 步门禁全 PASS** |
 | 发布 | **`v1.0.2`（正式版，已上线）**：GitHub Release 资产 `mathgen_backend-1.0.2-py3-none-any.whl` + `SHA256SUMS`（wheel 内含前端产物）+ Docker 镜像 `ghcr.io/edwardxiao-bit/mathgen:1.0.2`（非预发布，同时推 `latest`）+ **npm 启动器 `mathgen-cli@1.0.2`**（包名不叫 `mathgen`：npm 判定它与已有的 `math-gen` 太像，`npm publish` 报 403；新包名要过 [staged publishing](https://docs.npmjs.com/staged-publishing) 人工审核；`latest` 指向正式版、`rc` 留在 1.0.0-rc3）+ 一键脚本。上一版 `v1.0.0-rc1` 的实证见 `docs/05` T-M8-07/T-M8-08，`v1.0.0-rc2` 见 T-M10-01，`v1.0.0-rc3` 见 T-M14-01，本版见 T-M16-01。版本号**单点定义**在 `backend/app/__init__.py` 的 `__version__`，与 `backend/pyproject.toml`、`frontend/package.json`、`npm/package.json`、tag **五处**必须一致（CI 会拦） |
 
 ## 文档索引

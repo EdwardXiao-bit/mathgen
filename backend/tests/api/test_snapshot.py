@@ -132,6 +132,49 @@ class TestSnapshotIsNotRecomputed(ApiTestCase):
         self.assertEqual(legacy.difficulty, 0)
         self.assertEqual(legacy.signature, "")
 
+    def test_legacy_snapshot_shapes_stay_readable(self):
+        """DQ6 关单判据（S5 / T-M17-07）：三种旧/陌生快照形态都必须能读，不崩也不丢值。"""
+        # 形态一：只有必填三字段（最早期的卷）
+        only_required = question_from_dict(
+            {"expr": "3 + 4", "display": "3 + 4 = ____", "answer": "7"}
+        )
+        self.assertEqual(only_required.expr, "3 + 4")
+        self.assertEqual((only_required.steps, only_required.tags), ([], []))
+        self.assertEqual((only_required.difficulty, only_required.signature), (0, ""))
+
+        # 形态二：可选字段缺一半（steps 有、tags/signature 没有）
+        half_optional = question_from_dict(
+            {
+                "expr": "12 ÷ 3",
+                "display": "12 ÷ 3 = ____",
+                "answer": "4",
+                "steps": ["12 ÷ 3 = 4"],
+                "difficulty": 2,
+            }
+        )
+        self.assertEqual(half_optional.steps, ["12 ÷ 3 = 4"])
+        self.assertEqual(half_optional.difficulty, 2)
+        self.assertEqual(half_optional.tags, [])
+        self.assertEqual(half_optional.signature, "")
+
+        # 形态三：带将来才可能出现的未知字段——必须被忽略，不能抛 TypeError
+        future_field = question_from_dict(
+            {
+                "expr": "5 × 6",
+                "display": "5 × 6 = ____",
+                "answer": "30",
+                "steps": [],
+                "difficulty": 1,
+                "tags": ["乘法"],
+                "signature": "sig-legacy",
+                "schema_version": 2,
+                "judge_hint": {"future": True},
+            }
+        )
+        self.assertEqual(future_field.answer, "30")
+        self.assertEqual(future_field.signature, "sig-legacy")
+        self.assertFalse(hasattr(future_field, "schema_version"))
+
     def test_engine_swap_does_not_change_stored_paper(self):
         """模拟引擎升级：换掉 generate 的结果，已存卷必须一字不变。"""
         created = self.create_paper({"count": 3})
