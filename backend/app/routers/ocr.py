@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.contracts.api import ROUTES
 from app.db import get_db
 from app.routers._common import finish
-from app.services import ocr_service
+from app.services import ocr_jobs, ocr_service
 from app.services.errors import ApiError
 
 router = APIRouter()
@@ -52,6 +52,7 @@ async def create_batch(
             source=source,
             files=uploads,
         )
+    ocr_jobs.enqueue(detail["batch"]["id"])
     return JSONResponse(status_code=201, content=detail)
 
 
@@ -73,6 +74,7 @@ async def replace_page(
         raise ApiError("VALIDATION_ERROR", "上传的图片是空文件")
     with finish(db):
         detail = ocr_service.replace_page(db, batch_id, page_no, data)
+    ocr_jobs.enqueue(batch_id)
     return JSONResponse(status_code=202, content=detail)
 
 

@@ -14,6 +14,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 try:  # pragma: no cover - 没装 extra 的环境直接跳过
     from tests.services.test_page_detect import photograph, printed_page
@@ -58,6 +59,13 @@ class OcrBatchApiTest(ApiTestCase):
         published = self.publish(self.paper_id)
         self.assertEqual(published.status_code, 200, published.text)
         self.checksum = self._paper_checksum()
+        # 后台识别线程不在 API 判据里真跑：这里只验上传/校对/入档的接口语义，
+        # 识别流程由 tests/services/test_answer_ocr.py 注入假引擎覆盖。
+        self._enqueue_patcher = mock.patch(
+            "app.routers.ocr.ocr_jobs.enqueue", lambda *args, **kwargs: None
+        )
+        self._enqueue_patcher.start()
+        self.addCleanup(self._enqueue_patcher.stop)
 
     def tearDown(self) -> None:  # noqa: D102
         import os
@@ -110,7 +118,7 @@ class OcrBatchApiTest(ApiTestCase):
         detail = self._create_batch(pages=1)
         batch = detail["batch"]
         self.assertEqual(batch["page_count"], 1)
-        self.assertEqual(batch["status"], "reviewing")
+        self.assertEqual(batch["status"], "pending")
         self.assertEqual(len(detail["pages"]), 1)
         self.assertEqual(detail["pages"][0]["status"], "ready")
         self.assertEqual(len(detail["items"]), 6)  # CONFIG_ADD_SUB 的 count=6

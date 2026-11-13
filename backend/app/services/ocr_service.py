@@ -12,15 +12,19 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.contracts.api import ROUTES
 from app.contracts.sheet import SheetMode
 from app.models import (
     OCR_STATUS_COMMITTED,
+    OCR_STATUS_FAILED,
+    OCR_STATUS_PENDING,
+    OCR_STATUS_PROCESSING,
     OCR_STATUS_REVIEWING,
     Attempt,
     AttemptItem,
@@ -29,8 +33,8 @@ from app.models import (
     OcrPage,
     Paper,
 )
-from app.render import marking
-from app.services import ocr_store
+from app.render import geometry, marking
+from app.services import answer_ocr, ocr_store
 from app.services.errors import ApiError
 from app.services.paper_service import get_paper_or_404, load_item_pairs
 from app.services.snapshot import dump_payload
@@ -39,7 +43,7 @@ from app.grading.grader import grade
 
 __all__ = [
     "MAX_PAGES", "MAX_PAGE_BYTES", "ALLOWED_IMAGE_TYPES",
-    "create_batch", "get_batch", "replace_page", "update_item",
+    "create_batch", "get_batch", "run_batch", "replace_page", "update_item",
     "commit_batch", "delete_batch", "crop_file",
 ]
 
@@ -161,8 +165,8 @@ def create_batch(
         student_no=no,
         source=source or "phone",
         page_count=page_count,
-        status=OCR_STATUS_REVIEWING,
-        message="等待识别（M18-04）",
+        status=OCR_STATUS_PENDING,
+        message="已接收，等待识别",
         created_at=_now(),
     )
     db.add(batch)
@@ -192,6 +196,116 @@ def create_batch(
                 reviewed=0,
             )
         )
+    db.flush()
+    return get_batch(db, batch_id)
+
+
+def run_batch(db: Session, batch_id: str, *, engine=None) -> dict:
+    """两遍识别（P1 全页 / P3 光照归一）+ 裁图 + 写题行（M18-04，docs/10 §9）。
+
+    - 一致（归一后逐字相等且非空）→ `agreed=1`、`final_answer` 填好、`reviewed=1`；
+    - 不一致或两遍都空 → `reviewed=0`，两遍原文与置信度都保留给老师看；
+    - 识别依赖缺失（未装 `[ocr]` extra）→ 批次直接 `failed` 并给安装提示，
+      不是静默把题判错（D91）。
+    """
+    batch = _get_batch_or_404(db, batch_id)
+    if batch.status == OCR_STATUS_COMMITTED:
+        return get_batch(db, batch_id)
+    paper = db.get(Paper, batch.paper_id)
+    if paper is None or not paper.code:
+        raise ApiError("PAPER_NOT_PUBLISHED", "批次关联的卷不存在或未发布")
+
+    ctx = build_sheet_context(db, paper.id, SheetMode.QUESTION)
+    layout_boxes = geometry.geometry_of(ctx)["boxes"]
+    by_page: dict[int, list[dict]] = {}
+    for box in layout_boxes:
+        by_page.setdefault(int(box["page"]), []).append(box)
+
+    batch.status = OCR_STATUS_PROCESSING
+    batch.message = "正在识别"
+    db.flush()
+
+    try:
+        if engine is None:
+            engine = answer_ocr.load_engine()
+    except Exception:  # noqa: BLE001 - 缺依赖的样子很多（ImportError/OSError…）
+        batch.status = OCR_STATUS_FAILED
+        batch.message = "缺少 OCR 依赖（pip install mathgen-backend[ocr]）"
+        db.flush()
+        return get_batch(db, batch_id)
+
+    items = {
+        row.seq: row
+        for row in db.scalars(select(OcrItem).where(OcrItem.batch_id == batch.id))
+    }
+    pages = list(
+        db.scalars(
+            select(OcrPage).where(OcrPage.batch_id == batch.id).order_by(OcrPage.page_no)
+        )
+    )
+
+    auto = manual = 0
+    for page in pages:
+        import cv2  # noqa: PLC0415
+        import numpy as np  # noqa: PLC0415
+
+        try:
+            raw = ocr_store.read_bytes(Path(page.rectified_path))
+        except OSError:
+            page.status = "failed"
+            page.reason = "校正图不存在"
+            continue
+        image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            page.status = "failed"
+            page.reason = "校正图无法解码"
+            continue
+
+        boxes = by_page.get(page.page_no, [])
+        if not boxes:
+            continue
+        p1 = answer_ocr.recognize_page(
+            image, boxes, engine=engine, pass_name=answer_ocr.PASS_P1
+        )
+        p3 = answer_ocr.recognize_page(
+            image, boxes, engine=engine, pass_name=answer_ocr.PASS_P3
+        )
+        crops = answer_ocr.crop_boxes(image, boxes)
+
+        for box in boxes:
+            seq = int(box["seq"])
+            item = items.get(seq)
+            if item is None:
+                continue
+            raw1, score1 = p1.get(seq, (None, None))
+            raw3, score3 = p3.get(seq, (None, None))
+            norm1 = answer_ocr.normalize_answer(raw1)
+            norm3 = answer_ocr.normalize_answer(raw3)
+            agreed = bool(norm1) and norm1 == norm3
+
+            item.page_no = page.page_no
+            item.raw_text_p1 = raw1
+            item.raw_text_p2 = raw3
+            item.confidence_p1 = score1
+            item.confidence_p2 = score3
+            item.agreed = 1 if agreed else 0
+            item.final_answer = norm1 if agreed else None
+            item.reviewed = 1 if agreed else 0
+            if agreed:
+                auto += 1
+            else:
+                manual += 1
+
+            crop = crops.get(seq)
+            if crop is not None:
+                ok, buffer = cv2.imencode(".png", crop)
+                if ok:
+                    ocr_store.save_bytes(
+                        ocr_store.crop_path(batch_id, seq), buffer.tobytes()
+                    )
+
+    batch.status = OCR_STATUS_REVIEWING
+    batch.message = f"识别完成：自动通过 {auto} 题，需人工 {manual} 题"
     db.flush()
     return get_batch(db, batch_id)
 
@@ -392,10 +506,9 @@ def delete_batch(db: Session, batch_id: str) -> None:
     batch = _get_batch_or_404(db, batch_id)
     if batch.status == OCR_STATUS_COMMITTED:
         raise ApiError("OCR_BATCH_COMMITTED", "批次已入档，不能删除")
-    for row in db.scalars(select(OcrItem).where(OcrItem.batch_id == batch.id)):
-        db.delete(row)
-    for row in db.scalars(select(OcrPage).where(OcrPage.batch_id == batch.id)):
-        db.delete(row)
+    # 批量删子行：逐行 `db.delete()` 会触发一次 CASCADE 后的「0 行匹配」告警
+    db.execute(delete(OcrItem).where(OcrItem.batch_id == batch.id))
+    db.execute(delete(OcrPage).where(OcrPage.batch_id == batch.id))
     db.delete(batch)
     db.flush()
     ocr_store.delete_batch_dir(batch.id)
