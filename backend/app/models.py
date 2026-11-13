@@ -20,7 +20,17 @@ __all__ = [
     "PAPER_STATUS_DRAFT", "PAPER_STATUS_PUBLISHED",
     "EDIT_ACTION_DELETE", "EDIT_ACTION_REGENERATE",
     "ORIGIN_GENERATED", "ORIGIN_REGENERATED", "ORIGIN_COPIED",
+    "OcrBatch", "OcrPage", "OcrItem",
+    "OCR_STATUS_PENDING", "OCR_STATUS_PROCESSING", "OCR_STATUS_REVIEWING",
+    "OCR_STATUS_COMMITTED", "OCR_STATUS_FAILED",
 ]
+
+#: 模式 C（OCR）批次状态（docs/10 §3）：pending → processing → reviewing → committed，失败进 failed
+OCR_STATUS_PENDING = "pending"
+OCR_STATUS_PROCESSING = "processing"
+OCR_STATUS_REVIEWING = "reviewing"
+OCR_STATUS_COMMITTED = "committed"
+OCR_STATUS_FAILED = "failed"
 
 PAPER_STATUS_DRAFT = "draft"
 PAPER_STATUS_PUBLISHED = "published"
@@ -151,3 +161,69 @@ class AttemptItem(Base):
     is_correct: Mapped[int] = mapped_column(Integer, nullable=False)
 
     __table_args__ = (UniqueConstraint("attempt_id", "seq", name="uq_attempt_item_seq"),)
+
+
+class OcrBatch(Base):
+    """模式 C：一次「拍照/扫描 → 识别 → 老师校对 → 入档」的批次（docs/10 §5）。
+
+    `attempt` 只在 `commit` 时生成（`committed_attempt_id` 回指），所以校对前的
+    草稿永远不会出现在成绩列表里。`student_name` / `student_no` 分开存：入档时
+    按 `UNIQUE(student.name, student_no)` 取或建，避免同名不同学号被合并。
+    """
+
+    __tablename__ = "ocr_batch"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    paper_id: Mapped[int] = mapped_column(ForeignKey("paper.id"), nullable=False)
+    student_name: Mapped[str] = mapped_column(Text, nullable=False)
+    student_no: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    committed_attempt_id: Mapped[int | None] = mapped_column(
+        ForeignKey("attempt.id"), nullable=True
+    )
+
+    __table_args__ = (Index("idx_ocr_batch_paper", "paper_id"),)
+
+
+class OcrPage(Base):
+    """批次里的一页：原图 + 校正图 + 状态（reason 给拒绝码/失败原因）。"""
+
+    __tablename__ = "ocr_page"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("ocr_batch.id", ondelete="CASCADE"), nullable=False
+    )
+    page_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rectified_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (UniqueConstraint("batch_id", "page_no", name="uq_ocr_page_no"),)
+
+
+class OcrItem(Base):
+    """逐题识别结果（两遍 raw_text_p1/p2 + 一致标记 + 老师确认的 final_answer）。"""
+
+    __tablename__ = "ocr_item"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("ocr_batch.id", ondelete="CASCADE"), nullable=False
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    raw_text_p1: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_text_p2: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence_p1: Mapped[float | None] = mapped_column(nullable=True)
+    confidence_p2: Mapped[float | None] = mapped_column(nullable=True)
+    agreed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    final_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (UniqueConstraint("batch_id", "seq", name="uq_ocr_item_seq"),)

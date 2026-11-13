@@ -55,6 +55,13 @@ ROUTES = {
     "export_attempts": "/api/attempts/export",
     "list_attempts": "/api/attempts",
     "get_attempt": "/api/attempts/{attempt_id}",
+    # ---- M18 模式 C（OCR 批改，docs/10 §7）----
+    "ocr_batches": "/api/ocr/batches",
+    "ocr_batch": "/api/ocr/batches/{batch_id}",
+    "ocr_page": "/api/ocr/batches/{batch_id}/pages/{page_no}",
+    "ocr_item": "/api/ocr/batches/{batch_id}/items/{seq}",
+    "ocr_commit": "/api/ocr/batches/{batch_id}/commit",
+    "ocr_crop": "/api/ocr/batches/{batch_id}/crops/{seq}",
 }
 
 PaperStatus = Literal["draft", "published"]

@@ -27,6 +27,7 @@ from app import __version__
 from app import db as db_module
 from app.engine.types import ConfigError, InsufficientQuestions
 from app.routers import attempts as attempts_router
+from app.routers import ocr as ocr_router
 from app.routers import exports as exports_router
 from app.routers import papers as papers_router
 from app.routers import sheet as sheet_router
@@ -150,6 +151,7 @@ def create_app(
     application.include_router(exports_router.router)
     application.include_router(students_router.router)
     application.include_router(attempts_router.router)
+    application.include_router(ocr_router.router)
 
     # 界面兜底**必须最后挂**：靠注册顺序让位给 /api、/docs 等精确路由
     if static_site.mount_spa(application, static_dir):

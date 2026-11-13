@@ -32,16 +32,20 @@ PX_PER_MM = page_detect.RECTIFIED_DPI / MM
 CHECKSUM = "0123456789abcdef"
 
 
-def _qr_tile(size_px: int) -> np.ndarray:
+def _qr_tile(size_px: int, checksum: str = CHECKSUM) -> np.ndarray:
     png = marking.qr_png_bytes(
-        marking.qr_payload("2611-0001", CHECKSUM, layout=marking.LAYOUT_VERSION)
+        marking.qr_payload("2611-0001", checksum, layout=marking.LAYOUT_VERSION)
     )
     tile = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
     return cv2.resize(tile, (size_px, size_px), interpolation=cv2.INTER_NEAREST)
 
 
-def printed_page() -> np.ndarray:
-    """合成一张 150dpi 的打印卷面：白纸 + 四角块 + 页脚二维码."""
+def printed_page(checksum: str = CHECKSUM) -> np.ndarray:
+    """合成一张 150dpi 的打印卷面：白纸 + 四角块 + 页脚二维码.
+
+    `checksum` 可换成某张真卷的 `sheet_checksum()`，这样上传用例的二维码
+    能和卷的真实 checksum 对上（`rectify(expected_checksum=...)` 才能通过）。
+    """
     page = np.full(
         (page_detect.RECTIFIED_HEIGHT, page_detect.RECTIFIED_WIDTH, 3), 255, dtype=np.uint8
     )
@@ -60,7 +64,7 @@ def printed_page() -> np.ndarray:
     qr_side = round(QR_SIZE_MM * PX_PER_MM)
     qr_x = width - round(QR_INSET_MM * PX_PER_MM) - qr_side
     qr_y = height - round(QR_BOTTOM_MM * PX_PER_MM) - qr_side
-    page[qr_y : qr_y + qr_side, qr_x : qr_x + qr_side] = _qr_tile(qr_side)
+    page[qr_y : qr_y + qr_side, qr_x : qr_x + qr_side] = _qr_tile(qr_side, checksum)
     return page
 
 

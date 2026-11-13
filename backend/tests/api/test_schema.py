@@ -130,11 +130,21 @@ def engine_without_the_unique_index():
 
 
 class TestSchema(unittest.TestCase):
-    def test_exactly_six_tables(self):
-        """契约 §6：6 张表。多一张少一张都要在这里被发现。"""
+    def test_exactly_nine_tables(self):
+        """契约 §6：9 张表（M18/D94 新增三张 OCR 批次表）。多一张少一张都要被发现。"""
         self.assertEqual(
             sorted(Base.metadata.tables),
-            ["attempt", "attempt_item", "edit_log", "paper", "paper_item", "student"],
+            [
+                "attempt",
+                "attempt_item",
+                "edit_log",
+                "ocr_batch",
+                "ocr_item",
+                "ocr_page",
+                "paper",
+                "paper_item",
+                "student",
+            ],
         )
 
     def test_paper_columns(self):

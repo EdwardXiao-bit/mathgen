@@ -25,6 +25,9 @@ dependencies = [
     "qrcode[pil]>=8.2",
     "playwright>=1.64",
     "python-docx>=1.2",
+    # multipart/form-data（模式 C 上传）：FastAPI 在**定义路由时**就要 import 它，
+    # 所以放进基础依赖而不是 [ocr] extra —— 否则没装 extra 的机器连服务都起不来。
+    "python-multipart>=0.0.20",
 ]
 
 [project.urls]

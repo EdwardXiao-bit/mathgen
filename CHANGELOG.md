@@ -36,6 +36,7 @@
 ## [未发布]
 
 ### 变更
+- **模式 C（手写 OCR 批改）第一批落地（M18-02/03，仅 `feature/m18-ocr`）**：卷面页脚二维码 + 四角定位块（距纸边 6mm）、每个答题区的 `data-answer-box` 几何；上传/页面校正/逐题校对/入档的 `/api/ocr/*` 接口与 `ocr_batch`/`ocr_page`/`ocr_item` 三张表。识别与裁图在后续里程碑，未合并到 `main`。
 
 - **Docker 镜像改为多架构**：下一次发版起 GHCR 同时提供 `linux/amd64` 与 `linux/arm64`，
   Apple Silicon 的 Docker Desktop 可以直接跑 arm64 镜像，不必再走模拟（Chromium 导 PDF 在模拟下明显变慢）。
