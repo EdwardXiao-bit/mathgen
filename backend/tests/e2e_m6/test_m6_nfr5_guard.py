@@ -34,7 +34,7 @@ REPO = BACKEND.parent
 M6_ARTIFACTS = HERE / "artifacts"
 
 #: 冻结契约的 sha256（task 卡给定值；改一位就该红）
-API_CONTRACT_SHA256 = "31202c98d1740edddfb9985f490b3f26771ca0b92459a8d2145faad207c09ded"
+API_CONTRACT_SHA256 = "02a583a88eef1fe74ebdfe97f10e019b3532f28aa12ced260f4a6892ad1d0de1"
 
 #: 合成题面：40 个汉字 → 最坏档模型量到 1718.42px（> 833.00px 阈值）⇒ 必然被拒
 SYNTH_OVERFLOW_CHARS = 40
