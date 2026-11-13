@@ -161,20 +161,31 @@ def _document(ctx: SheetContext, layout: LayoutParams, body: str) -> str:
 #:
 #: 只在 `@media print` 出现：屏幕预览不显示，避免遮挡预览切页；`position: fixed`
 #: 让 Chromium 在**每一页**都重复画同一组标记（二维码内容不含页号，见 marking.py）。
-_MARKS_CSS = """\
-@media print {
-  .sheet-marks { display: block; position: fixed; inset: 0; pointer-events: none; }
-  .sheet-corner { position: fixed; width: 8mm; height: 8mm; background: #000; }
-  .sheet-corner.tl { top: 10mm; left: 10mm; }
-  .sheet-corner.tr { top: 10mm; right: 10mm; }
-  .sheet-corner.bl { bottom: 10mm; left: 10mm; }
-  .sheet-corner.br { bottom: 10mm; right: 10mm; }
+#:
+#: 尺寸常量单独抽出，判据直接引用，避免「改了 CSS 忘了改判据」：
+#: 定位块距纸边 `CORNER_INSET_MM`（2026-11-13 由 10mm 收到 6mm——用户反馈太偏内；
+#: 6mm 仍在常见喷墨/激光的不可打印区 3–5mm 之外），二维码右移让出角块带。
+CORNER_SIZE_MM = 8.0
+CORNER_INSET_MM = 6.0
+QR_SIZE_MM = 20.0
+#: 二维码右边缘要越过「角块带」外沿（inset + size）再留 6mm 余量。
+QR_INSET_MM = CORNER_INSET_MM + CORNER_SIZE_MM + 6.0
+QR_BOTTOM_MM = CORNER_INSET_MM
+
+_MARKS_CSS = f"""\
+@media print {{
+  .sheet-marks {{ display: block; position: fixed; inset: 0; pointer-events: none; }}
+  .sheet-corner {{ position: fixed; width: {CORNER_SIZE_MM:g}mm; height: {CORNER_SIZE_MM:g}mm; background: #000; }}
+  .sheet-corner.tl {{ top: {CORNER_INSET_MM:g}mm; left: {CORNER_INSET_MM:g}mm; }}
+  .sheet-corner.tr {{ top: {CORNER_INSET_MM:g}mm; right: {CORNER_INSET_MM:g}mm; }}
+  .sheet-corner.bl {{ bottom: {CORNER_INSET_MM:g}mm; left: {CORNER_INSET_MM:g}mm; }}
+  .sheet-corner.br {{ bottom: {CORNER_INSET_MM:g}mm; right: {CORNER_INSET_MM:g}mm; }}
   /* D92 实测修正：二维码原来也画在 `right:10mm; bottom:10mm`，正好压在右下角
-     定位块上（实测渲染图里角块被二维码的白色底盖掉）。把二维码整体右移 14mm，
-     让出「距纸边 10–18mm」这条角块带；二维码自身仍贴着页脚，与角块不重叠。 */
-  .sheet-qr-wrap { position: fixed; right: 24mm; bottom: 10mm; width: 20mm; height: 20mm; }
-  .sheet-qr { display: block; width: 20mm; height: 20mm; }
-}"""
+     定位块上（实测渲染图里角块被二维码的白色底盖掉）。现在二维码整体右移，
+     让出「距纸边 {CORNER_INSET_MM:g}–{CORNER_INSET_MM + CORNER_SIZE_MM:g}mm」这条角块带。 */
+  .sheet-qr-wrap {{ position: fixed; right: {QR_INSET_MM:g}mm; bottom: {QR_BOTTOM_MM:g}mm; width: {QR_SIZE_MM:g}mm; height: {QR_SIZE_MM:g}mm; }}
+  .sheet-qr {{ display: block; width: {QR_SIZE_MM:g}mm; height: {QR_SIZE_MM:g}mm; }}
+}}"""
 
 
 def _sheet_marks(ctx: SheetContext, layout: LayoutParams) -> tuple[str, str]:

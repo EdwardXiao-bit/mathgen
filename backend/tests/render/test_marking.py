@@ -22,7 +22,12 @@ from dataclasses import replace
 from app.contracts.layout import LayoutParams
 from app.contracts.sheet import SheetContext, SheetItem, SheetMode
 from app.render import marking
-from app.render.sheet import render_sheet
+from app.render.sheet import (
+    CORNER_INSET_MM,
+    CORNER_SIZE_MM,
+    QR_INSET_MM,
+    render_sheet,
+)
 
 SAMPLE_LAYOUT = LayoutParams()
 SAMPLE_ITEMS = (
@@ -212,16 +217,34 @@ class TestQrSvg(unittest.TestCase):
 class TestMarksPlacement(unittest.TestCase):
     """打印期标记的**位置**约束（D92 实测修正后钉住）。"""
 
+    def test_corner_blocks_sit_close_to_the_paper_edge(self):
+        """四角块距纸边 `CORNER_INSET_MM`，且不侵入常见打印机的不可打印区。"""
+        html = render_sheet(make_ctx())
+        for corner, edges in (("tl", ("top", "left")), ("tr", ("top", "right")),
+                              ("bl", ("bottom", "left")), ("br", ("bottom", "right"))):
+            with self.subTest(corner=corner):
+                rule = re.search(rf"\.sheet-corner\.{corner} \{{([^}}]*)\}}", html)
+                self.assertIsNotNone(rule, f"缺少 .sheet-corner.{corner} 规则")
+                body = rule.group(1)
+                for edge in edges:
+                    self.assertIn(f"{edge}: {CORNER_INSET_MM:g}mm", body)
+        # 6mm 是用户 2026-11-13 反馈「太偏内」后从 10mm 收进来的；再小会掉进
+        # 多数喷墨/激光 3–5mm 的不可打印区，等于四角缺块。
+        self.assertGreaterEqual(CORNER_INSET_MM, 5.0)
+        self.assertLess(CORNER_INSET_MM, 10.0)
+
     def test_qr_clears_the_corner_block_band(self):
-        """二维码必须让出「距纸边 10–18mm」的角块带，否则会把右下角块盖掉。
+        """二维码必须让出角块带（inset + size），否则会把右下角块盖掉。
 
         实测证据：`right:10mm; bottom:10mm` 时渲染图里右下角块被二维码白底覆盖
-        （`.tmp-rel10/qr-probe.png` 第 1 版），改成 24mm 后四角块齐全。
+        （`.tmp-rel10/qr-probe.png` 第 1 版），改成右移后四角块齐全。
         """
         html = render_sheet(make_ctx())
         match = re.search(r"\.sheet-qr-wrap \{[^}]*right:\s*([\d.]+)mm", html)
         self.assertIsNotNone(match, "打印期样式里找不到二维码定位规则")
-        self.assertGreaterEqual(float(match.group(1)), 18.0, "二维码距右边必须 ≥18mm（角块带 10–18mm）")
+        band_end = CORNER_INSET_MM + CORNER_SIZE_MM
+        self.assertGreaterEqual(float(match.group(1)), band_end, "二维码距右边必须越过角块带")
+        self.assertGreaterEqual(QR_INSET_MM, band_end)
         for corner in ("tl", "tr", "bl", "br"):
             with self.subTest(corner=corner):
                 self.assertIn(f".sheet-corner.{corner}", html)
