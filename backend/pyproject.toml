@@ -50,6 +50,17 @@ include = ["app*"]
 [tool.setuptools.package-data]
 app = ["static/**/*", "static/*"]
 
+# 模式 C（手写 OCR 批改）的识别依赖：体积大、只有拍照批改用得上，所以不放进
+# 基础依赖（D93 / docs/10 §13）。Docker 镜像与一键脚本默认装这个 extra，
+# 裸 `pip install mathgen-backend` 不装——`import app.main` 仍然不 import
+# onnxruntime / cv2（判据见 tests/render/test_ocr_deps.py）。
+[project.optional-dependencies]
+ocr = [
+    "numpy>=2.0",
+    "opencv-python-headless>=4.10",
+    "rapidocr-onnxruntime>=1.4",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
