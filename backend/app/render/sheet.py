@@ -35,6 +35,7 @@ from app.layout.styles import (
     root_style_attr,
     style_text,
 )
+from app.render.marking import LAYOUT_VERSION, qr_payload, qr_svg, sheet_checksum
 
 __all__ = ["render_sheet", "render_with_layout", "chunk_rows", "SheetRenderError"]
 
@@ -133,6 +134,7 @@ def _document(ctx: SheetContext, layout: LayoutParams, body: str) -> str:
     """完整 HTML 文档。样式全部内联；不引用任何外部资源。"""
     title = escape(ctx.title or "练习卷")
     mode_label = "答案版" if ctx.mode is SheetMode.ANSWER else "题目版"
+    marks_css, marks_html = _sheet_marks(ctx, layout)
     return (
         "<!DOCTYPE html>\n"
         '<html lang="zh-CN">\n'
@@ -144,13 +146,55 @@ def _document(ctx: SheetContext, layout: LayoutParams, body: str) -> str:
         f"<title>{title}（{mode_label}）</title>\n"
         "<style>\n"
         f"{style_text(layout)}\n"
+        f"{marks_css}\n"
         "</style>\n"
         "</head>\n"
         f'<body class="mode-{escape(ctx.mode.value, quote=True)}">\n'
         f"{body}\n"
+        f"{marks_html}"
         "</body>\n"
         "</html>\n"
     )
+
+
+#: 打印期卷面标记的样式（D92 / docs/10 §8）。
+#:
+#: 只在 `@media print` 出现：屏幕预览不显示，避免遮挡预览切页；`position: fixed`
+#: 让 Chromium 在**每一页**都重复画同一组标记（二维码内容不含页号，见 marking.py）。
+_MARKS_CSS = """\
+@media print {
+  .sheet-marks { display: block; position: fixed; inset: 0; pointer-events: none; }
+  .sheet-corner { position: fixed; width: 8mm; height: 8mm; background: #000; }
+  .sheet-corner.tl { top: 10mm; left: 10mm; }
+  .sheet-corner.tr { top: 10mm; right: 10mm; }
+  .sheet-corner.bl { bottom: 10mm; left: 10mm; }
+  .sheet-corner.br { bottom: 10mm; right: 10mm; }
+  /* D92 实测修正：二维码原来也画在 `right:10mm; bottom:10mm`，正好压在右下角
+     定位块上（实测渲染图里角块被二维码的白色底盖掉）。把二维码整体右移 14mm，
+     让出「距纸边 10–18mm」这条角块带；二维码自身仍贴着页脚，与角块不重叠。 */
+  .sheet-qr-wrap { position: fixed; right: 24mm; bottom: 10mm; width: 20mm; height: 20mm; }
+  .sheet-qr { display: block; width: 20mm; height: 20mm; }
+}"""
+
+
+def _sheet_marks(ctx: SheetContext, layout: LayoutParams) -> tuple[str, str]:
+    """返回 `(css, html)`：打印期页脚二维码 + 四角定位块；不该有时返回空串。
+
+    为什么没有卷号就不打标记：二维码里要写卷的稳定标识，草稿没有 `code`，
+    打了也无法在识别端对上卷；草稿本来也不走「打印→手写→拍照」这条路。
+    """
+    if ctx.mode is not SheetMode.QUESTION or not ctx.code:
+        return "", ""
+    checksum = sheet_checksum(ctx, layout)
+    payload = qr_payload(ctx.code, checksum, layout=LAYOUT_VERSION)
+    html = (
+        '<div class="sheet-marks" aria-hidden="true">'
+        '<span class="sheet-corner tl"></span><span class="sheet-corner tr"></span>'
+        '<span class="sheet-corner bl"></span><span class="sheet-corner br"></span>'
+        f'<span class="sheet-qr-wrap">{qr_svg(payload)}</span>'
+        "</div>\n"
+    )
+    return _MARKS_CSS, html
 
 
 # ---------------------------------------------------------------------------
