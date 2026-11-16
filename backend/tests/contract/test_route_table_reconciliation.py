@@ -405,7 +405,7 @@ class TestNegativeControls(unittest.TestCase):
         """文档还剩几行、但整体缩水到下限以下 → 必须踩下限（不是「一致就绿」）。"""
         rows = [line for line in self.doc.splitlines(keepends=True)
                 if _DOC_ROW_RE.match(line)]
-        self.assertEqual(11, len(rows), "夹具变了：§7 表行数不再是 11")
+        self.assertEqual(13, len(rows), "夹具变了：§7 表行数不再是 13")
         two = "## 7. 前端路由\n\n| 端 | 路由 | 页面 |\n| --- | --- | --- |\n" + "".join(rows[:2])
         message = self._assert_red(doc=two)
         self.assertIn("下限", message)
@@ -489,8 +489,8 @@ class TestPositiveControls(unittest.TestCase):
         result = assert_reconciled(
             doc_text=self.doc, teacher_text=self.teacher_text, student_text=self.student_text
         )
-        self.assertEqual(11, len(result["doc"]))
-        self.assertEqual(11, len(result["code"]))
+        self.assertEqual(13, len(result["doc"]))
+        self.assertEqual(13, len(result["code"]))
         self.assertEqual(result["doc"].keys(), result["code"].keys())
 
     def test_03_synthetic_consistent_document_is_green(self):

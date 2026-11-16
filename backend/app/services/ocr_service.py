@@ -35,6 +35,7 @@ from app.models import (
 )
 from app.render import geometry, marking
 from app.services import answer_ocr, ocr_store
+from app.services.config_svc import question_type_of
 from app.services.errors import ApiError
 from app.services.paper_service import get_paper_or_404, load_item_pairs
 from app.services.snapshot import dump_payload
@@ -467,7 +468,16 @@ def commit_batch(db: Session, batch_id: str) -> dict:
         student_id=outcome.student_id,
         attempt_uuid=str(uuid.uuid4()),
         paper_id=paper.id,
-        config_json=json.dumps({"source": "ocr", "batch_id": batch.id}, ensure_ascii=False),
+        # 与在线作答同构：题型从**卷的配置**里复制过来（成绩明细用它渲染题型），
+        # 再加两个溯源字段。不要只写 source —— 明细就没有题型可显示了。
+        config_json=json.dumps(
+            {
+                "source": "ocr",
+                "batch_id": batch.id,
+                "question_type": question_type_of(paper.config_json),
+            },
+            ensure_ascii=False,
+        ),
         total=len(question_by_seq),
         correct=0,
         duration_ms=0,
