@@ -20,6 +20,10 @@ import {
   type AttemptSummary,
   type ErrorResponse,
   type LayoutIn,
+  type OcrBatchDetail,
+  type OcrCommitResult,
+  type OcrItemPatch,
+  type OcrUploadInput,
   type PaperConfigIn,
   type PaperDetail,
   type PaperItemOut,
@@ -792,3 +796,111 @@ export const teacherApi = {
     return fetchAttachment(`${route('export_attempts')}?${params.toString()}`, 60_000);
   },
 };
+
+// ---------------------------------------------------------------------------
+// 模式 C（手写卷面拍照批改，M18-05）
+//
+// 只有上传是 multipart，其余都是普通 JSON。**不能**复用 `fetchRawDetails` 发上传：
+// 它对任何带 `body` 的请求都会强塞 `Content-Type: application/json`，而 multipart 的
+// boundary 必须由浏览器自己写——手动设成 json 会让后端 `await request.form()` 直接 422。
+// ---------------------------------------------------------------------------
+
+/** 上传 + 校正的等待上限：后端在**这一次请求内**完成二维码解码、四角定位与透视校正。 */
+const OCR_UPLOAD_TIMEOUT_MS = 120_000;
+
+async function postMultipart<T>(path: string, form: FormData): Promise<T> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), OCR_UPLOAD_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: 'POST',
+      // 只带 Accept：Content-Type 交给浏览器按 FormData 自己拼 boundary。
+      headers: { Accept: 'application/json' },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const aborted = error instanceof DOMException && error.name === 'AbortError';
+    throw new ApiError(
+      'NETWORK_UNREACHABLE',
+      aborted
+        ? `上传超时（>${Math.round(OCR_UPLOAD_TIMEOUT_MS / 1000)} 秒）：${path}。请确认后端还在运行后重试。`
+        : `连接不上后端：${path}。请确认后端已在 127.0.0.1:8000 启动后重试。`,
+      0,
+    );
+  } finally {
+    window.clearTimeout(timer);
+  }
+
+  const text = await response.text();
+  let parsed: unknown = null;
+  if (text.length > 0) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+  }
+  if (!response.ok) {
+    if (isErrorResponse(parsed)) {
+      throw new ApiError(parsed.error.code, parsed.error.message, response.status);
+    }
+    throw new ApiError(
+      `HTTP_${response.status}`,
+      text.length > 0
+        ? `后端返回 ${response.status}：${text.slice(0, 300)}`
+        : `后端返回 ${response.status}，且响应体为空`,
+      response.status,
+    );
+  }
+  return parsed as T;
+}
+
+/**
+ * 上传 1–2 页卷面，建一个识别批次（multipart）。
+ *
+ * 后端在返回 201 时已经**校正完**图片并落盘，随后后台线程开始识别；这里拿到的是
+ * 批次的初始详情（`pending`），识别进度要由校对页轮询 `GET /api/ocr/batches/{id}`。
+ */
+export async function uploadOcrBatch(input: OcrUploadInput): Promise<OcrBatchDetail> {
+  const form = new FormData();
+  form.set('paper_id', String(input.paperId));
+  form.set('student_name', input.studentName);
+  form.set('student_no', input.studentNo);
+  form.set('source', input.source ?? 'phone');
+  for (const file of input.files) {
+    form.append('files', file, file.name || 'page.jpg');
+  }
+  return postMultipart<OcrBatchDetail>(route('ocr_batches'), form);
+}
+
+/** 取批次详情（批次 + 页 + 题）：校对页轮询它也用它。 */
+export async function getOcrBatch(batchId: string): Promise<OcrBatchDetail> {
+  return requestJson<OcrBatchDetail>(route('ocr_batch', { batch_id: batchId }));
+}
+
+/** 老师校对一题：填答案 / 标已确认 / 标「看不清」。 */
+export async function updateOcrItem(
+  batchId: string,
+  seq: number,
+  patch: OcrItemPatch,
+): Promise<OcrBatchDetail> {
+  return requestJson<OcrBatchDetail>(route('ocr_item', { batch_id: batchId, seq }), {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+/** 入档：生成成绩；已入档的批次再调一次是幂等的（`replayed: true`）。 */
+export async function commitOcrBatch(batchId: string): Promise<OcrCommitResult> {
+  return requestJson<OcrCommitResult>(route('ocr_commit', { batch_id: batchId }), {
+    method: 'POST',
+  });
+}
+
+/** 删除草稿批次（物理删除图片与三张表的行）；已入档的批次后端会拒绝。 */
+export async function deleteOcrBatch(batchId: string): Promise<void> {
+  await fetchRawDetails(route('ocr_batch', { batch_id: batchId }), { method: 'DELETE' });
+}
+

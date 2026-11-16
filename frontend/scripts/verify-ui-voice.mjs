@@ -375,6 +375,11 @@ CASES = [
     # 空态：卷 id 999999 在库里不存在 —— 不是「卷存在但没人做」，是「筛选条件一条都不命中」。
     # 空态必须说人话、且**不能是白屏**（白屏同样没有 error、也没有开发者文本）。
     ("attempts-empty", "/teacher/paper/999999/attempts", "[data-testid='attempts-empty']"),
+    # M18-05 模式 C：上传页与校对页。校对页的批次来自 mock 里那份固定批次
+    # （verify-server.mjs 的 MOCK_OCR_BATCH_ID）；裁图在 mock 里是 null，
+    # 页面上显示「没有裁图」占位 —— 扫的是可见文案，不是图片。
+    ("ocr-upload", "/teacher/ocr", "[data-testid='ocr-upload-form']"),
+    ("ocr-review", "/teacher/ocr/3f0f0e4a-0000-4000-8000-00000000c0de", "[data-testid='ocr-item-1']"),
 ]
 
 # 学生端「做卷子 → 交卷 → 结果页」的流程驱动。

@@ -30,6 +30,11 @@ export function TeacherShell() {
           <NavLink to="/teacher/library" className={({ isActive }) => (isActive ? 'nav-on' : '')}>
             卷库
           </NavLink>
+          {/* 模式 C：拍照批改（M18-05）。不带 `end`，校对页 `/teacher/ocr/:batchId`
+              上这一项也应保持选中。 */}
+          <NavLink to="/teacher/ocr" className={({ isActive }) => (isActive ? 'nav-on' : '')}>
+            拍照批改
+          </NavLink>
           {/* 不带 `end`：这条链接在 `/teacher/attempts/:id`（逐题明细）上也应该是选中的 ——
               明细是成绩的下钻页，把它显示成「哪都不在」会让人以为走丢了。 */}
           <NavLink to="/teacher/attempts" className={({ isActive }) => (isActive ? 'nav-on' : '')}>

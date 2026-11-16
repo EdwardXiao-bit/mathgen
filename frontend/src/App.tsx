@@ -9,6 +9,8 @@ import { LibraryPage } from './teacher/pages/LibraryPage';
 import { PublishPage } from './teacher/pages/PublishPage';
 import { AttemptsPage } from './teacher/pages/AttemptsPage';
 import { AttemptDetailPage } from './teacher/pages/AttemptDetailPage';
+import { OcrUploadPage } from './teacher/pages/OcrUploadPage';
+import { OcrReviewPage } from './teacher/pages/OcrReviewPage';
 
 export function App() {
   return (
@@ -26,6 +28,10 @@ export function App() {
         <Route path="paper/:paperId/attempts" element={<AttemptsPage />} />
         <Route path="attempts" element={<AttemptsPage />} />
         <Route path="attempts/:attemptId" element={<AttemptDetailPage />} />
+        {/* 模式 C（M18-05）：上传页 → 校对页。校对页用 `:batchId`，刷新后还能回到同
+            一批次（批次状态在后端，不在 URL 之外的前端内存里）。 */}
+        <Route path="ocr" element={<OcrUploadPage />} />
+        <Route path="ocr/:batchId" element={<OcrReviewPage />} />
       </Route>
       <Route
         path="*"

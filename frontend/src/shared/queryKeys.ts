@@ -48,4 +48,6 @@ export const queryKeys = {
       query.q ?? '',
     ] as const,
   attempt: (attemptId: number) => ['attempt', attemptId] as const,
+  /** 模式 C 的 OCR 批次（M18-05）：按 batch_id 独立缓存，轮询校对页时只更新这一条。 */
+  ocrBatch: (batchId: string) => ['ocr', 'batch', batchId] as const,
 };

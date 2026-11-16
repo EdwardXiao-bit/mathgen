@@ -1,0 +1,177 @@
+/*
+ * 拍照批改**上传页**的页面级样式（M18-05）。
+ *
+ * 与 `LibraryPage.css` 同一条约定：颜色只写 `var(--mg-*)`、不换页面底色（判据 A1 / A11）。
+ * 这里只补三块新结构的排布：字段行、两个挑图入口、已选页缩略图列表。
+ */
+
+.ocr-upload-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-5, 20px);
+  max-width: 820px;
+}
+
+.ocr-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-5, 20px);
+}
+
+.ocr-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-3);
+  padding: var(--mg-sp-4, 16px);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius, 10px);
+  background: var(--mg-surface-sunken);
+}
+
+.ocr-block-title {
+  margin: 0;
+  font-size: var(--mg-fs-13, 14px);
+  font-weight: var(--mg-fw-600, 600);
+}
+
+.ocr-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mg-sp-4, 16px);
+}
+
+.ocr-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2, 8px);
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.ocr-field-label {
+  font-size: var(--mg-fs-12, 13px);
+  color: var(--mg-ink-soft);
+}
+
+.ocr-field select {
+  width: 100%;
+}
+
+.ocr-field-reason {
+  margin: 0;
+  color: var(--mg-danger);
+  font-size: var(--mg-fs-11);
+}
+
+.ocr-field-hint,
+.ocr-hint {
+  margin: 0;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+  line-height: 1.6;
+}
+
+/* 两个挑图入口：虚线框 + 居中说明，手机上也能一眼看出「点这里拍」。 */
+.ocr-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mg-sp-3);
+}
+
+.ocr-picker {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--mg-sp-2);
+  min-height: 96px;
+  padding: var(--mg-sp-3);
+  border: 1px dashed var(--mg-line);
+  border-radius: var(--mg-radius, 10px);
+  background: var(--mg-surface);
+  cursor: pointer;
+  text-align: center;
+}
+
+.ocr-picker:hover,
+.ocr-picker:focus-within {
+  border-color: var(--mg-accent);
+}
+
+.ocr-picker-title {
+  font-size: var(--mg-fs-13, 14px);
+  font-weight: var(--mg-fw-600, 600);
+}
+
+.ocr-picker-hint {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+/* 已选页：缩略图在左、文件名与大小在中间、移除按钮在右；窄屏自动换行。 */
+.ocr-picked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ocr-picked-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mg-sp-3);
+  padding: var(--mg-sp-2);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius, 10px);
+  background: var(--mg-surface);
+}
+
+.ocr-picked-thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--mg-line);
+}
+
+.ocr-picked-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 120px;
+}
+
+.ocr-picked-name {
+  font-size: var(--mg-fs-12, 13px);
+}
+
+.ocr-picked-size {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.ocr-picked-remove {
+  flex: 0 0 auto;
+}
+
+.ocr-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--mg-sp-3);
+  padding: var(--mg-sp-4);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius, 10px);
+  background: var(--mg-surface-sunken);
+}
+
+.ocr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mg-sp-3);
+}
