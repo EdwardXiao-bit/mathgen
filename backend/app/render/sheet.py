@@ -172,7 +172,26 @@ QR_SIZE_MM = 20.0
 QR_INSET_MM = CORNER_INSET_MM + CORNER_SIZE_MM + 6.0
 QR_BOTTOM_MM = CORNER_INSET_MM
 
-_MARKS_CSS = f"""\
+
+def _marks_css(margin_mm: float) -> str:
+    """打印期标记的样式。
+
+    ## 为什么角块不真正贴着纸边（2026-11-18 实测）
+
+    分页媒体里 `position: fixed` 锚在**页面内容区**（扣掉 `@page` 四边页边距），
+    Chromium 还会把落在页边距里的内容**裁掉**。所以 `left: 6mm` 实际是
+    「纸边 + 页边距 + 6mm = 26mm」，写 `left: -14mm` 想贴回纸边则整块被裁没
+    （实测 `.tmp-ocr-samples/demo-new.pdf` 里四角块消失）。
+
+    既然打印通道不可能把墨打进页边距，就**接受**这个锚点：角块距纸边
+    `页边距 + CORNER_INSET_MM`。识别端按同一个口径映射（二维码里带 `m` =
+    页边距毫米，见 `page_detect._target_corners`），页面校正就不会再错位。
+    屏幕预览不走 `@media print`，所以老师看到的位置仍是距纸边 6mm。
+    """
+    return _MARKS_CSS_BODY
+
+
+_MARKS_CSS_BODY = f"""\
 @media print {{
   .sheet-marks {{ display: block; position: fixed; inset: 0; pointer-events: none; }}
   .sheet-corner {{ position: fixed; width: {CORNER_SIZE_MM:g}mm; height: {CORNER_SIZE_MM:g}mm; background: #000; }}
@@ -197,7 +216,9 @@ def _sheet_marks(ctx: SheetContext, layout: LayoutParams) -> tuple[str, str]:
     if ctx.mode is not SheetMode.QUESTION or not ctx.code:
         return "", ""
     checksum = sheet_checksum(ctx, layout)
-    payload = qr_payload(ctx.code, checksum, layout=LAYOUT_VERSION)
+    payload = qr_payload(
+        ctx.code, checksum, layout=LAYOUT_VERSION, margin_mm=layout.page_margin * 10.0
+    )
     html = (
         '<div class="sheet-marks" aria-hidden="true">'
         '<span class="sheet-corner tl"></span><span class="sheet-corner tr"></span>'
@@ -205,7 +226,7 @@ def _sheet_marks(ctx: SheetContext, layout: LayoutParams) -> tuple[str, str]:
         f'<span class="sheet-qr-wrap">{qr_svg(payload)}</span>'
         "</div>\n"
     )
-    return _MARKS_CSS, html
+    return _marks_css(layout.page_margin * 10.0), html
 
 
 # ---------------------------------------------------------------------------

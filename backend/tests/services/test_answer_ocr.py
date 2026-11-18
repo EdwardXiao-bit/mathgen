@@ -177,3 +177,60 @@ class IlluminationTest(unittest.TestCase):
     def test_shape_is_preserved(self) -> None:
         image = np.full((50, 70, 3), 200, dtype=np.uint8)
         self.assertEqual(answer_ocr.illumination_normalized(image).shape, image.shape)
+
+
+class SingleCharRepairTest(unittest.TestCase):
+    """手写单字符被认成字母时的修读（2026-11-18 演示卷实测：`9`→`q`、`8`→`&`）."""
+
+    def test_common_letter_confusions_map_to_digits(self) -> None:
+        cases = {"q": "9", "&": "8", "o": "0", "l": "1", "s": "5", "z": "2", "b": "6"}
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(answer_ocr.normalize_answer(raw), expected)
+
+    def test_multi_char_text_is_not_rewritten(self) -> None:
+        # 多字符只看数字部分，不能把字母硬换成数字（那是题干残留，不是答案）
+        self.assertEqual(answer_ocr.normalize_answer("6.31 - 28 ="), "6.31-28")
+        self.assertEqual(answer_ocr.normalize_answer("l3"), "3")
+
+
+class RecognizeCropTest(unittest.TestCase):
+    """整页漏掉的单字符答案，靠裁图补认一遍（三票里至少两票一致才采纳）."""
+
+    class _Engine:
+        def __init__(self, detections) -> None:
+            self.detections = detections
+            self.calls = 0
+
+        def __call__(self, image, **kwargs):
+            self.calls += 1
+            return self.detections, 0.01
+
+    def test_picks_the_highest_confidence_detection(self) -> None:
+        quad = [[0, 0], [10, 0], [10, 10], [0, 10]]
+        engine = self._Engine(
+            [
+                [quad, "3", 0.55],
+                [quad, "", 0.99],
+                [quad, "8", 0.91],
+            ]
+        )
+        crop = np.full((40, 60, 3), 255, dtype=np.uint8)
+        text, score = answer_ocr.recognize_crop(engine, crop)
+        self.assertEqual(text, "8")
+        self.assertAlmostEqual(score, 0.91)
+        self.assertEqual(engine.calls, 1)
+
+    def test_returns_none_when_nothing_is_recognized(self) -> None:
+        engine = self._Engine([])
+        crop = np.full((40, 60, 3), 255, dtype=np.uint8)
+        self.assertEqual(answer_ocr.recognize_crop(engine, crop), (None, None))
+
+    def test_tiny_or_missing_crop_is_skipped(self) -> None:
+        engine = self._Engine([[[[0, 0], [1, 0], [1, 1], [0, 1]], "3", 0.9]])
+        self.assertEqual(answer_ocr.recognize_crop(engine, None), (None, None))
+        self.assertEqual(
+            answer_ocr.recognize_crop(engine, np.zeros((2, 2, 3), dtype=np.uint8)),
+            (None, None),
+        )
+        self.assertEqual(engine.calls, 0)

@@ -32,25 +32,37 @@ PX_PER_MM = page_detect.RECTIFIED_DPI / MM
 CHECKSUM = "0123456789abcdef"
 
 
-def _qr_tile(size_px: int, checksum: str = CHECKSUM) -> np.ndarray:
+def _qr_tile(
+    size_px: int, checksum: str = CHECKSUM, *, margin_mm: float | None = None
+) -> np.ndarray:
     png = marking.qr_png_bytes(
-        marking.qr_payload("2611-0001", checksum, layout=marking.LAYOUT_VERSION)
+        marking.qr_payload(
+            "2611-0001",
+            checksum,
+            layout=marking.LAYOUT_VERSION,
+            margin_mm=margin_mm,
+        )
     )
     tile = cv2.imdecode(np.frombuffer(png, dtype=np.uint8), cv2.IMREAD_COLOR)
     return cv2.resize(tile, (size_px, size_px), interpolation=cv2.INTER_NEAREST)
 
 
-def printed_page(checksum: str = CHECKSUM) -> np.ndarray:
+def printed_page(checksum: str = CHECKSUM, *, margin_mm: float | None = None) -> np.ndarray:
     """合成一张 150dpi 的打印卷面：白纸 + 四角块 + 页脚二维码.
 
     `checksum` 可换成某张真卷的 `sheet_checksum()`，这样上传用例的二维码
     能和卷的真实 checksum 对上（`rectify(expected_checksum=...)` 才能通过）。
+
+    `margin_mm` 非空时把页边距写进二维码 payload（键 `m`）：打印媒体里
+    `position: fixed` 锚在**内容区**，角块实际落在「纸边 + 页边距 + 6mm」，
+    识别端必须按同一口径映射（2026-11-18 实测 1.27× 放大 + 20mm 左移）。
     """
     page = np.full(
         (page_detect.RECTIFIED_HEIGHT, page_detect.RECTIFIED_WIDTH, 3), 255, dtype=np.uint8
     )
+    margin_px = round((margin_mm or 0.0) * PX_PER_MM)
     side = round(CORNER_SIZE_MM * PX_PER_MM)
-    inset = round(CORNER_INSET_MM * PX_PER_MM)
+    inset = margin_px + round(CORNER_INSET_MM * PX_PER_MM)
     width = page.shape[1]
     height = page.shape[0]
     corners = [
@@ -62,9 +74,11 @@ def printed_page(checksum: str = CHECKSUM) -> np.ndarray:
     for x, y in corners:
         page[y : y + side, x : x + side] = 0
     qr_side = round(QR_SIZE_MM * PX_PER_MM)
-    qr_x = width - round(QR_INSET_MM * PX_PER_MM) - qr_side
-    qr_y = height - round(QR_BOTTOM_MM * PX_PER_MM) - qr_side
-    page[qr_y : qr_y + qr_side, qr_x : qr_x + qr_side] = _qr_tile(qr_side, checksum)
+    qr_x = width - margin_px - round(QR_INSET_MM * PX_PER_MM) - qr_side
+    qr_y = height - margin_px - round(QR_BOTTOM_MM * PX_PER_MM) - qr_side
+    page[qr_y : qr_y + qr_side, qr_x : qr_x + qr_side] = _qr_tile(
+        qr_side, checksum, margin_mm=margin_mm
+    )
     return page
 
 
@@ -131,6 +145,65 @@ class RectifyTest(unittest.TestCase):
         self.assertEqual(result.marking["paper"], "2611-0001")
         self.assertEqual(result.image.shape[:2], (page_detect.RECTIFIED_HEIGHT, page_detect.RECTIFIED_WIDTH))
         self.assertFalse(result.rotated)
+
+    def test_margin_payload_maps_corner_blocks_back_to_the_paper(self) -> None:
+        """页边距 20mm 时，角块在纸上的位置是「20 + 6」mm，校正后必须回到这里.
+
+        2026-11-18 的缺陷：打印媒体里 `position: fixed` 锚在**内容区**，角块
+        实际落在纸边内 26mm，而识别端按「距纸边 6mm」硬编码 → 整页放大 1.27×
+        并向左偏 20mm，裁图全部错位。二维码里带 `m` 后两边口径才对上。
+        """
+        margin_mm = 20.0
+        result = page_detect.rectify(photograph(printed_page(margin_mm=margin_mm)))
+        self.assertEqual(result.marking["m"], 20)
+        self.assertEqual(result.marking["checksum"], CHECKSUM)
+
+        gray = cv2.cvtColor(result.image, cv2.COLOR_BGR2GRAY)
+        _, binary = cv2.threshold(gray, 90, 255, cv2.THRESH_BINARY_INV)
+        contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        centers = []
+        for contour in contours:
+            rect = cv2.minAreaRect(contour)
+            (cx, cy), (bw, bh), _ = rect
+            if bw < 20 or bh < 20:
+                continue
+            if not (0.6 <= min(bw, bh) / max(bw, bh) <= 1.7):
+                continue
+            if cv2.contourArea(contour) / (bw * bh) < 0.75:
+                continue
+            centers.append((cx, cy))
+        self.assertEqual(len(centers), 4, f"应只认出四个角块，实际 {centers}")
+        expected = (margin_mm + CORNER_INSET_MM + CORNER_SIZE_MM / 2) * PX_PER_MM
+        for cx, cy in centers:
+            near_x = min(abs(cx - expected), abs(cx - (page_detect.RECTIFIED_WIDTH - expected)))
+            near_y = min(abs(cy - expected), abs(cy - (page_detect.RECTIFIED_HEIGHT - expected)))
+            self.assertLess(near_x, 8, f"角块横向位置偏了 {near_x:.1f}px（{cx:.0f}）")
+            self.assertLess(near_y, 8, f"角块纵向位置偏了 {near_y:.1f}px（{cy:.0f}）")
+
+    def test_small_qr_is_decoded_by_region_fallback(self) -> None:
+        """页脚二维码只有约 118px 时，整图 detector 会漏，分区域回退必须能解.
+
+        payload 加了 `m` 字段后二维码版本变高、模块变小（2026-11-18 实测
+        本用例在修前抛 `no_qr`）。
+        """
+        page = np.full(
+            (page_detect.RECTIFIED_HEIGHT, page_detect.RECTIFIED_WIDTH, 3),
+            255,
+            dtype=np.uint8,
+        )
+        tile = _qr_tile(round(QR_SIZE_MM * PX_PER_MM), margin_mm=20.0)
+        side = tile.shape[0]
+        margin_px = round(20 * PX_PER_MM)
+        right = page.shape[1] - margin_px - round(QR_INSET_MM * PX_PER_MM)
+        bottom = page.shape[0] - margin_px - round(QR_BOTTOM_MM * PX_PER_MM)
+        page[bottom - side : bottom, right - side : right] = tile
+        gray = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
+        text, points = page_detect._decode_qr(gray)
+        self.assertIsNotNone(text, "分区域回退没解出页脚二维码")
+        payload = page_detect.parse_marking(text)
+        self.assertEqual(payload["m"], 20)
+        self.assertEqual(payload["checksum"], CHECKSUM)
+        self.assertEqual(len(points), 4)
 
     def test_perspective_tilt_and_lighting_gradient(self) -> None:
         photo = photograph(printed_page(), rotate_deg=-11.5, jitter_px=26, gradient=0.45)

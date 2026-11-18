@@ -112,6 +112,7 @@ def qr_payload(
     *,
     layout: str = LAYOUT_VERSION,
     pages: int | None = None,
+    margin_mm: float | None = None,
 ) -> str:
     """二维码内容：`{"v":1,"paper":…,"checksum":…,"layout":…}`。
 
@@ -119,6 +120,10 @@ def qr_payload(
     * `pages`：整卷页数；一页卷可以省略，两页卷起由上传端用它做「缺页」预检。
     * **不含页号**：页号来自上传顺序（一页一条文件、按 1..N 顺传），再用该页
       首题编号与几何对照校验——同一枚二维码在每页重复出现才能用 CSS `fixed` 打印。
+    * `margin_mm`（键 `m`）：版面页边距。打印媒体里 `position: fixed` 锚在
+      **页面内容区**（扣掉 `@page` 边距），四角定位块实际落在「纸边 + 页边距 +
+      6mm」；识别端要知道页边距才能把角块映射回纸面坐标（2026-11-18 实测：
+      不知道这个值时校正图整页放大 1.27× 且左移约 20mm）。
     """
     if not isinstance(checksum, str) or len(checksum) != 16:
         raise ValueError("checksum 必须是 16 个十六进制字符")
@@ -132,6 +137,8 @@ def qr_payload(
     }
     if pages is not None:
         payload["pages"] = int(pages)
+    if margin_mm is not None:
+        payload["m"] = int(round(margin_mm))
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 

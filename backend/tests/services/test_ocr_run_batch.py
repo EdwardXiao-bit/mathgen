@@ -134,10 +134,19 @@ class RunBatchTest(ApiTestCase):
 
         return url_of(key)
 
-    def _run(self, batch_id: str, engine) -> dict:
+    def _run(self, batch_id: str, engine, *, crop_fallback=(None, None)) -> dict:
+        """跑一遍识别；`crop_fallback` 用来控制「裁图补认」这一票.
+
+        两票语义的判据要先把第三票钉死成「什么都没认出」——否则脚本化引擎在
+        裁图上会返回第一遍的文本，把「两遍不一致」变成「三票里两票一致」，
+        断言就会随实现细节漂移（2026-11-18 加裁图兜底时正是这样红的）。
+        """
         db = self.session()
         try:
-            detail = ocr_service.run_batch(db, batch_id, engine=engine)
+            with mock.patch.object(
+                answer_ocr, "recognize_crop", return_value=crop_fallback
+            ):
+                detail = ocr_service.run_batch(db, batch_id, engine=engine)
             db.commit()
             return detail
         finally:
@@ -184,6 +193,31 @@ class RunBatchTest(ApiTestCase):
         response = self.client.get(items[seqs[0]]["crop_url"])
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "image/png")
+
+    def test_crop_fallback_breaks_a_tie_only_when_it_agrees(self) -> None:
+        """第三票（裁图）只在等于某一遍的非空结果时才采纳 —— 三票里两票一致."""
+        detail = self._create_batch()
+        batch_id = detail["batch"]["id"]
+        seqs = [item["seq"] for item in detail["items"]]
+        centers = self._centers()
+
+        agreed = {seq: "99" for seq in seqs[:4]}
+        p1 = dict(agreed)
+        p3 = dict(agreed)
+        p1[seqs[4]], p3[seqs[4]] = "99", "98"
+        p1[seqs[5]], p3[seqs[5]] = "66", "6"
+        engine = _ScriptedEngine(centers, [p1, p3])
+
+        # 裁图补认给「98」：对 seqs[4] 来说等于第二遍 → 采纳；对 seqs[5] 两遍都不等 → 仍人工
+        result = self._run(batch_id, engine, crop_fallback=("98", 0.71))
+        self.assertIn("自动通过 5 题", result["batch"]["message"])
+        self.assertIn("需人工 1 题", result["batch"]["message"])
+
+        items = {item["seq"]: item for item in result["items"]}
+        self.assertEqual(items[seqs[4]]["agreed"], 1)
+        self.assertEqual(items[seqs[4]]["final_answer"], "98")
+        self.assertEqual(items[seqs[5]]["agreed"], 0)
+        self.assertIsNone(items[seqs[5]]["final_answer"])
 
     def test_empty_passes_are_never_silently_scored(self) -> None:
         detail = self._create_batch()

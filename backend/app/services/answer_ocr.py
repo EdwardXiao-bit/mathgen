@@ -38,6 +38,36 @@ PASS_SCALE = 2.0
 
 #: 识别原文里允许出现的字符（归一之后）；其余一律丢弃
 _ALLOWED = set("0123456789+-*/().=")
+
+#: 单字符答案常见的「字母被认成数字」误读（手写体尤其明显）.
+#:
+#: 只在**归一后为空、且原文去掉空白后只有一个字符**时才启用，避免把
+#: 多字符答案里的字母（例如题干残留）也强行换成数字。来源是 2026-11-18
+#: 演示卷实测：`9` 被读成 `q`、`8` 被读成 `&`、`3` 被读成 `M`（后者无映射）。
+_SINGLE_CHAR_DIGITS = {
+    "o": "0",
+    "d": "0",
+    "l": "1",
+    "i": "1",
+    "|": "1",
+    "z": "2",
+    "s": "5",
+    "b": "6",
+    "g": "9",
+    "q": "9",
+    "&": "8",
+}
+
+
+def repair_single_char(raw: str | None) -> str | None:
+    """把一个明显的「字母/符号单字符」还原成数字；不认识就原样返回."""
+    if not raw:
+        return raw
+    text = str(raw).strip()
+    if len(text) != 1:
+        return raw
+    mapped = _SINGLE_CHAR_DIGITS.get(text.lower())
+    return mapped if mapped is not None else raw
 _FULLWIDTH = str.maketrans(
     {
         "０": "0", "１": "1", "２": "2", "３": "3", "４": "4",
@@ -57,6 +87,7 @@ def normalize_answer(raw: str | None) -> str:
     """
     if not raw:
         return ""
+    raw = repair_single_char(raw)
     text = str(raw).translate(_FULLWIDTH).replace(" ", "")
     text = "".join(ch for ch in text if ch in _ALLOWED)
     text = text.rstrip("=").lstrip("=")
@@ -198,3 +229,45 @@ def recognize_page(
         scale=PASS_SCALE,
         page_size=(width / PASS_SCALE, height / PASS_SCALE),
     )
+
+
+def recognize_crop(engine: Any, crop: Any) -> tuple[str | None, float | None]:
+    """对**单题裁图**补跑一次识别（两遍都没给出一致答案时的兜底）.
+
+    为什么要单独的兜底：整页识别时，单个手写数字只占几十像素，检测器经常直接
+    漏掉（2026-11-18 演示卷实测：20 题里 15 题自动通过，剩下 5 题全是单字符
+    `8/9/3/10/4`）。裁图只有这一题的内容，放大 4× 再跑一次，漏检率明显下降。
+
+    返回 `(文本, 置信度)`；没认出来返回 `(None, None)`。
+    """
+    import cv2  # noqa: PLC0415
+
+    if crop is None:
+        return None, None
+    height, width = crop.shape[:2]
+    if height < 4 or width < 4:
+        return None, None
+    # 白边：检测器对「贴着图像边缘的笔画」很敏感，补一圈 12% 的白边再放大
+    pad = max(4, int(round(max(height, width) * 0.12)))
+    padded = cv2.copyMakeBorder(
+        crop, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(255, 255, 255)
+    )
+    scale = max(1, int(round(160.0 / max(padded.shape[:2]))))
+    prepared = cv2.resize(
+        padded, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+    )
+    result = engine(prepared, **DETECTION_PARAMS)
+    detections = result[0] if isinstance(result, tuple) else result
+    best: tuple[str, float] | None = None
+    for item in detections or []:
+        if len(item) < 3:
+            continue
+        text = str(item[1] or "").strip()
+        if not text:
+            continue
+        score = float(item[2])
+        if best is None or score > best[1]:
+            best = (text, score)
+    if best is None:
+        return None, None
+    return best

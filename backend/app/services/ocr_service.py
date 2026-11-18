@@ -284,6 +284,24 @@ def run_batch(db: Session, batch_id: str, *, engine=None) -> dict:
             norm3 = answer_ocr.normalize_answer(raw3)
             agreed = bool(norm1) and norm1 == norm3
 
+            # 两遍不一致时，用**本题裁图**再补一遍（M18-04 兜底，2026-11-18 实测：
+            # 整页漏掉的 5 题全是单字符答案，裁图放大后能认对）。
+            # 补认结果只有当它等于某一遍的非空结果时才采纳——三票里至少两票一致。
+            if not agreed:
+                crop_text, crop_score = answer_ocr.recognize_crop(
+                    engine, crops.get(seq)
+                )
+                crop_norm = answer_ocr.normalize_answer(crop_text)
+                if crop_norm and crop_norm == norm1:
+                    agreed = True
+                elif crop_norm and crop_norm == norm3:
+                    agreed = True
+                    norm1 = norm3
+                if crop_text and not raw1:
+                    raw1, score1 = crop_text, crop_score
+                elif crop_text and not raw3:
+                    raw3, score3 = crop_text, crop_score
+
             item.page_no = page.page_no
             item.raw_text_p1 = raw1
             item.raw_text_p2 = raw3

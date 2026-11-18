@@ -49,6 +49,17 @@ PAGE_HEIGHT_PX = 297 * 96 / 25.4
 #: 归一化坐标保留 4 位小数（1 px ≈ 0.00126，4 位足够且 JSON 稳定）。
 BOX_DIGITS = 4
 
+#: 答案框相对 `.q-blank` 矩形的取景（2026-11-18 演示卷实测后定）。
+#:
+#: `.q-blank` 的矩形是**横线所在行框**，学生把答案写在横线**上方**；直接拿它
+#: 裁图会把整条手写答案切在框外。所以：
+#: - 从框顶再往上抬 `ANSWER_LIFT` 倍行高（覆盖手写数字的绝大部分）；
+#: - 向下多留 `ANSWER_TAIL` 倍（有学生把数字压到线上）；
+#: - 宽度只取左边 `ANSWER_WIDTH_RATIO`（答案从横线起点写，右边是留白）。
+ANSWER_LIFT = 0.90
+ANSWER_TAIL = 0.45
+ANSWER_WIDTH_RATIO = 0.62
+
 #: 进程内缓存上限。一份卷面 20–60 题，条目本身很小；上限只为防滥用。
 _CACHE_LIMIT = 16
 
@@ -150,11 +161,27 @@ def boxes_from_measurement(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
             raise ValueError(f"题 {item.get('seq')} 不属于任何行容器")
         page = page_of_row[row_index]
         page_start = starts[page]
-        box = item.get("blank") or item["rect"]
-        x = (float(box["left"]) + margin) / PAGE_WIDTH_PX
-        y = (float(box["top"]) - page_start + margin) / PAGE_HEIGHT_PX
-        w = float(box["width"]) / PAGE_WIDTH_PX
-        h = float(box["height"]) / PAGE_HEIGHT_PX
+        blank = item.get("blank")
+        box = blank or item["rect"]
+        left_px = float(box["left"])
+        width_px = float(box["width"])
+        if blank is not None:
+            # 学生把答案写在横线**上方**：`.q-blank` 的矩形是横线所在的行框，
+            # 直接拿它裁图会把整条手写答案切在框外（2026-11-18 演示卷实测：
+            # seq1 框的顶边比短横线低 12px，答案全丢）。所以从框顶再往上抬
+            # ANSWER_LIFT 倍行高、向下多留 ANSWER_TAIL 倍，宽度只取横线左边
+            # ANSWER_WIDTH_RATIO（答案从横线起点开始写，右边的空白不进裁图）。
+            blank_height = float(box["height"])
+            top_px = float(box["top"]) - ANSWER_LIFT * blank_height
+            height_px = blank_height * (ANSWER_LIFT + ANSWER_TAIL)
+            width_px *= ANSWER_WIDTH_RATIO
+        else:
+            top_px = float(box["top"])
+            height_px = float(box["height"])
+        x = (left_px + margin) / PAGE_WIDTH_PX
+        y = (top_px - page_start + margin) / PAGE_HEIGHT_PX
+        w = width_px / PAGE_WIDTH_PX
+        h = height_px / PAGE_HEIGHT_PX
         seq = int(item["seq"])
         boxes.append(
             {

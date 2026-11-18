@@ -168,6 +168,49 @@ class TestInjection(GeometryCase):
         self.assertEqual(geometry.render_sheet_with_boxes(ctx), render_sheet(ctx))
 
 
+class BlankLiftTest(unittest.TestCase):
+    """框必须**盖住横线上方**的书写区（2026-11-18 演示卷实测的缺陷）.
+
+    `.q-blank` 的矩形是横线所在的行框；学生把答案写在横线上方，直接拿横线
+    矩形裁图会把整条手写答案切在框外。这里用合成读数钉住「框从横线上方 0.9×
+    行高开始、向下延伸到横线下方 0.45× 行高」，并且横线本身落在框内。
+    """
+
+    def raw_with_blank(self, *, top: float = 200.0, height: float = 30.0) -> dict:
+        return {
+            "sheet": {"top": 0.0, "left": 0.0, "width": 600.0, "height": 1100.0},
+            "usableFirst": 1000.0,
+            "usableLater": 1000.0,
+            "marginPx": 75.6,
+            "rows": [{"top": 120.0, "left": 75.6, "width": 600.0, "height": 40.0}],
+            "items": [
+                {
+                    "seq": 1,
+                    "rowIndex": 0,
+                    "rect": {"top": 120.0, "left": 75.6, "width": 600.0, "height": 40.0},
+                    "blank": {"top": top, "left": 100.0, "width": 300.0, "height": height},
+                }
+            ],
+        }
+
+    def test_box_starts_above_the_line_and_covers_it(self) -> None:
+        box = geometry.boxes_from_measurement(self.raw_with_blank())[0]
+        page_height = geometry.PAGE_HEIGHT_PX
+        line_top = (200.0 + 75.6) / page_height
+        self.assertLess(box["y"], line_top, "框顶必须高于横线（答案写在横线上方）")
+        self.assertGreater(box["y"] + box["h"], line_top, "横线必须落在框内（否则裁不到答案）")
+        self.assertAlmostEqual(box["y"], (200.0 - 0.9 * 30.0 + 75.6) / page_height, places=4)
+        self.assertAlmostEqual(box["h"], (30.0 * (0.9 + 0.45)) / page_height, places=4)
+
+    def test_box_without_blank_falls_back_to_row_rect(self) -> None:
+        raw = self.raw_with_blank()
+        raw["items"][0]["blank"] = None
+        box = geometry.boxes_from_measurement(raw)[0]
+        page_height = geometry.PAGE_HEIGHT_PX
+        self.assertAlmostEqual(box["y"], (120.0 + 75.6) / page_height, places=4)
+        self.assertAlmostEqual(box["h"], 40.0 / page_height, places=4)
+
+
 class TestNegativeControls(GeometryCase):
     def test_negative_control_swapped_y_is_detected(self):
         """把相隔一行的两题 y 对调（seq 保持不动）：顺序判据必须报红。
