@@ -182,7 +182,7 @@ async function ensureInstalled() {
   // （三次独立复现），而 venv 自带的 pip 处理 `pip install <wheel>` 完全够用。
   // 要换源就设 PIP_INDEX_URL，pip 会从环境里读。
   if (
-    run(PY, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', wheelPath]).status !== 0
+    run(PY, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', `${wheelPath}[ocr]`]).status !== 0
   ) {
     die(
       '安装后端失败。常见原因：网络到不了 PyPI。\n' +

@@ -1,0 +1,206 @@
+/*
+ * 拍照批改**校对页**的页面级样式（M18-05）。
+ *
+ * 布局按 Q20：宽屏「裁图 | 读两遍 | 填答案」一行三列；窄屏（≤ 900px）单列，
+ * 裁图在上、填写在下，提交区 sticky 在底部。颜色只写 `var(--mg-*)`（判据 A1）。
+ */
+
+.ocr-review-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-4, 16px);
+  max-width: 1040px;
+  padding-bottom: 88px; /* 给 sticky 操作条留位置，最后一行不会被挡住 */
+}
+
+.ocr-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mg-sp-3);
+  padding: var(--mg-sp-3);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius, 10px);
+  background: var(--mg-surface-sunken);
+  font-size: var(--mg-fs-12, 13px);
+}
+
+.ocr-status p {
+  margin: 0;
+}
+
+.ocr-status-warn {
+  border-color: var(--mg-danger);
+}
+
+.ocr-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ocr-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+  padding: var(--mg-sp-3);
+  border: 1px solid var(--mg-line);
+  border-radius: var(--mg-radius, 10px);
+  background: var(--mg-surface);
+}
+
+/* 待确认的题要能一眼扫到：左侧用强调色竖条，不整行变色（不抢焦点）。 */
+.ocr-item-pending {
+  border-left: 3px solid var(--mg-accent);
+}
+
+.ocr-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mg-sp-2);
+  font-size: var(--mg-fs-12, 13px);
+}
+
+.ocr-item-seq {
+  font-weight: var(--mg-fw-600, 600);
+}
+
+.ocr-item-page {
+  color: var(--mg-ink-soft);
+}
+
+.ocr-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--mg-line);
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.ocr-chip-warn {
+  border-color: var(--mg-danger);
+  color: var(--mg-danger);
+}
+
+.ocr-chip-ok {
+  border-color: var(--mg-accent);
+  color: var(--mg-accent);
+}
+
+.ocr-item-body {
+  display: grid;
+  grid-template-columns: 180px minmax(120px, 1fr) minmax(160px, 1.2fr) auto;
+  gap: var(--mg-sp-3);
+  align-items: start;
+}
+
+.ocr-item-crop {
+  width: 100%;
+  max-height: 96px;
+  object-fit: contain;
+  border: 1px solid var(--mg-line);
+  border-radius: 6px;
+  background: var(--mg-surface-sunken);
+}
+
+.ocr-item-crop-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.ocr-item-reads {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+  line-height: 1.6;
+}
+
+.ocr-item-answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+  min-width: 0;
+}
+
+.ocr-field-label {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-11);
+}
+
+.ocr-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mg-sp-2);
+}
+
+/* 底部操作区：sticky 到视口底部，长列表滚到哪都能入档。 */
+.ocr-review-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mg-sp-3);
+  padding: var(--mg-sp-3);
+  border-top: 1px solid var(--mg-line);
+  background: var(--mg-surface);
+}
+
+.ocr-review-progress {
+  color: var(--mg-ink-soft);
+  font-size: var(--mg-fs-12, 13px);
+}
+
+.ocr-review-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mg-sp-2);
+}
+
+/* 窄屏（手机 / 平板竖屏）：一行三列压成单列，裁图在上、填写居中、按钮在下（Q20）。 */
+@media (max-width: 900px) {
+  .ocr-item-body {
+    grid-template-columns: 1fr;
+  }
+
+  .ocr-item-crop {
+    max-height: 180px;
+  }
+
+  .ocr-item-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .ocr-review-actions {
+    position: static;
+  }
+}
+
+/* 判分预览：只做提示，不给分数。填了答案才显示「判对了 / 判错了」，
+   没填时显示「待填答案」—— 不让空白看起来像判错。 */
+.ocr-chip-judge-ok {
+  color: var(--mg-success);
+  border-color: var(--mg-success);
+}
+
+.ocr-chip-judge-bad {
+  color: var(--mg-danger);
+  border-color: var(--mg-danger);
+}
+
+.ocr-chip-judge-empty {
+  color: var(--mg-ink-soft);
+  border-style: dashed;
+}

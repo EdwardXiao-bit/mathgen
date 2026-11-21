@@ -1090,6 +1090,62 @@ const apiServer = createServer((req, res) => {
   });
 });
 
+// ---- 模式 C（OCR 批改，M18-05）：一份够用的假批次 -------------------------
+// 只看「页面能不能把状态说清楚」：两遍一致 → 自动通过，两遍不一致 → 待老师填。
+// 裁图在 mock 里不存在（`crop_url: null`），页面上会显示「没有裁图」占位。
+const MOCK_OCR_BATCH_ID = '3f0f0e4a-0000-4000-8000-00000000c0de';
+const MOCK_OCR_LOCKED = new Map();
+
+function mockOcrItems() {
+  const rows = [
+    ['99', '99', '99', 0.99, 0.98],
+    ['1', '1', '1', 0.97, 0.96],
+    ['36', '36', '36', 0.99, 0.99],
+    ['1', '1', '1', 0.95, 0.94],
+    ['13', 'l3', '13', 0.42, 0.88],
+    ['5', '5', 'S', 0.93, 0.58],
+    ['6', '6', '6', 0.98, 0.97],
+    ['98', '98', '9B', 0.96, 0.51],
+  ];
+  return rows.map(([answer, p1, p2, c1, c2], index) => {
+    const seq = index + 1;
+    const agreed = p1 === p2;
+    const locked = MOCK_OCR_LOCKED.get(seq);
+    return {
+      seq,
+      page_no: 1,
+      final_answer: locked?.answer ?? (agreed ? answer : null),
+      agreed,
+      reviewed: locked?.reviewed ?? agreed,
+      raw_text_p1: p1,
+      raw_text_p2: p2,
+      confidence_p1: c1,
+      confidence_p2: c2,
+      crop_url: null,
+    };
+  });
+}
+
+function mockOcrDetail() {
+  const items = mockOcrItems();
+  return {
+    batch: {
+      id: MOCK_OCR_BATCH_ID,
+      paper_id: 1,
+      student_name: '肖铭皓',
+      student_no: '2024141460455',
+      source: 'phone',
+      page_count: 1,
+      status: 'reviewing',
+      message: '识别完成：自动通过 6 题，需人工 2 题',
+      created_at: '2026-11-16T09:00:00+00:00',
+      committed_attempt_id: null,
+    },
+    pages: [{ page_no: 1, status: 'ready', reason: null, crop_url: null }],
+    items,
+  };
+}
+
 function dispatchApi(req, res, url) {
   log(`API ${req.method} ${url.pathname}`);
 
@@ -1470,6 +1526,42 @@ function dispatchApi(req, res, url) {
       });
     }
     return json(res, 200, { ...found.summary, items: found.items });
+  }
+
+  // ---- 模式 C（OCR 批改，M18-05）：上传 / 校对 / 入档 / 删批次 ----------
+  // 上传是 multipart，这里不解析：只要求前端别把 Content-Type 写成 json
+  // （写错时浏览器根本不会拼出 multipart，这里也照样给 201，判据由真实后端守）。
+  if (req.method === 'POST' && url.pathname === '/api/ocr/batches') {
+    return json(res, 201, mockOcrDetail());
+  }
+
+  const ocrItemMatch = url.pathname.match(/^\/api\/ocr\/batches\/([^/]+)\/items\/(\d+)$/);
+  if (req.method === 'PATCH' && ocrItemMatch) {
+    const seq = Number(ocrItemMatch[2]);
+    const body = req.parsedBody ?? {};
+    const answer = typeof body.answer === 'string' ? body.answer : undefined;
+    MOCK_OCR_LOCKED.set(seq, { answer, reviewed: body.reviewed === undefined ? true : Boolean(body.reviewed) });
+    return json(res, 200, mockOcrDetail());
+  }
+
+  const ocrCropMatch = url.pathname.match(/^\/api\/ocr\/batches\/([^/]+)\/crops\/(\d+)$/);
+  if (req.method === 'GET' && ocrCropMatch) {
+    return json(res, 404, { error: { code: 'ITEM_NOT_FOUND', message: '没有这道题的裁图' } });
+  }
+
+  const ocrCommitMatch = url.pathname.match(/^\/api\/ocr\/batches\/([^/]+)\/commit$/);
+  if (req.method === 'POST' && ocrCommitMatch) {
+    return json(res, 201, {
+      batch_id: ocrCommitMatch[1],
+      attempt_id: 500,
+      replayed: false,
+    });
+  }
+
+  const ocrBatchMatch = url.pathname.match(/^\/api\/ocr\/batches\/([^/]+)$/);
+  if (ocrBatchMatch) {
+    if (req.method === 'GET') return json(res, 200, mockOcrDetail());
+    if (req.method === 'DELETE') return noContent(res);
   }
 
   // 一次性探针用：把学生端可变状态复位，避免同一进程里多次跑验收互相污染

@@ -140,7 +140,7 @@ def step_deps(reinstall: bool, mirror: str | None, no_mirror: bool) -> Path:
     uv = shutil.which("uv")
     if uv:
         say("    用 uv 安装依赖")
-        code = run([uv, "pip", "install", "--python", str(target), *index_args, "-e", str(BACKEND)])
+        code = run([uv, "pip", "install", "--python", str(target), *index_args, "-e", f"{BACKEND}[ocr]"])
     else:
         say("    用 pip 安装依赖（首次会慢一点）")
         code = run(
@@ -151,7 +151,7 @@ def step_deps(reinstall: bool, mirror: str | None, no_mirror: bool) -> Path:
                 "install",
                 "--disable-pip-version-check",
                 "-e",
-                str(BACKEND),
+                f"{BACKEND}[ocr]",
                 *index_args,
             ]
         )

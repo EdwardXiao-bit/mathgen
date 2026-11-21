@@ -49,6 +49,14 @@ export const ROUTES = {
   export_attempts: '/api/attempts/export',
   list_attempts: '/api/attempts',
   get_attempt: '/api/attempts/{attempt_id}',
+  // ---- 模式 C：手写卷面拍照批改（M18，D88–D95）----
+  // 与 `api.py` 同序。上传是 multipart，其余是 JSON；裁图走受控路由而不是静态目录。
+  ocr_batches: '/api/ocr/batches',
+  ocr_batch: '/api/ocr/batches/{batch_id}',
+  ocr_page: '/api/ocr/batches/{batch_id}/pages/{page_no}',
+  ocr_item: '/api/ocr/batches/{batch_id}/items/{seq}',
+  ocr_commit: '/api/ocr/batches/{batch_id}/commit',
+  ocr_crop: '/api/ocr/batches/{batch_id}/crops/{seq}',
 } as const;
 
 export type RouteName = keyof typeof ROUTES;
@@ -584,3 +592,93 @@ export const DEFAULT_CONFIG: PaperConfigIn = {
   parentheses: false,
   count: 20,
 };
+
+// ---------------------------------------------------------------------------
+// 模式 C（手写卷面拍照批改）：批次 / 页 / 题（契约 §5.6）
+// ---------------------------------------------------------------------------
+
+/**
+ * 批次状态机（`docs/10` §3）：
+ * `pending` 已接收 → `processing` 识别中 → `reviewing` 待老师校对 → `committed` 已入档；
+ * 任何一步失败进 `failed`，老师可整批重传。
+ */
+export type OcrBatchStatus = 'pending' | 'processing' | 'reviewing' | 'committed' | 'failed';
+
+/** 页状态只有两态：校正成功（`ready`）或这一页失败（`failed`，`reason` 说明原因）。 */
+export type OcrPageStatus = 'ready' | 'failed';
+
+/** 上传来源：手机网页拍照，或扫描件/图片文件。 */
+export type OcrSource = 'phone' | 'scan';
+
+export interface OcrPageOut {
+  page_no: number;
+  status: OcrPageStatus;
+  reason: string | null;
+  /** 页图预览地址；当前实现恒为 `null`（M18-07 才提供页级预览）。 */
+  crop_url: string | null;
+}
+
+export interface OcrItemOut {
+  seq: number;
+  page_no: number;
+  /** 两遍识别一致时的最终答案；不一致或未识别为 `null`（老师必须填）。 */
+  final_answer: string | null;
+  /** 两遍（原图 / 光照归一）识别结果逐字相等。 */
+  agreed: boolean;
+  /** 老师已确认（自动通过的题也算已确认）。 */
+  reviewed: boolean;
+  raw_text_p1: string | null;
+  raw_text_p2: string | null;
+  confidence_p1: number | null;
+  confidence_p2: number | null;
+  /** 该题答案区的裁图地址（识别完成后才有）。 */
+  crop_url: string | null;
+}
+
+export interface OcrBatchOut {
+  id: string;
+  paper_id: number;
+  student_name: string | null;
+  student_no: string | null;
+  source: string;
+  page_count: number;
+  status: OcrBatchStatus;
+  message: string | null;
+  created_at: string;
+  committed_attempt_id: string | null;
+}
+
+export interface OcrBatchDetail {
+  batch: OcrBatchOut;
+  pages: OcrPageOut[];
+  items: OcrItemOut[];
+}
+
+export interface OcrCommitResult {
+  batch_id: string;
+  attempt_id: string;
+  /** `true` = 这一批此前已经入档过，本次没有重复建成绩。 */
+  replayed: boolean;
+}
+
+/** 上传入参：1–2 页 + 卷 + 学生身份。 */
+export interface OcrUploadInput {
+  paperId: number;
+  studentName: string;
+  studentNo: string;
+  source?: OcrSource;
+  files: File[];
+}
+
+/** 老师校对一题：填答案 / 标已确认 / 标「看不清」。 */
+export interface OcrItemPatch {
+  answer?: string;
+  reviewed?: boolean;
+  unreadable?: boolean;
+}
+
+/** 一批最多几页（与后端 `MAX_PAGES` 一致）。 */
+export const OCR_MAX_PAGES = 2;
+/** 单页大小上限（与后端 `MAX_PAGE_BYTES` 一致）。 */
+export const OCR_MAX_PAGE_BYTES = 20 * 1024 * 1024;
+

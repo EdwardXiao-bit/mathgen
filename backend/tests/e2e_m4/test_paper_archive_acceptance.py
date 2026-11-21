@@ -27,7 +27,7 @@ from tests.e2e_m4 import _archive_support as sup
 #: 冻结契约哈希。M5 起点由 Lead 合法更新（D80：成绩接口与 `score_of` 进冻结包）——
 #: 本文件**故意**不复用 `test_layering.EXPECTED_SHA256`，独立誊一份是为了让「两处必须一致」
 #: 这件事本身成为判据（下面 `TestContractSurface` 会交叉核对两个文件里的值）。
-FROZEN_API_SHA = "31202c98d1740edddfb9985f490b3f26771ca0b92459a8d2145faad207c09ded"
+FROZEN_API_SHA = "02a583a88eef1fe74ebdfe97f10e019b3532f28aa12ced260f4a6892ad1d0de1"
 API_PATH = os.path.join(sup.BACKEND, "app", "contracts", "api.py")
 LAYERING_PATH = os.path.join(sup.BACKEND, "tests", "contract", "test_layering.py")
 

@@ -69,14 +69,32 @@ from app.models import Base
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DESIGN_DOC = REPO_ROOT / "docs" / "02-技术设计.md"
 
-MIN_TABLES = 6
-MIN_COLUMNS = 40
-MIN_INDEXES = 4
+MIN_TABLES = 9
+MIN_COLUMNS = 68
+MIN_INDEXES = 5
 EXPECTED_TABLES = frozenset(
-    {"paper", "paper_item", "edit_log", "student", "attempt", "attempt_item"}
+    {
+        "paper",
+        "paper_item",
+        "edit_log",
+        "student",
+        "attempt",
+        "attempt_item",
+        # M18 模式 C（D94）
+        "ocr_batch",
+        "ocr_page",
+        "ocr_item",
+    }
 )
 EXPECTED_INDEXES = frozenset(
-    {"idx_paper_status", "idx_edit_log_paper", "idx_attempt_paper", "idx_attempt_student"}
+    {
+        "idx_paper_status",
+        "idx_edit_log_paper",
+        "idx_attempt_paper",
+        "idx_attempt_student",
+        # M18 模式 C（D94）
+        "idx_ocr_batch_paper",
+    }
 )
 
 _FENCE_RE = re.compile(r"```sql[ \t]*\r?\n(.*?)```", re.DOTALL | re.IGNORECASE)

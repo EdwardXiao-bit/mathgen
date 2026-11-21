@@ -35,6 +35,7 @@ from app.layout.styles import (
     root_style_attr,
     style_text,
 )
+from app.render.marking import LAYOUT_VERSION, qr_payload, qr_svg, sheet_checksum
 
 __all__ = ["render_sheet", "render_with_layout", "chunk_rows", "SheetRenderError"]
 
@@ -133,6 +134,7 @@ def _document(ctx: SheetContext, layout: LayoutParams, body: str) -> str:
     """完整 HTML 文档。样式全部内联；不引用任何外部资源。"""
     title = escape(ctx.title or "练习卷")
     mode_label = "答案版" if ctx.mode is SheetMode.ANSWER else "题目版"
+    marks_css, marks_html = _sheet_marks(ctx, layout)
     return (
         "<!DOCTYPE html>\n"
         '<html lang="zh-CN">\n'
@@ -144,13 +146,87 @@ def _document(ctx: SheetContext, layout: LayoutParams, body: str) -> str:
         f"<title>{title}（{mode_label}）</title>\n"
         "<style>\n"
         f"{style_text(layout)}\n"
+        f"{marks_css}\n"
         "</style>\n"
         "</head>\n"
         f'<body class="mode-{escape(ctx.mode.value, quote=True)}">\n'
         f"{body}\n"
+        f"{marks_html}"
         "</body>\n"
         "</html>\n"
     )
+
+
+#: 打印期卷面标记的样式（D92 / docs/10 §8）。
+#:
+#: 只在 `@media print` 出现：屏幕预览不显示，避免遮挡预览切页；`position: fixed`
+#: 让 Chromium 在**每一页**都重复画同一组标记（二维码内容不含页号，见 marking.py）。
+#:
+#: 尺寸常量单独抽出，判据直接引用，避免「改了 CSS 忘了改判据」：
+#: 定位块距纸边 `CORNER_INSET_MM`（2026-11-13 由 10mm 收到 6mm——用户反馈太偏内；
+#: 6mm 仍在常见喷墨/激光的不可打印区 3–5mm 之外），二维码右移让出角块带。
+CORNER_SIZE_MM = 8.0
+CORNER_INSET_MM = 6.0
+QR_SIZE_MM = 20.0
+#: 二维码右边缘要越过「角块带」外沿（inset + size）再留 6mm 余量。
+QR_INSET_MM = CORNER_INSET_MM + CORNER_SIZE_MM + 6.0
+QR_BOTTOM_MM = CORNER_INSET_MM
+
+
+def _marks_css(margin_mm: float) -> str:
+    """打印期标记的样式。
+
+    ## 为什么角块不真正贴着纸边（2026-11-18 实测）
+
+    分页媒体里 `position: fixed` 锚在**页面内容区**（扣掉 `@page` 四边页边距），
+    Chromium 还会把落在页边距里的内容**裁掉**。所以 `left: 6mm` 实际是
+    「纸边 + 页边距 + 6mm = 26mm」，写 `left: -14mm` 想贴回纸边则整块被裁没
+    （实测 `.tmp-ocr-samples/demo-new.pdf` 里四角块消失）。
+
+    既然打印通道不可能把墨打进页边距，就**接受**这个锚点：角块距纸边
+    `页边距 + CORNER_INSET_MM`。识别端按同一个口径映射（二维码里带 `m` =
+    页边距毫米，见 `page_detect._target_corners`），页面校正就不会再错位。
+    屏幕预览不走 `@media print`，所以老师看到的位置仍是距纸边 6mm。
+    """
+    return _MARKS_CSS_BODY
+
+
+_MARKS_CSS_BODY = f"""\
+@media print {{
+  .sheet-marks {{ display: block; position: fixed; inset: 0; pointer-events: none; }}
+  .sheet-corner {{ position: fixed; width: {CORNER_SIZE_MM:g}mm; height: {CORNER_SIZE_MM:g}mm; background: #000; }}
+  .sheet-corner.tl {{ top: {CORNER_INSET_MM:g}mm; left: {CORNER_INSET_MM:g}mm; }}
+  .sheet-corner.tr {{ top: {CORNER_INSET_MM:g}mm; right: {CORNER_INSET_MM:g}mm; }}
+  .sheet-corner.bl {{ bottom: {CORNER_INSET_MM:g}mm; left: {CORNER_INSET_MM:g}mm; }}
+  .sheet-corner.br {{ bottom: {CORNER_INSET_MM:g}mm; right: {CORNER_INSET_MM:g}mm; }}
+  /* D92 实测修正：二维码原来也画在 `right:10mm; bottom:10mm`，正好压在右下角
+     定位块上（实测渲染图里角块被二维码的白色底盖掉）。现在二维码整体右移，
+     让出「距纸边 {CORNER_INSET_MM:g}–{CORNER_INSET_MM + CORNER_SIZE_MM:g}mm」这条角块带。 */
+  .sheet-qr-wrap {{ position: fixed; right: {QR_INSET_MM:g}mm; bottom: {QR_BOTTOM_MM:g}mm; width: {QR_SIZE_MM:g}mm; height: {QR_SIZE_MM:g}mm; }}
+  .sheet-qr {{ display: block; width: {QR_SIZE_MM:g}mm; height: {QR_SIZE_MM:g}mm; }}
+}}"""
+
+
+def _sheet_marks(ctx: SheetContext, layout: LayoutParams) -> tuple[str, str]:
+    """返回 `(css, html)`：打印期页脚二维码 + 四角定位块；不该有时返回空串。
+
+    为什么没有卷号就不打标记：二维码里要写卷的稳定标识，草稿没有 `code`，
+    打了也无法在识别端对上卷；草稿本来也不走「打印→手写→拍照」这条路。
+    """
+    if ctx.mode is not SheetMode.QUESTION or not ctx.code:
+        return "", ""
+    checksum = sheet_checksum(ctx, layout)
+    payload = qr_payload(
+        ctx.code, checksum, layout=LAYOUT_VERSION, margin_mm=layout.page_margin * 10.0
+    )
+    html = (
+        '<div class="sheet-marks" aria-hidden="true">'
+        '<span class="sheet-corner tl"></span><span class="sheet-corner tr"></span>'
+        '<span class="sheet-corner bl"></span><span class="sheet-corner br"></span>'
+        f'<span class="sheet-qr-wrap">{qr_svg(payload)}</span>'
+        "</div>\n"
+    )
+    return _marks_css(layout.page_margin * 10.0), html
 
 
 # ---------------------------------------------------------------------------

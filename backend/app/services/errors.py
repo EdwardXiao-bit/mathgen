@@ -22,7 +22,14 @@ ERROR_HTTP_STATUS: Final[dict[str, int]] = {
     "PAPER_NOT_FOUND": 404,
     "PAPER_NOT_EDITABLE": 409,
     "PAPER_NOT_PUBLISHED": 409,
-    "PAPER_HAS_ATTEMPTS": 409,      # 契约 §9（D78）有成绩的卷不许物理删除，只能归档
+    "PAPER_HAS_ATTEMPTS": 409,
+    # ★ 扩展（M18 / 模式 C）：OCR 批次的错误码（docs/10 §7 / §11）
+    "OCR_BATCH_NOT_FOUND": 404,
+    "OCR_BATCH_COMMITTED": 409,     # 已入档的批次不可改/不可删
+    "OCR_ITEMS_UNREVIEWED": 409,    # commit 前还有未确认的题
+    "OCR_STORAGE_FULL": 409,        # 总占用超过 2GB，先清理
+    "OCR_IMAGE_UNSUPPORTED": 422,   # 二维码解不出/不是本系统卷面（422 族）
+    "OCR_PAGE_CONFLICT": 409,       # 与所选卷的 checksum / 版面版本不符      # 契约 §9（D78）有成绩的卷不许物理删除，只能归档
     "CODE_NOT_FOUND": 404,
     # 注：`ATTEMPT_DUPLICATE` 已按 D76 删除——它原本写作「HTTP 200 + 错误码」自相矛盾，
     # 且会让重复提交返回错误信封，与「重放返回首次那次的结果、响应体相同」冲突。

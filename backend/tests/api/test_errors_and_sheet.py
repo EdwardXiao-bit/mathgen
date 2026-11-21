@@ -61,6 +61,13 @@ CONTRACT_ERROR_CODES = {
     # 被跨页切开时，`exports.py` 真的会抛它（409，不是 422：六参数都在 BOUNDS 内，
     # 请求完全合法，是「内容 × 排版」的组合放不下）。
     "LAYOUT_DOES_NOT_FIT": 409,
+    # D94（M18 模式 C）补入 §9：上传/校对/入档这条链路上的六个活码。
+    "OCR_BATCH_NOT_FOUND": 404,
+    "OCR_BATCH_COMMITTED": 409,
+    "OCR_ITEMS_UNREVIEWED": 409,
+    "OCR_STORAGE_FULL": 409,
+    "OCR_IMAGE_UNSUPPORTED": 422,
+    "OCR_PAGE_CONFLICT": 409,
     # 故意没有 `ATTEMPT_DUPLICATE`：D76 落地时删了（「HTTP 200 + 错误码」自相矛盾；
     # 重放不是错误，只是没新建记录）。docs/04 §9 里也已标注删除，两边一致。
 }
