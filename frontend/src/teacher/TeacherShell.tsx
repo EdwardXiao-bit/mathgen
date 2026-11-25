@@ -19,10 +19,12 @@ export function TeacherShell() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="app-brand">
+        {/* 品牌回到入口页：入口页是后端直接返回的静态页（`/`），
+            不是 React 路由，所以这里用普通链接而不是 `Link`。 */}
+        <a className="app-brand" href="/" aria-label="回到入口页">
           <span className="app-brand-mark">mathgen</span>
           <span className="app-brand-sub">老师端</span>
-        </div>
+        </a>
         <nav className="app-nav">
           <NavLink to="/teacher" end className={({ isActive }) => (isActive ? 'nav-on' : '')}>
             出题配置

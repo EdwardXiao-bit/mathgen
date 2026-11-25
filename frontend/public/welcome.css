@@ -746,6 +746,28 @@ code {
 
 .score-copy { grid-column: 9 / span 4; }
 
+/* 拍照批改：两张页面截图竖排（上传 → 核对），与成绩段的图同一套边距 */
+.ocr-media {
+  grid-column: 1 / span 7;
+  margin: 0 0 0 calc(var(--pad) * -1);
+  display: grid;
+  gap: clamp(16px, 2vw, 24px);
+}
+
+.ocr-shot { margin: 0; }
+
+.ocr-shot img {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius);
+}
+
+.ocr-shot figcaption {
+  margin-top: 8px;
+  color: var(--ink-soft);
+  font-size: var(--t1);
+}
+
 .score-lead {
   margin: 0;
   max-width: 32ch;
@@ -1029,6 +1051,7 @@ code {
 
   .score-grid { display: block; }
   .score-media { margin: 0 0 clamp(24px, 5vw, 32px); }
+  .ocr-media { margin: 0 0 clamp(24px, 5vw, 32px); }
   .score-lead, .score-points { max-width: none; }
 
   .foot-top { grid-template-columns: minmax(0, 1fr); gap: 14px; }

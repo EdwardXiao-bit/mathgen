@@ -100,6 +100,8 @@ code {
   display: flex;
   align-items: baseline;
   gap: var(--mg-sp-3);
+  color: inherit;
+  text-decoration: none;
 }
 
 .app-brand-mark {
