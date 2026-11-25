@@ -6,10 +6,7 @@
  */
 
 .ocr-review-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--mg-sp-4, 16px);
-  max-width: 1040px;
+  gap: var(--mg-sp-4);
   padding-bottom: 88px; /* 给 sticky 操作条留位置，最后一行不会被挡住 */
 }
 

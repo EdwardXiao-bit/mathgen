@@ -33,13 +33,13 @@ const POLLING_STATUSES = new Set(['pending', 'processing']);
 function statusLabel(status: string): string {
   switch (status) {
     case 'pending':
-      return '已接收，排队识别';
+      return '排队中';
     case 'processing':
-      return '正在识别';
+      return '识别中';
     case 'reviewing':
-      return '识别完成，等你核对';
+      return '待核对';
     case 'committed':
-      return '已入档';
+      return '已计分';
     case 'failed':
       return '识别失败';
     default:
@@ -251,13 +251,13 @@ export function OcrReviewPage() {
         <p>
           {detail.batch.student_name ?? '这位学生'} · {detail.batch.page_count} 页 ·{' '}
           {statusLabel(detail.batch.status)}
-          {detail.batch.message ? `：${detail.batch.message}` : ''}
+          {editable ? `：${reviewedCount} / ${items.length} 题已确认` : ''}
         </p>
       </section>
 
       {POLLING_STATUSES.has(detail.batch.status) ? (
         <div className="ocr-status" data-testid="ocr-review-progress" role="status">
-          正在识别，这一页会自动刷新，不用手动重开。
+          正在识别，页面会自动刷新。
         </div>
       ) : null}
 
@@ -274,11 +274,11 @@ export function OcrReviewPage() {
 
       {committed ? (
         <div className="ocr-status" data-testid="ocr-review-committed" role="status">
-          这一批已经入档，成绩可以直接看。
+          本批已计分。
           {detail.batch.committed_attempt_id ? (
             <>
               {' '}
-              <Link to={`/teacher/attempts/${detail.batch.committed_attempt_id}`}>看这份成绩</Link>
+              <Link to={`/teacher/attempts/${detail.batch.committed_attempt_id}`}>查看成绩</Link>
             </>
           ) : null}
         </div>
@@ -302,11 +302,11 @@ export function OcrReviewPage() {
                 <span className="ocr-item-page">第 {item.page_no} 页</span>
                 {item.agreed ? (
                   <span className="ocr-chip" data-testid={`ocr-item-agreed-${item.seq}`}>
-                    两遍一致
+                    自动一致
                   </span>
                 ) : (
                   <span className="ocr-chip ocr-chip-warn" data-testid={`ocr-chip-manual-${item.seq}`}>
-                    需要你看一眼
+                    需核对
                   </span>
                 )}
                 {item.reviewed ? <span className="ocr-chip ocr-chip-ok">已确认</span> : null}
@@ -329,10 +329,10 @@ export function OcrReviewPage() {
 
                 <div className="ocr-item-reads">
                   <span>
-                    第一遍：{item.raw_text_p1 ?? '没认出来'}（{percent(item.confidence_p1)}）
+                    第一次：{item.raw_text_p1 ?? '没认出来'}（{percent(item.confidence_p1)}）
                   </span>
                   <span>
-                    第二遍：{item.raw_text_p2 ?? '没认出来'}（{percent(item.confidence_p2)}）
+                    第二次：{item.raw_text_p2 ?? '没认出来'}（{percent(item.confidence_p2)}）
                   </span>
                 </div>
 
@@ -370,7 +370,7 @@ export function OcrReviewPage() {
                     disabled={!editable || busySeq === item.seq}
                     onClick={() => saveItem(item, null)}
                   >
-                    确认这题
+                    确认本题
                   </button>
                   <button
                     className="btn"
@@ -379,7 +379,7 @@ export function OcrReviewPage() {
                     disabled={!editable || busySeq === item.seq}
                     onClick={() => markUnreadable(item)}
                   >
-                    看不清，算没作答
+                    标记为未作答
                   </button>
                 </div>
               </div>
@@ -407,12 +407,12 @@ export function OcrReviewPage() {
               data-testid="ocr-delete-batch"
               disabled={deleteMutation.isPending}
               onClick={() => {
-                if (window.confirm('删掉这一批？上传的图片和识别结果都会删掉，不能恢复。')) {
+                if (window.confirm('删除本批？上传的图片和识别结果会一起删除，不能恢复。')) {
                   deleteMutation.mutate();
                 }
               }}
             >
-              删掉这一批
+              删除本批
             </button>
           ) : null}
           <button
@@ -422,7 +422,7 @@ export function OcrReviewPage() {
             disabled={!editable || !allReviewed || commitMutation.isPending}
             onClick={() => commitMutation.mutate()}
           >
-            {commitMutation.isPending ? '入档中…' : '确认无误，出分'}
+            {commitMutation.isPending ? '正在计分…' : '确认并计分'}
           </button>
         </div>
       </div>

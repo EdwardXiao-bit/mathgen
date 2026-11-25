@@ -1158,7 +1158,9 @@ code {
 .config-page,
 .library-page,
 .publish-page,
-.attempts-page {
+.attempts-page,
+.ocr-upload-page,
+.ocr-review-page {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -1177,8 +1179,14 @@ code {
 
 /* 卷库与成绩：表格较宽，给它更宽的居中列。 */
 .library-page > *,
-.attempts-page > * {
+.attempts-page > *,
+.ocr-review-page > * {
   max-width: 1180px;
+}
+
+/* 上传页与配置页同宽：一列表单，别比别的页窄一截。 */
+.ocr-upload-page > * {
+  max-width: 880px;
 }
 
 /* 上面各列都需要在「不超过上限」的前提下尽量铺开。 */
@@ -1190,7 +1198,10 @@ code {
 .attempts-toolbar,
 .attempts-summary,
 .attempts-pager,
-.publish-body {
+.publish-body,
+.ocr-form,
+.ocr-items,
+.ocr-review-actions {
   width: 100%;
 }
 
